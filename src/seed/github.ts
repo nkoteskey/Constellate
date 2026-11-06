@@ -31,6 +31,10 @@ export class GitHubRest implements GitHubSource {
     return (await this.get<{ workflow_runs: Run[] }>(`/repos/${f}/actions/runs?${q}`)).workflow_runs;
   }
   async jobs(f: string, id: number) { return (await this.get<{ jobs: Job[] }>(`/repos/${f}/actions/runs/${id}/jobs`)).jobs; }
-  commit(f: string, sha: string) { return this.get<Commit>(`/repos/${f}/commits/${sha}`); }
+  async commit(f: string, sha: string): Promise<Commit> {
+    // The REST API nests the message: { sha, html_url, commit: { message }, files }.
+    const c = await this.get<{ sha: string; html_url: string; commit: { message: string }; files?: { filename: string }[] }>(`/repos/${f}/commits/${sha}`);
+    return { sha: c.sha, html_url: c.html_url, message: c.commit.message, files: c.files };
+  }
   async issue(f: string, n: number) { try { return await this.get<Issue>(`/repos/${f}/issues/${n}`); } catch (e) { if ((e as { status?: number }).status === 404) return null; throw e; } }
 }

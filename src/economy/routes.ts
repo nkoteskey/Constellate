@@ -2,6 +2,7 @@ import { HttpReply, WebServer } from '../web/server.js';
 import { Economy } from './economy.js';
 import { verifyAndSettle } from './x402.js';
 import { lineage } from './lineage.js';
+import { TESTNET_PRICING } from './pricing.js';
 
 /**
  * Human payments over x402: sponsoring a problem. The hub's agent receives the
@@ -10,7 +11,7 @@ import { lineage } from './lineage.js';
 export function registerEconomyRoutes(web: WebServer, economy: Economy) {
   web.route('POST', /^\/api\/problems\/([0-9a-f]{64})\/sponsor$/, async (req, m, url) => {
     const amount = Math.floor(Number(url.searchParams.get('amount') ?? 1_000_000));
-    const perCheckpoint = Math.floor(Number(url.searchParams.get('per_checkpoint') ?? amount / 8));
+    const perCheckpoint = Math.floor(Number(url.searchParams.get('per_checkpoint') ?? TESTNET_PRICING.perCheckpoint));
     if (!web.hub.problems.get(m[1])) throw Object.assign(new Error('unknown problem'), { status: 404 });
     const r = await verifyAndSettle(economy.rail, req.headers['x-payment'] as string | undefined, {
       scheme: 'exact', asset: 'USDC-testnet', maxTimeoutSeconds: 600, network: economy.rail.network, maxAmountRequired: String(amount), resource: url.pathname, description: 'Sponsor this problem: contributors are paid per verified checkpoint', payTo: economy.me,

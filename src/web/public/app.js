@@ -23,6 +23,12 @@ $('#motion').onclick = () => { reduceMotion = !reduceMotion; ls.set('calm', redu
 
 if (!ls.get('introSeen', false)) $('#intro').hidden = false;
 $('#intro-ok').onclick = () => { $('#intro').hidden = true; ls.set('introSeen', true); };
+// Optional, skippable interests: a tap seeds what the sky learns from taps anyway. Stays on this device.
+function renderInterestChips() {
+  if (!sky || $('#intro').hidden) return;
+  $('#interest-chips').innerHTML = sky.realms.map((r) => `<button type="button" class="chip-btn" aria-pressed="${(interests[r.id] ?? 0) > 0}" data-realm="${r.id}" style="--c:${r.colour}">${esc(r.name)}</button>`).join('');
+  document.querySelectorAll('[data-realm]').forEach((b) => (b.onclick = () => { interests[b.dataset.realm] = (interests[b.dataset.realm] ?? 0) > 0 ? 0 : 3; ls.set('interests', interests); b.setAttribute('aria-pressed', String(interests[b.dataset.realm] > 0)); layout(); drawSky(); }));
+}
 
 // ── Signed contributions ────────────────────────────────────────────
 async function give(draft, what) {
@@ -143,6 +149,7 @@ addEventListener('resize', () => { if (sky) { layout(); drawSky(); } });
 async function showSky() {
   if (!sky) await loadSky();
   $('#sky-line').textContent = sky.line;
+  renderInterestChips();
   const byInterest = [...sky.problems].sort((a, b) => (interests[b.realm] ?? 0) - (interests[a.realm] ?? 0));
   const featured = [...new Set([...sky.featured, ...byInterest.filter((p) => p.hook).map((p) => p.id)])].slice(0, 3).map((id) => sky.problems.find((p) => p.id === id));
   // Introduce people through a problem: the lead card shows live progress and one "Help with this".

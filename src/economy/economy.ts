@@ -3,6 +3,7 @@ import { PaymentRail, signMandate, SignedMandate } from './rail.js';
 import { lineage, splitAmount } from './lineage.js';
 import { CheckpointBody } from '../work/problems.js';
 import { StoredRecord } from '../store/records.js';
+import { TESTNET_PRICING } from './pricing.js';
 
 export interface ReceiptBody {
   type: 'payout' | 'skill_fee' | 'review_fee' | 'review_bonus' | 'deposit' | 'refund' | 'reward' | 'sponsorship' | 'x402';
@@ -124,7 +125,7 @@ export class Economy {
  * once an independent operator confirms the deposited record.
  */
 export class EscrowAgent {
-  constructor(readonly economy: Economy, readonly rewardBps = 2000) {}
+  constructor(readonly economy: Economy, readonly rewardBps: number = TESTNET_PRICING.confirmRewardBps) {}
 
   async settle(): Promise<number> {
     const hub = this.economy.hub;

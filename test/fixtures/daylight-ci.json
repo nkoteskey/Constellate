@@ -1,0 +1,182 @@
+{
+ "_note": "Recorded from the public GitHub API for nkoteskey/daylight on 2026-11-06 (read-only). Subset of fields; long commit bodies trimmed.",
+ "repo": {
+  "full_name": "nkoteskey/daylight",
+  "private": false,
+  "html_url": "https://github.com/nkoteskey/daylight",
+  "language": "Rust",
+  "topics": []
+ },
+ "runs": [
+  {
+   "id": 41244454840,
+   "name": "ci",
+   "display_title": "Score explainer, filter polish, and fix rustfmt on the bills test",
+   "workflow_id": 277068985,
+   "run_number": 97,
+   "event": "push",
+   "status": "completed",
+   "conclusion": "success",
+   "head_branch": "claude/gifted-carson-y1ogq7",
+   "head_sha": "35e3a482169ef036fd6ea45083572c4d7994f20d",
+   "html_url": "https://github.com/nkoteskey/daylight/actions/runs/41244454840",
+   "created_at": "2026-10-31T21:37:25Z"
+  },
+  {
+   "id": 41238151997,
+   "name": "ci",
+   "display_title": "Reader navigation, reading-first Settings and a Civic list",
+   "workflow_id": 277068985,
+   "run_number": 96,
+   "event": "push",
+   "status": "completed",
+   "conclusion": "failure",
+   "head_branch": "claude/gifted-carson-y1ogq7",
+   "head_sha": "77e0a375ffc8fece622d1052e523753d636b6ff2",
+   "html_url": "https://github.com/nkoteskey/daylight/actions/runs/41238151997",
+   "created_at": "2026-10-31T20:16:45Z"
+  },
+  {
+   "id": 40045104696,
+   "name": "ci",
+   "display_title": "test(source-core): make the duress-wipe plaintext check robust",
+   "workflow_id": 277068985,
+   "run_number": 86,
+   "event": "push",
+   "status": "completed",
+   "conclusion": "success",
+   "head_branch": "claude/daylight-arch-verification",
+   "head_sha": "61aad96dadcedd5ae42904e3e190b10771563159",
+   "html_url": "https://github.com/nkoteskey/daylight/actions/runs/40045104696",
+   "created_at": "2026-10-24T00:27:59Z"
+  },
+  {
+   "id": 40044526907,
+   "name": "ci",
+   "display_title": "ci: let pnpm/action-setup read the version from package.json",
+   "workflow_id": 277068985,
+   "run_number": 81,
+   "event": "push",
+   "status": "completed",
+   "conclusion": "success",
+   "head_branch": "claude/daylight-arch-verification",
+   "head_sha": "a0f252efd2fff78b1c5680f78ec3335455eec29e",
+   "html_url": "https://github.com/nkoteskey/daylight/actions/runs/40044526907",
+   "created_at": "2026-10-24T00:20:57Z"
+  },
+  {
+   "id": 40044532137,
+   "name": "ci",
+   "display_title": "Land the architecture line on main (arch-verification)",
+   "workflow_id": 277068985,
+   "run_number": 82,
+   "event": "push",
+   "status": "completed",
+   "conclusion": "failure",
+   "head_branch": "claude/daylight-arch-verification",
+   "head_sha": "a0f252efd2fff78b1c5680f78ec3335455eec29e",
+   "html_url": "https://github.com/nkoteskey/daylight/actions/runs/40044532137",
+   "created_at": "2026-10-24T00:21:01Z"
+  }
+ ],
+ "jobs": {
+  "41238151997": [
+   {
+    "id": 124646183434,
+    "run_id": 41238151997,
+    "name": "fmt \u00b7 clippy \u00b7 test",
+    "conclusion": "failure",
+    "html_url": "https://github.com/nkoteskey/daylight/actions/runs/41238151997/job/124646183434",
+    "steps": [
+     {
+      "name": "cargo fmt",
+      "conclusion": "failure"
+     },
+     {
+      "name": "cargo clippy",
+      "conclusion": "skipped"
+     },
+     {
+      "name": "cargo test",
+      "conclusion": "skipped"
+     }
+    ]
+   },
+   {
+    "id": 124646183267,
+    "name": "embed \u00b7 ui \u00b7 apps (pnpm)",
+    "conclusion": "success",
+    "html_url": "https://github.com/nkoteskey/daylight/actions/runs/41238151997/job/124646183267",
+    "steps": []
+   }
+  ],
+  "40044532137": [
+   {
+    "id": 120723085428,
+    "run_id": 40044532137,
+    "name": "fmt \u00b7 clippy \u00b7 test",
+    "conclusion": "failure",
+    "html_url": "https://github.com/nkoteskey/daylight/actions/runs/40044532137/job/120723085428",
+    "steps": [
+     {
+      "name": "cargo fmt",
+      "conclusion": "success"
+     },
+     {
+      "name": "cargo clippy",
+      "conclusion": "success"
+     },
+     {
+      "name": "cargo test",
+      "conclusion": "failure"
+     }
+    ]
+   }
+  ]
+ },
+ "commits": {
+  "77e0a375ffc8fece622d1052e523753d636b6ff2": {
+   "sha": "77e0a375ffc8fece622d1052e523753d636b6ff2",
+   "html_url": "https://github.com/nkoteskey/daylight/commit/77e0a375ffc8fece622d1052e523753d636b6ff2",
+   "commit": {
+    "message": "Reader navigation, reading-first Settings and a Civic list\n\n(body omitted in fixture)"
+   },
+   "files": []
+  },
+  "35e3a482169ef036fd6ea45083572c4d7994f20d": {
+   "sha": "35e3a482169ef036fd6ea45083572c4d7994f20d",
+   "html_url": "https://github.com/nkoteskey/daylight/commit/35e3a482169ef036fd6ea45083572c4d7994f20d",
+   "commit": {
+    "message": "Score explainer, filter polish, and fix rustfmt on the bills test\n\nThe previous commit's message said fmt was green, but it wasn't:\nrustfmt wanted the civic_list test call split across lines. That is\nfixed here.\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+   },
+   "files": [
+    {
+     "filename": "crates/daylight-app-core/tests/core.rs"
+    },
+    {
+     "filename": "apps/daylight/src/components/ScoreExplainer.tsx"
+    }
+   ]
+  },
+  "a0f252efd2fff78b1c5680f78ec3335455eec29e": {
+   "sha": "a0f252efd2fff78b1c5680f78ec3335455eec29e",
+   "html_url": "https://github.com/nkoteskey/daylight/commit/a0f252efd2fff78b1c5680f78ec3335455eec29e",
+   "commit": {
+    "message": "ci: let pnpm/action-setup read the version from package.json"
+   },
+   "files": []
+  },
+  "61aad96dadcedd5ae42904e3e190b10771563159": {
+   "sha": "61aad96dadcedd5ae42904e3e190b10771563159",
+   "html_url": "https://github.com/nkoteskey/daylight/commit/61aad96dadcedd5ae42904e3e190b10771563159",
+   "commit": {
+    "message": "test(source-core): make the duress-wipe plaintext check robust\n\n`passcodes.json` holds hex-encoded salted hashes; searching it for the\nbare digits matched random hex in about 1% of CI runs.\n\nCo-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+   },
+   "files": [
+    {
+     "filename": "crates/daylight-source-core/tests/flow.rs"
+    }
+   ]
+  }
+ }
+}

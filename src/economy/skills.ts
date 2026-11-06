@@ -4,6 +4,7 @@ import { ModelRunner } from '../contributor/models.js';
 import { VerifierRegistry } from '../work/verifiers.js';
 import { bm25 } from '../services/search.js';
 import { Economy } from './economy.js';
+import { TESTNET_PRICING } from './pricing.js';
 
 /**
  * Skill marketplace. A skill card is a signed record: what the skill does, its
@@ -77,7 +78,7 @@ export class Skills {
       if (!this.economy) throw new Error('this skill costs money; no payment rail configured');
       // Credit flows to the author and, through inheritance, to parent skills.
       const parents = s.rec.refs.filter((r) => this.hub.node.store.get(r)?.rec.kind === 'skill');
-      const parentShare = parents.length ? Math.floor(card.price * 0.2) : 0;
+      const parentShare = parents.length ? Math.floor((card.price * TESTNET_PRICING.skillParentShareBps) / 10_000) : 0;
       receipt = await this.economy.pay(s.rec.agent_id, card.price - parentShare, 'skill_fee', [record.id, skillId]);
       for (const p of parents) await this.economy.pay(this.hub.node.store.get(p)!.rec.agent_id, Math.floor(parentShare / parents.length), 'skill_fee', [record.id, p], { role: 'inherited' });
     }

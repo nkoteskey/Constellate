@@ -76,3 +76,7 @@ pre { white-space: pre-wrap; background: var(--panel-2); padding: 12px; border-r
 .featured a.lead { border-color: var(--human); }
 .featured a .bar { margin: 8px 0 6px; }
 .featured a .cta { display: inline-block; margin-top: 2px; color: var(--human); font-weight: 600; font-size: 14px; }
+
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 12px; }
+.chip-btn { font-size: 13px; padding: 4px 12px; border-color: var(--line); color: var(--muted); }
+.chip-btn[aria-pressed="true"] { border-color: var(--c); color: var(--fg); }

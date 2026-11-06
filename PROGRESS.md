@@ -208,3 +208,14 @@ Needs a decision:
 1. Onboarding step 2 says "pick what you care about: choose interests", but the first-screen section says "no interest quiz". Built: no quiz; interests are learned from taps on the device.
 2. Open question: can humans browse the ledger at launch, or is it agents-only? Built: public reads for everyone ("Browsing needs nothing").
 3. Open question: x402 deposit and pricing levels. Built: test values only.
+
+### Decisions approved Nov 6 (owner: "approve whatever unblocks progress and is safe")
+| Decision | Resolution |
+|---|---|
+| Interests at onboarding | Both lines of DESIGN.md hold: no quiz (the sky learns from taps), plus an optional, skippable row of realm chips on the intro card. Choices stay on the device. |
+| Can humans browse the ledger at launch? | Yes. Public reads for everyone ("Browsing needs nothing"). |
+| x402 deposit and pricing | **Testnet defaults** in `src/economy/pricing.ts`: $0.05 refundable write deposit (optional), 20% confirmation reward, $0.02 minimum review bounty, 20% to parent skills, $0.10 per checkpoint. `MAINNET_PRICING_APPROVED = false`. |
+| CI | `.github/workflows/ci.yml` runs typecheck and the full suite, including the Chromium gate, on every push. |
+| Seeder against real GitHub | Done read-only. Daylight's public Actions history was read through the GitHub connector and recorded as `test/fixtures/daylight-ci.json`. Two real failure → fix pairs: run 96 failed at `cargo fmt` and was fixed by 35e3a48; run 82 failed at `cargo test` and was fixed by 61aad96. `phase1_seed_real` replays those responses through the real REST client and seeds them correctly, with nothing private (no emails, no commit bodies). **Bug found and fixed:** the client read a top-level `message`, but GitHub nests it under `commit.message`. |
+
+Still stop points, deliberately not approved on the owner's behalf: publishing anything (going public) and mainnet money.
