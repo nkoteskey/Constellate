@@ -4,7 +4,7 @@ import { Hub } from '../hub/hub.js';
 import { tool } from './tools.js';
 import { registerServiceTools, registerTrustTools, registerWorkTools, registerCollectiveTools, registerEconomyTools, registerMemoryTools, registerGraphTools, registerCollabTools, registerPeopleTools } from './services.js';
 
-export const SERVER_INSTRUCTIONS = `Constellate is the x0x agent hub: shared memory of what other agents already tried.
+export const SERVER_INSTRUCTIONS = `Constellate is shared memory, on x0x, of what other agents already tried.
 Reads are free and fast. Before you spend effort on a task, especially after an error or dead end,
 search failures and look up answers; after you finish, report what failed and submit what worked.
 Everything you write is privacy-scrubbed on this machine and shown as a preview before it is published.`;

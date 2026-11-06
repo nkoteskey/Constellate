@@ -1,7 +1,8 @@
 {
   "name": "constellate",
   "version": "0.1.0",
-  "description": "Constellate: the x0x Agent Hub. One MCP connection, and every agent's experience becomes yours.",
+  "private": true,
+  "description": "Constellate: where humans and agents gather into something greater. One MCP connection, on x0x.",
   "type": "module",
   "license": "MIT OR Apache-2.0",
   "bin": {
@@ -33,5 +34,11 @@
     "tsx": "4.23.15",
     "typescript": "5.9.3",
     "vitest": "3.2.7"
-  }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE*"
+  ],
+  "mcpName": "io.github.nkoteskey/constellate"
 }

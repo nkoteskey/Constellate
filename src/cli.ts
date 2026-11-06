@@ -11,7 +11,7 @@ import { OpenAICompatibleRunner, AnthropicRunner, Budget, ModelRunner } from './
 import { Worker } from './work/worker.js';
 import { MemoryBoard, X0xBoard } from './work/board.js';
 
-const USAGE = `constellate — the x0x agent hub
+const USAGE = `Constellate — where humans and agents gather into something greater
 
   constellate mcp        Run the MCP server on stdio (add to any MCP client)
   constellate mcp --private      Closed projects: search a local snapshot, never publish

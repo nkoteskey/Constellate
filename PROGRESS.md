@@ -161,3 +161,33 @@ Gate 7 (`test/gates/phase7.test.ts`): notes written in session 1 through one MCP
 7. **Safety:** review the constitution keyword rules and attach a model reviewer before going public (stop point, not crossed).
 8. **Gate 6 for real:** five first-time users, unaided, timed to first contribution.
 9. **Open questions from the sketch, with current defaults:** hub name (working name "Constellate"); MCP server runs locally per agent; deposit and pricing levels (test values only); scrubbing strictness (strict by default in `fromEnv`, preview on); humans can browse the ledger (public reads); reputation bootstraps without a paywall (pre-trusted seeds plus confirming work; deposits optional).
+
+## Amendment 1 (Nov 6, 2026)
+Folded into the existing phases; no completed phase was restarted. DESIGN.md isn't in the repo or reachable from this session, so the amendment text itself was the spec. **Needs human:** add DESIGN.md to the repo so later amendments can be checked against it.
+
+| § | Item | Phase | Status | Where |
+|---|---|---|---|---|
+| 1 | Name, brand, logo | all / 6 | ✅ | User-facing text renamed. Three-point SVG logo (`src/web/public/logo.svg`, inline in the header); it glows at rest and pulses only on real checkpoints. Brand principles applied: fewer words on screen. Internal identifiers (`constellate.*`) were already correct; no renames deferred. |
+| 2 | Knowledge graph | 1–2 | ✅ gate added | `src/graph/`. Versioned JSON-LD context; content-hash node IDs; edges from refs plus signed `link` records (`buildsOn`, `fixes`, `contradicts`, `confirms`, `inspiredBy`, `sameAs`). Link weights strengthen with use, confirmation and building-on, and decay (90-day half-life); weight affects ranking only, nothing is deleted. Every lookup returns its strongest neighbours. Contradicts links inhibit in context. `Consolidator.sleep()` summarises clusters into signed `summary` records, archived behind a pointer per cluster. Cross-realm bridges are detected and emitted (SSE, UI, `graph_bridges`). |
+| 3 | Protocols and payments | 5 | ✅ | `src/economy/a2a.ts`: extends x0x's A2A Agent Card with services and skills (`/.well-known/agent-card.json`). **AP2 checked:** v0.2 is pre-1.0, checkout is delegated to UCP, card rails come first, and there's no package. Its x402 support is the separate a2a-x402 v0.1 extension. **Decision:** agent-to-agent payments use x402 directly over A2A (a2a-x402 v0.1 message flow), with our signed mandate as the payload. Humans pay with x402. Every payment is linked to lineage. Testnet only. |
+| 4 | Supporting capabilities | 1, 3, 5 | ✅ | Skill cards, sandboxed trials and inheritance existed. New in `src/collab/collab.ts`: verifiable hand-offs (`handoff_create` / `handoff_check`), mid-task help through the Swarm with checkable answers (`help_request` / `help_accept`), a disagreement court (an independent third agent rules, keeps its reasoning, and pulls in humans when unsure), and the huddle view (`huddle_get`, plus a section on problem pages). |
+| 5 | Models and clients | 3 | ✅ | `src/contributor/router.ts`: Anthropic, OpenAI, Gemini and OpenRouter keys come from the encrypted device vault. The router mixes local and cloud models (local first, then cheapest fitting, honours family exclusions) and reports spend per model against per-model and overall caps. Setup snippets for each client already existed. |
+| 6 | Distribution | prepared | ✅ prepared, **not published** | `distribution/`: MCP Registry `server.json`, A2A card example, `SKILL.md`, `llms.txt`, npm (`private: true` blocks accidental publishing), PyPI, crates.io and Homebrew launchers, and OpenClaw / LangChain / CrewAI / AutoGen / Claude Agent SDK snippets. Human loops: breakthrough cards, a "my light" link, invite links, live embeds (`/embed.html?p=`), teams, weekly digest. Metrics instrumented (`/api/metrics`, `metrics_get`). No dark patterns. |
+| 7 | Interface | 6 | ✅ | Sky threads are real graph links; bridges are bright threads and raise a notice. Five realms. Every life-sciences checkpoint gets the stricter review: broader refusals, and the result is held until a model or human review clears it, then accepted rather than redone. People discovery, problem chat (signed `message` records) and DMs over x0x `POST /direct/send` (needs a daemon; in-browser DMs are coming soon). |
+| 8 | README | — | ✅ | Replaced with the provided README. Getting started is accurate: from-source works today; npm, hosted and one-click are marked coming soon. |
+| 9 | Seeding the cold start | 1 | ✅ gate added | `src/seed/`. The allow-list is exactly `nkoteskey/constellate` and `nkoteskey/daylight`; default deny, and private repos are refused even if allow-listed. Records come from the public CI trail only (failing run, then the fixing commit from the next passing run, then linked issues), with source links as evidence. The scrubber is a second gate. Private read mode: `constellate snapshot pull` plus `constellate mcp --private`, using a separate closed identity that is refused in the MCP server and in the node. |
+
+Gates added:
+- `phase2_graph`: used links outrank unused, a planted dead end sinks, a bridge is detected and emitted, consolidation runs once.
+- `phase1_seed`: both allow-listed repos seeded with source links; a non-listed repo yields zero records and is never fetched; a private-mode search makes zero sockets or fetches (captured); a closed identity's publish is refused.
+- `amendment_collab`: §3, §4, §5, §7.
+- `phase6`: the Amendment 1 UI checks.
+
+**81 tests pass.**
+
+Needs a human (Amendment 1):
+1. Run `constellate seed` live. api.github.com isn't reachable from the build session; the gate uses recorded-shape fixtures.
+2. Publishing anything in `distribution/` (stop point).
+3. Mainnet for x402 / AP2 (stop point). Revisit AP2 when it reaches 1.0.
+4. Add DESIGN.md to the repo.
+5. Wire x0x DMs into the browser app.

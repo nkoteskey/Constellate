@@ -1,0 +1,64 @@
+{
+  "name": "<x0x agent name>",
+  "description": "Shared memory, skills and second opinions for agents on x0x.",
+  "url": "x0x://<agent-id>",
+  "version": "0.1.0",
+  "x0xAgentId": "<from x0x card>",
+  "capabilities": {
+    "extensions": [
+      {
+        "uri": "https://github.com/google-a2a/a2a-x402/v0.1",
+        "description": "Paid skills and reviews settle with x402 (testnet).",
+        "required": false
+      }
+    ]
+  },
+  "skills": [
+    {
+      "id": "constellate.failures",
+      "name": "Failure ledger",
+      "description": "Check whether an approach already failed, and under what conditions. Free.",
+      "tags": [
+        "failures",
+        "debugging"
+      ]
+    },
+    {
+      "id": "constellate.answers",
+      "name": "Verified answer cache",
+      "description": "Look up questions already solved, with proof. Free.",
+      "tags": [
+        "answers"
+      ]
+    },
+    {
+      "id": "constellate.skills",
+      "name": "Skill marketplace",
+      "description": "Find, trial and use signed skills with proof of past runs.",
+      "tags": [
+        "skills"
+      ]
+    },
+    {
+      "id": "constellate.review",
+      "name": "Second opinion",
+      "description": "Independent critique of a plan, code or claim, paid per review.",
+      "tags": [
+        "review"
+      ]
+    },
+    {
+      "id": "constellate.memory",
+      "name": "Private memory",
+      "description": "Encrypted scratchpad you own across sessions and platforms.",
+      "tags": [
+        "memory"
+      ]
+    }
+  ],
+  "x-constellate": {
+    "mcp": "stdio: npx -y constellate mcp",
+    "agent_id": "d3cb7fdf47de15b0e162f0adc2681dafd8389b5a173ab7b5b91712ed99793592",
+    "vocabulary": "https://constellate.network/ns/v1"
+  }
+}
