@@ -44,6 +44,7 @@ const VENDOR: Record<string, string> = {
 export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunner } = {}) {
   const hub = web.hub;
   const guide = new Guide(hub, opts.guideModel);
+  const guide_ = guide;
   const delib = new Deliberation(hub);
 
   web.route('GET', /^\/vendor\/(@noble\/post-quantum|@noble\/hashes|@noble\/curves|cborg)\/(.+\.js)$/, (_r, m) => {
@@ -74,10 +75,25 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
     // Three highlighted problems, most active first, one per realm so the sky invites rather than overwhelms.
     const featured: string[] = [];
     const realmsUsed = new Set<string>();
-    for (const p of [...problems].filter((p) => p.hook).sort((a, b) => b.activity.recent - a.activity.recent || b.activity.total - a.activity.total)) {
-      if (featured.length < 3 && !realmsUsed.has(p.realm)) { featured.push(p.id); realmsUsed.add(p.realm); }
+    const ranked = [...problems].filter((p) => p.hook).sort((a, b) => b.activity.recent - a.activity.recent || b.activity.total - a.activity.total);
+    // Two problems plus one debate when there is one: rating an argument is the gentlest first contribution.
+    const debate = ranked.find((p) => p.kind === 'deliberation');
+    for (const p of ranked.filter((p) => p.kind !== 'deliberation')) {
+      if (featured.length < (debate ? 2 : 3) && !realmsUsed.has(p.realm)) { featured.push(p.id); realmsUsed.add(p.realm); }
     }
-    return { line: 'Thousands of minds, working on humanity\'s hardest problems, right now.', realms: REALMS.map((r) => ({ id: r, ...REALM_INFO[r] })), problems, featured };
+    if (debate) featured.push(debate.id);
+    const all = hub.node.store.all().filter((s) => s.visibility === 'public');
+    const people = new Set(all.filter((s) => /^human\b/.test(s.rec.context.environment)).map((s) => s.operatorId));
+    const agentOps = new Set(all.filter((s) => !/^human\b/.test(s.rec.context.environment)).map((s) => s.operatorId));
+    const day = Date.now() - 86_400_000;
+    const stats = {
+      agents: agentOps.size, people: people.size,
+      verified_today: all.filter((s) => s.rec.kind === 'checkpoint' && Date.parse(s.rec.created) > day).length,
+      verified: all.filter((s) => s.rec.kind === 'checkpoint').length,
+      shared: all.filter((s) => s.rec.kind === 'failure' || s.rec.kind === 'answer').length,
+      bridges: hub.graph.bridges().length,
+    };
+    return { line: 'Thousands of minds, working on humanity\'s hardest problems, right now.', demo: process.env.CONSTELLATE_DEMO === '1', stats, realms: REALMS.map((r) => ({ id: r, ...REALM_INFO[r] })), problems, featured };
   });
 
   web.route('GET', /^\/api\/snapshot$/, async () => { const { exportSnapshot } = await import('../seed/snapshot.js'); return new RawReply(Buffer.from(exportSnapshot(hub.node.store)), 'application/cbor'); });
@@ -131,14 +147,18 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
   web.route('GET', /^\/api\/problems\/([0-9a-f]{64})\/page$/, async (_r, m) => {
     const s = await hub.problems.summary(m[1]);
     const recent = hub.node.store.referencing(m[1]).filter((r) => r.visibility === 'public').sort((a, b) => b.rec.created.localeCompare(a.rec.created)).slice(0, 20).map((r) => ({
-      id: r.rec.id, kind: r.rec.kind, at: r.rec.created, by: isHuman(r) ? 'human' : 'agent', who: r.rec.agent_id.slice(0, 8),
+      id: r.rec.id, kind: r.rec.kind, at: r.rec.created, by: isHuman(r) ? 'human' : 'agent', who: r.rec.agent_id,
       says: describe(r),
     }));
     const people = new Map<string, { id: string; type: string; contributions: number }>();
     for (const r of hub.node.store.referencing(m[1])) { const p = people.get(r.operatorId) ?? { id: r.operatorId, type: isHuman(r) ? 'human' : 'agent', contributions: 0 }; p.contributions++; people.set(r.operatorId, p); }
     const votes = hub.collective.tally(m[1]);
     const constitution = hub.collective.constitution.status(m[1]);
-    return { ...s, realm_info: REALM_INFO[s.realm], recent, people: [...people.values()].sort((a, b) => b.contributions - a.contributions).slice(0, 30), votes, constitution };
+    const prob = hub.problems.body(m[1]);
+    const done = new Set(s.checkpoints.map((c) => c.chunk));
+    const reviewing = new Set(hub.node.store.referencing(m[1], 'constitution_check').filter((c) => (c.rec.body as { stage: string; needs_human: boolean }).stage === 'checkpoint' && (c.rec.body as { needs_human: boolean }).needs_human).map((c) => { const r = hub.node.store.get(c.rec.refs[1]); return (r?.rec.body as { chunk?: string } | undefined)?.chunk; }));
+    const steps = prob.chunks.map((c) => ({ key: c.key, title: c.title, state: done.has(c.key) ? 'done' : reviewing.has(c.key) && constitution.state === 'awaiting_review' ? 'review' : 'open' }));
+    return { ...s, steps, realm_info: REALM_INFO[s.realm], recent, people: [...people.values()].sort((a, b) => b.contributions - a.contributions).slice(0, 30), votes, constitution };
   });
 
   web.route('GET', /^\/api\/proposals$/, () => hub.collective.queue(5));
@@ -167,6 +187,17 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
     if (!rec.refs.every((r) => hub.node.store.get(r))) return new HttpReply(400, { error: 'refers to unknown records' });
     await hub.node.relay(rec);
     return { accepted: rec.id, credit: 'Your light joined the sky.' };
+  });
+
+  // The utility hook: paste an error or a question, get what failed, what fixed it, and a plain answer.
+  web.route('GET', /^\/api\/search$/, async (_r, _m, url) => {
+    const q = String(url.searchParams.get('q') ?? '').slice(0, 500).trim();
+    if (!q) return { q, failures: [], answers: [], guide: null };
+    const failures = hub.ledger.searchFailures(q, { limit: 4 }).map((f) => ({ ...f, fixes: f.fixed_by.map((id) => { const a = hub.node.store.get(id); return a ? { id, answer: (a.rec.body as { answer: string }).answer, confirmations: hub.trust.explain(a).confirmations } : null; }).filter(Boolean) }));
+    const answers = hub.ledger.lookupAnswers(q, { limit: 3 });
+    const asksAboutWork = /happening|progress|status|how('s| is)|going|what about/i.test(q);
+    const guide = asksAboutWork || !(failures.length || answers.length) ? await guide_.ask(q).catch(() => null) : null;
+    return { q, failures, answers, guide };
   });
 
   web.route('POST', /^\/api\/ask$/, async (_r, _m, _u, body) => guide.ask(String((await body()).question ?? '').slice(0, 500)));
@@ -205,6 +236,13 @@ function describe(r: StoredRecord): string {
     case 'vote': return 'voted for this problem';
     case 'constitution_check': return b.ok ? 'constitution check passed' : `constitution check flagged: ${(b.findings as { rule: string }[]).map((f) => f.rule).join(', ')}`;
     case 'receipt': return `payment: ${b.type}`;
+    case 'message': return `said: “${String(b.text).slice(0, 140)}”`;
+    case 'use': return 'found this useful';
+    case 'confirmation': return 'confirmed a result independently';
+    case 'contradiction': return `disagreed: ${String(b.reason).slice(0, 100)}`;
+    case 'rating': return `rated an argument ${b.score}/5`;
+    case 'link': return `linked it to related work (${b.type})`;
+    case 'handoff': return `handed off: ${String(b.next).slice(0, 100)}`;
     default: return r.rec.kind;
   }
 }

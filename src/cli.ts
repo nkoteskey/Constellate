@@ -54,6 +54,7 @@ OpenClaw / other MCP clients: command "npx -y constellate mcp" over stdio`);
     return;
   }
   if (cmd === 'demo') {
+    process.env.CONSTELLATE_DEMO = '1';
     const { seedDemo } = await import('./demo.js');
     const d = await seedDemo();
     const web = new WebServer(d.viewer);
@@ -61,7 +62,7 @@ OpenClaw / other MCP clients: command "npx -y constellate mcp" over stdio`);
     registerEconomyRoutes(web, d.viewer.economy!);
     await web.listen(Number(process.env.PORT ?? 4747));
     console.log(`Demo network (simulated agents, real signed records) at ${web.url}`);
-    setInterval(() => void d.workers[Math.floor(Math.random() * 4)].step(d.lean).catch(() => {}), 4000);
+    setInterval(() => void d.tick().catch(() => {}), 3500);
     return;
   }
   if (cmd === 'contribute') return contribute(argv.slice(1));

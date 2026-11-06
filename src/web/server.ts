@@ -15,7 +15,7 @@ export type ApiHandler = (req: IncomingMessage, url: URL, body: () => Promise<an
 
 const here = dirname(fileURLToPath(import.meta.url));
 const PUBLIC = [join(here, 'public'), join(here, '../../src/web/public')].find((p) => existsSync(p)) ?? join(here, 'public');
-const TYPES: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.json': 'application/json' };
+const TYPES: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.json': 'application/json', '.woff2': 'font/woff2', '.txt': 'text/plain' };
 
 /**
  * The human app's server: public reads need nothing (browsing needs no account),
@@ -37,7 +37,7 @@ export class WebServer {
     this.route('GET', /^\/api\/records\/([0-9a-f]{64})$/, (_r, m) => {
       const s = this.hub.node.store.get(m[1]);
       if (!s || s.visibility !== 'public') throw Object.assign(new Error('not found'), { status: 404 });
-      return { record: s.rec, operator: s.operatorId, trust: this.hub.trust.explain(s), referenced_by: this.hub.node.store.referencing(m[1]).map((r) => ({ id: r.rec.id, kind: r.rec.kind, operator: r.operatorId })) };
+      return { record: s.rec, operator: s.operatorId, human: /^human\b/.test(s.rec.context.environment), neighbours: this.hub.graph.neighbours(s.rec.id, 4), trust: this.hub.trust.explain(s), referenced_by: this.hub.node.store.referencing(m[1]).map((r) => ({ id: r.rec.id, kind: r.rec.kind, operator: r.operatorId })) };
     });
   }
 

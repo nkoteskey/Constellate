@@ -52,7 +52,7 @@ describe('GATE 6 — human experience', () => {
     expect(seconds).toBeLessThan(300);
 
     // The contribution is a real signed record from a key made in the browser, labelled human.
-    const ratings = demo.viewer.node.store.ofKind('rating').filter((r) => r.rec.context.environment.startsWith('human'));
+    const ratings = demo.viewer.node.store.ofKind('rating').filter((r) => r.rec.context.environment === 'human (browser)');
     expect(ratings).toHaveLength(1);
     expect(verifyRecord(ratings[0].rec).ok).toBe(true);
     // ...and it reached the other machines over gossip.
@@ -63,14 +63,14 @@ describe('GATE 6 — human experience', () => {
   it('the same person can vote from a problem page and see it on their Me page', async () => {
     await page.goto(`${web.url}/#/p/${demo.lean}`);
     await page.waitForSelector('#help');
-    expect(await page.textContent('h1')).toMatch(/Lean/);
-    expect(await page.$$eval('.timeline li.ok', (l) => l.length)).toBeGreaterThan(0);
+    expect(await page.textContent('#page h1')).toMatch(/Lean/);
+    expect(await page.$$eval('.timeline [data-rec]', (l) => l.length)).toBeGreaterThan(0);
     await page.click('#help');
     await page.click('[data-act="vote"]');
     await page.waitForFunction(() => document.querySelector('#toast')?.textContent?.includes('Vote counted'));
     await page.goto(`${web.url}/#/me`);
-    await page.waitForSelector('.card b');
-    expect(await page.textContent('.card b')).toBe('2');
+    await page.waitForSelector('.stat b');
+    expect(await page.textContent('.stat b')).toBe('2');
     expect(await page.textContent('#page')).toMatch(/Formalise the basics in Lean 4/);
   });
 
@@ -78,21 +78,25 @@ describe('GATE 6 — human experience', () => {
     await page.goto(`${web.url}/#/p/${demo.lean}`);
     await page.waitForSelector('.timeline [data-rec]');
     await page.click('.timeline [data-rec]');
-    await page.waitForSelector('#modal:not([hidden])');
-    expect(await page.textContent('#modal')).toMatch(/Signed record [0-9a-f]{64}/);
+    await page.waitForSelector('#sheet');
+    expect(await page.textContent('#sheet')).toMatch(/Signed record [0-9a-f]{64}/);
   });
 
   it('plain-language questions get plain answers', async () => {
     await page.goto(web.url);
-    await page.fill('#ask-q', "what's happening with the Lean proofs?");
-    await page.press('#ask-q', 'Enter');
-    await page.waitForFunction(() => /steps are verified/.test(document.querySelector('#ask-a')?.textContent ?? ''));
+    await page.fill('#seek-q', "what's happening with the Lean proofs?");
+    await page.press('#seek-q', 'Enter');
+    await page.waitForFunction(() => /steps are verified/.test(document.querySelector('#results')?.textContent ?? ''));
+    // The utility hook: an error message finds what failed before and what fixed it.
+    await page.fill('#seek-q', 'x0x agent sign 400 invalid context');
+    await page.press('#seek-q', 'Enter');
+    await page.waitForFunction(() => /What fixed it/i.test(document.querySelector('#results')?.textContent ?? ''));
   });
 
   it('works at phone width with a plain list view and calm mode', async () => {
     const phone = await browser.newPage({ viewport: { width: 375, height: 740 } });
     await phone.goto(`${web.url}/#/list`);
-    await phone.waitForSelector('.card a');
+    await phone.waitForSelector('a.card');
     const overflow = await phone.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
     expect(overflow).toBe(false);
     await phone.click('#motion');
@@ -118,8 +122,8 @@ describe('GATE 6 — human experience', () => {
     expect(demo.agents[1].people.chat(demo.lean).some((m) => m.human && /Gauss/.test(m.text))).toBe(true);
     // People discovery, humans and agents side by side.
     await page.goto(`${web.url}/#/people`);
-    await page.waitForSelector('.card .who.human');
-    expect(await page.$$eval('.card .who.agent', (x) => x.length)).toBeGreaterThan(0);
+    await page.waitForSelector('.people-grid .tag.human');
+    expect(await page.$$eval('.people-grid .tag.agent', (x) => x.length)).toBeGreaterThan(0);
     // Live embed.
     const embed = await browser.newPage();
     await embed.goto(`${web.url}/embed.html?p=${demo.lean}`);
