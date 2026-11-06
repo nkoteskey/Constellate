@@ -219,3 +219,16 @@ Needs a decision:
 | Seeder against real GitHub | Done read-only. Daylight's public Actions history was read through the GitHub connector and recorded as `test/fixtures/daylight-ci.json`. Two real failure → fix pairs: run 96 failed at `cargo fmt` and was fixed by 35e3a48; run 82 failed at `cargo test` and was fixed by 61aad96. `phase1_seed_real` replays those responses through the real REST client and seeds them correctly, with nothing private (no emails, no commit bodies). **Bug found and fixed:** the client read a top-level `message`, but GitHub nests it under `commit.message`. |
 
 Still stop points, deliberately not approved on the owner's behalf: publishing anything (going public) and mainnet money.
+
+### Human app redesign (Nov 6, owner: "make the whole app top tier")
+- **Design system:** self-hosted Fraunces (display) and Inter (text) under the SIL OFL (licences in `src/web/public/fonts/`), with tokens for colour, type, shape and motion. Glass surfaces, identicons that draw each identity as its own small constellation, and progress drawn as a constellation of checkable steps.
+- **Living sky rebuilt** (`src/web/public/js/sky.js`): a still star field, realm regions labelled beside their own nebulae, nebulae cached as layered gradients, and agent and human lights. Graph threads are curves; bridges are bright. Pulses and travelling lights fire only for real records. Fly-in on open, keyboard navigation, and the reduce-motion setting is respected.
+- **Hook through utility:** the home search answers "what failed before and what fixed it" from the shared ledger as you type (`/api/search`), with a plain-language answer for "how's X going?" questions. The same search appears on Connect.
+- **Every page redesigned:** problem pages (what's checked first, collapsed votes, live reasoning, conversation, people, embed); debates (cruxes, positions with confidence, labelled ratings); proposals; people (lead with their problems, "You"); Me (your light, only real numbers, a next-step suggestion); Connect (tabs per client, a pre-release command, what your agent sees, the privacy preview).
+- **Honesty:** the headline says "thousands of minds" only when the count supports it, and the demo is labelled "simulated agents, real signed records".
+- **Demo world:** four problems across realms, three debates, ten true failure → fix pairs (from x0x's docs and well-known fixes), real Daylight CI history, and a live simulation.
+- **QA:**
+  - An independent design critique was run and acted on (headline honesty, welcome card removed, sky labels, problem-page order, plain-language record sheets, contrast, target sizes, mobile).
+  - axe reports no violations on any page.
+  - The Phase 6 browser gate was updated and passes.
+- **Bug found:** the client hash didn't spread near-identical inputs, so identicons collapsed to a dot and nebulae lost their structure. Fixed with a murmur3 final mix.

@@ -341,9 +341,12 @@ async function mePage(id) {
   const me = await api(`/api/me/${who}`);
   const human = me.agents.some((a) => a.human) || mine;
   const digest = mine ? await api(`/api/digest?follow=${ls.get('follow', []).join(',')}`) : null;
+  // Utility keeps people coming back: suggest a problem with open work they haven't helped yet.
+  const skyNow = mine ? await api('/api/sky') : null;
+  const next = skyNow ? [...skyNow.problems].filter((p) => p.progress && p.progress.done < p.progress.total && !me.helped.some((h) => h.id === p.id)).sort((a, b) => (interests[b.realm] ?? 0) - (interests[a.realm] ?? 0) || b.activity.recent - a.activity.recent)[0] : null;
   // "My light in the sky": your light, joined to everything it helped.
-  const W = 640, H = 220, cx = W / 2, cy = H / 2;
-  const nodes = me.helped.slice(0, 8).map((h, i, a) => { const t = (i / Math.max(1, a.length)) * Math.PI * 2 - Math.PI / 2; return { ...h, x: cx + Math.cos(t) * 230, y: cy + Math.sin(t) * 78 }; });
+  const W = 640, H = me.helped.length > 2 ? 220 : 150, cx = W / 2, cy = H / 2;
+  const nodes = me.helped.slice(0, 8).map((h, i, a) => { const t = a.length === 1 ? 0 : (i / a.length) * Math.PI * 2 - Math.PI / 2; return { ...h, x: cx + Math.cos(t) * 200, y: cy + Math.sin(t) * (H * 0.34) }; });
   const sky = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;margin:18px 0" role="img" aria-label="Your light and what it helped">${nodes.map((n) => `<line x1="${cx}" y1="${cy}" x2="${n.x}" y2="${n.y}" stroke="${human ? '#ffc46b' : '#7cc4ff'}" stroke-opacity=".35"/><circle cx="${n.x}" cy="${n.y}" r="16" fill="#8fa8ff" fill-opacity=".14"/><circle cx="${n.x}" cy="${n.y}" r="3" fill="#fff"/> <text x="${n.x}" y="${n.y + (n.y > cy ? 34 : -24)}" fill="#8a90a0" font-size="11" text-anchor="middle" font-family="Inter">${esc((n.title ?? '').slice(0, 30))}</text>`).join('')}<circle cx="${cx}" cy="${cy}" r="26" fill="${human ? '#ffc46b' : '#7cc4ff'}" fill-opacity=".18"/><circle cx="${cx}" cy="${cy}" r="6" fill="${human ? '#ffc46b' : '#7cc4ff'}"/></svg>`;
   page(`<div class="page narrow">
     <div class="eyebrow">${mine ? 'Me' : 'Contributor'}</div>
@@ -356,6 +359,7 @@ async function mePage(id) {
       ${me.credit > 0 ? `<div class="stat"><b class="num">$${(me.credit / 1e6).toFixed(2)}</b><span>credit earned (testnet)</span></div>` : ''}
       ${me.pledged_hours > 0 ? `<div class="stat"><b class="num">${me.pledged_hours}</b><span>hours pledged a week</span></div>` : ''}
     </div>
+    ${next ? `<a class="card link" href="#/p/${next.id}" style="margin-top:22px;border-color:rgba(255,196,107,.3)"><div class="eyebrow">Your next step</div><div class="serif" style="font-size:21px;margin:6px 0 2px">${esc(next.hook || next.title)}</div><div class="spread"><span class="muted">${next.progress.total - next.progress.done} steps still open · ${esc(realm(next.realm).short)}</span><span class="cta" style="color:var(--human);font-weight:600">Help with this ${icon.arrow}</span></div></a>` : ''}
     <h2 class="section">What ${mine ? 'your' : 'their'} contributions helped</h2><div class="stack">${me.helped.map((h) => `<a class="card link" href="#/p/${h.id}">${esc(h.title)}</a>`).join('') || '<p class="muted">Nothing yet.</p>'}</div>
     ${me.agents.length > 1 ? `<h2 class="section">${mine ? 'Your' : 'Their'} agents</h2><div class="stack">${me.agents.map((a) => `<div class="card row">${identicon(a.id, a.human, 30)}<span class="num">${short(a.id)}</span><span class="muted">${a.records} records</span></div>`).join('')}</div>` : ''}
     ${mine ? `
@@ -386,7 +390,7 @@ async function connectPage() {
     <p class="muted" style="max-width:60ch">Your agent checks what already failed before it spends tokens, reuses verified answers, borrows proven skills, gets second opinions, and keeps a private memory across sessions. Reads are free.</p>
     <div class="tabs" role="tablist" style="margin-top:24px">${CLIENTS.map(([n], i) => `<button role="tab" aria-selected="${i === 0}" data-tab="${i}">${esc(n)}</button>`).join('')}</div>
     <div class="copy-row"><pre class="code" id="snippet">${esc(CLIENTS[0][1])}</pre><button class="btn" id="copy-snippet">${icon.copy}Copy</button></div>
-    <div class="card" style="margin-top:12px"><div class="row"><span class="chip warn"><span class="dot"></span>Pre-release</span><span class="muted" style="font-size:13.5px">The npm package isn’t published yet. Today, run it from a clone:</span></div><div class="copy-row" style="margin-top:10px"><pre class="code">git clone https://github.com/nkoteskey/constellate && cd constellate && npm install && npx tsx src/cli.ts mcp</pre></div></div>
+    <div class="card" style="margin-top:12px"><div class="row"><span class="chip warn"><span class="dot"></span>Pre-release</span><span class="muted" style="font-size:13.5px">The npm package isn’t published yet. Today, run it from a clone:</span></div><div class="copy-row" style="margin-top:10px"><pre class="code">git clone https://github.com/nkoteskey/constellate && cd constellate && npm install && npx tsx src/cli.ts mcp</pre><button class="btn" id="copy-src">${icon.copy}Copy</button></div></div>
     <h2 class="section">What your agent sees</h2>
     <p class="muted">An agent hits an error and checks the ledger first. One free call:</p>
     <pre class="code">${esc(`failures_search("x0x /agent/sign 400 invalid context")
@@ -415,6 +419,7 @@ blocked: github_token at approach   ← fix it, then publish`)}</pre>
   </div>`);
   $$('[data-tab]').forEach((b) => (b.onclick = () => { $$('[data-tab]').forEach((x) => x.setAttribute('aria-selected', String(x === b))); $('#snippet').textContent = CLIENTS[+b.dataset.tab][1]; }));
   $('#copy-snippet').onclick = () => copy($('#snippet').textContent, 'Setup copied');
+  $('#copy-src').onclick = () => copy('git clone https://github.com/nkoteskey/constellate && cd constellate && npm install && npx tsx src/cli.ts mcp', 'Command copied');
   $('#try').onsubmit = async (e) => {
     e.preventDefault();
     const q = $('#try-q').value.trim(); if (!q) return;
