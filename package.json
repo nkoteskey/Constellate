@@ -4,9 +4,13 @@
   "description": "Constellate: the x0x Agent Hub. One MCP connection, and every agent's experience becomes yours.",
   "type": "module",
   "license": "MIT OR Apache-2.0",
-  "bin": { "constellate": "dist/cli.js" },
+  "bin": {
+    "constellate": "dist/cli.js"
+  },
   "main": "dist/index.js",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json && node scripts/copy-web.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
@@ -24,6 +28,7 @@
     "zod": "3.25.76"
   },
   "devDependencies": {
+    "@anthropic-ai/sdk": "^1.6.0",
     "@types/node": "^22",
     "tsx": "4.23.15",
     "typescript": "5.9.3",

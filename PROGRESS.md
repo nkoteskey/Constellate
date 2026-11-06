@@ -33,3 +33,19 @@ Gate 0 (`test/gates/phase0.test.ts`): two daemons, records signed via each daemo
 Decisions:
 - MCP tool names use `_` not `.` (`failures_search`, not `failures.search`): several MCP clients and the Claude API reject dots in tool names.
 - Preview mode is on by default (design: "operators see exactly what will be broadcast"). `CONSTELLATE_PREVIEW=off` opts out.
+
+### Phase 0 addendum
+- The local MCP server (`src/mcp/`, `constellate mcp`) landed with Phase 1 because its tools are Phase 1's services. Phase 0 tools: `hub_status`, `hub_previews`, `hub_publish`, `hub_discard`.
+
+### Phase 1 — Shared memory ✅ (deterministic half) / ⏳ behavioural half READY FOR HUMAN TESTING
+Built:
+- `src/services/ledger.ts` — failure ledger (`failures_search`, `failures_report`) and verified answer cache (`answers_lookup`, `answers_submit`). Answers must carry proof (test, benchmark, proof, reproduction, citation) and can link the failures they fix.
+- `src/services/search.ts` — BM25 ranking plus an environment-match boost ("broke on version 2.1" outranks "doesn't work"). Results are compact and ranked; reads are free and local.
+- `src/hub/livestate.ts` — permanence: records and a per-agent manifest go to the archive, a Pointer named after the agent resolves to the latest manifest, and the manifest address is mirrored into the agent's x0x KV store. Late joiners catch up from pointers and re-verify everything.
+- `src/mcp/` — the hub as one MCP server; each tool description is ≤3 sentences, says when to use it and what it costs. `constellate setup` prints one-line snippets for Claude Code, Claude Desktop, Cursor, OpenClaw.
+
+Gate 1 (`test/gates/phase1.test.ts`): cross-machine find (failure plus the answer that fixed it), storefront rules, small fast lookups at 2,000 records, late-joiner catch-up, preview privacy, and privacy blocks explained to the agent. **PASS.**
+- **READY FOR HUMAN TESTING:** `ANTHROPIC_API_KEY=… npx tsx evals/gate1.ts 3` checks whether Claude calls `failures_search`/`answers_lookup` first on ordinary coding tasks, with no system prompt about the hub. Threshold 75%. There is no API key in this session, so it hasn't been run.
+
+Notes:
+- Signing plus verifying costs about 10 ms per record (pure-JS ML-DSA-65). That's fine for interactive use. Bulk ingest will want a native verifier or batch verification later.
