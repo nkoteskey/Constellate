@@ -73,6 +73,13 @@ describe('GATE 2 — knowledge graph plasticity', () => {
     await new Promise((r) => setTimeout(r, 0));
     expect(emitted.map((b) => [b.fromRealm, b.toRealm])).toEqual([['life_sciences', 'maths_physics']]);
     expect(g.bridges()[0].edge).toBe(edge);
+    // A listener that attaches later is not told about bridges that already existed (regression: CI run 1).
+    const late: Bridge[] = [];
+    const g2 = new KnowledgeGraph(hub.node.store, hub.trust, { now: () => now });
+    g2.onBridge((b) => late.push(b));
+    put(await sign({ kind: 'use', context: ctx('unrelated', ['python']), body: { target: used.id, helpful: true }, refs: [used.id], created: at(59) }, users[0]));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(late).toEqual([]);
 
     // JSON-LD node view against the versioned context.
     const ld = g.jsonld(used.id) as Record<string, unknown>;

@@ -152,7 +152,12 @@ export class KnowledgeGraph {
     return out.sort((x, y) => y.weight - x.weight);
   }
 
-  onBridge(cb: (b: Bridge) => void) { this.bridgeListeners.add(cb); return () => this.bridgeListeners.delete(cb); }
+  /** Notified only of bridges that form after the first listener attaches; existing bridges are not re-announced. */
+  onBridge(cb: (b: Bridge) => void) {
+    if (!this.bridgeListeners.size) for (const b of this.bridges()) this.bridgesSeen.add(b.edge);
+    this.bridgeListeners.add(cb);
+    return () => this.bridgeListeners.delete(cb);
+  }
   checkBridges() {
     if (!this.bridgeListeners.size) return;
     for (const b of this.bridges()) if (!this.bridgesSeen.has(b.edge)) { this.bridgesSeen.add(b.edge); for (const l of this.bridgeListeners) l(b); }
