@@ -232,3 +232,14 @@ Still stop points, deliberately not approved on the owner's behalf: publishing a
   - axe reports no violations on any page.
   - The Phase 6 browser gate was updated and passes.
 - **Bug found:** the client hash didn't spread near-identical inputs, so identicons collapsed to a dot and nebulae lost their structure. Fixed with a murmur3 final mix.
+
+### Seeding from Saorsa Labs' public history (owner-approved Nov 6)
+- **Allow-list expanded by the owner:** every public `saorsa-labs` repository, alongside Constellate and Daylight. Closed projects are still never seeded.
+- **Harvest:** all 741 closed issues and 1,381 merged pull requests across Saorsa Labs, read through the GitHub search API only. They're stored as `data/seed/saorsa-labs.json`, bodies truncated to 1,500 characters, with a note on provenance.
+- **`src/seed/issues.ts`:**
+  - A closed issue becomes a **failure**, and the merged pull request that closed it ("fixes/closes #N", including cross-repo references) becomes the **answer**.
+  - Issues with failure-like titles but no linked fix are kept as failures. `fix:` pull requests that closed no issue become answers on their own.
+  - Text is cleaned (no headings, code, tables, checklists, bot footers or session links). Every record links to its source.
+- **Result on the full harvest:** 428 failures and 691 answers (1,119 lessons) in about 13 s. The privacy scrubber blocked 9 records, mostly server IP addresses and phone-like strings, as the second gate.
+- **Gate:** `phase1_seed_issues` covers the allow-list (outsiders denied), issue → pull-request pairing, markdown cleaning, valid signatures and source links on every record, no bot footers or emails, and a real failure found with its real fix.
+- The demo and static site carry all of it. Records imported this way say so in the UI and link their source.

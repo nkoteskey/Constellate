@@ -13,6 +13,8 @@ import { PrivacyBlockedError } from '../privacy/scrub.js';
  * - The on-device privacy scrubber still runs on every record as a second gate.
  */
 export const SEED_ALLOW_LIST = ['nkoteskey/constellate', 'nkoteskey/daylight'] as const;
+/** Every public saorsa-labs repository was added by the owner on 2026-11-06 (see src/seed/issues.ts). */
+export const SEED_ALLOW_ORGS = ['saorsa-labs'] as const;
 
 export interface SeedReport { repo: string; allowed: boolean; reason?: string; failures: number; answers: number; skipped: { run: number; reason: string }[] }
 
@@ -21,7 +23,10 @@ const firstLine = (s: string) => s.split('\n')[0].slice(0, 200);
 export class Seeder {
   constructor(private readonly hub: Hub, private readonly gh: GitHubSource, private readonly allowList: readonly string[] = SEED_ALLOW_LIST) {}
 
-  isAllowed(repo: string) { return this.allowList.map((r) => r.toLowerCase()).includes(repo.toLowerCase()); }
+  isAllowed(repo: string) {
+    if (this.allowList.map((r) => r.toLowerCase()).includes(repo.toLowerCase())) return true;
+    return this.allowList === SEED_ALLOW_LIST && SEED_ALLOW_ORGS.some((o) => repo.toLowerCase().startsWith(`${o}/`));
+  }
 
   private seen(url: string) { return this.hub.node.store.all().some((s) => s.rec.evidence.includes(url)); }
 

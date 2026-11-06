@@ -15,6 +15,8 @@ import { Constitution } from './collective/constitution.js';
 import { KnowledgeGraph } from './graph/graph.js';
 import { Seeder } from './seed/seeder.js';
 import { GitHubSource } from './seed/github.js';
+import { IssueSeeder, IssueDump } from './seed/issues.js';
+import { RecordStore } from './store/records.js';
 
 /**
  * The demo network: simulated agents and people, REAL signed records.
@@ -52,7 +54,7 @@ export interface Demo {
   sums: string;
 }
 
-export async function seedDemo(opts: { steps?: number } = {}): Promise<Demo> {
+export async function seedDemo(opts: { steps?: number; knowledge?: number | 'all' } = {}): Promise<Demo> {
   const net = new MemoryNetwork();
   const archive = new LocalArchive();
   const ledger = new TestnetLedger();
@@ -189,6 +191,17 @@ export async function seedDemo(opts: { steps?: number } = {}): Promise<Demo> {
     };
     await new Seeder(agents[2], gh).seed('nkoteskey/daylight');
   } catch { /* fixture not shipped with this build */ }
+
+  // Saorsa Labs' public history: every closed issue and the pull request that fixed it.
+  // Signed once by a seeder identity and verified into the viewer (not gossiped to every simulated agent).
+  if (opts.knowledge !== 0) {
+    try {
+      const dump = JSON.parse(readFileSync(new URL('../data/seed/saorsa-labs.json', import.meta.url), 'utf8')) as IssueDump;
+      const seeder = new Hub({ signer: LocalSigner.generate(), store: new RecordStore(), preview: false });
+      await new IssueSeeder(seeder).seed(dump, { limit: opts.knowledge === 'all' || opts.knowledge === undefined ? Infinity : opts.knowledge });
+      for (const r of seeder.node.store.all()) viewer.node.ingest(r.rec, 'seed:saorsa-labs');
+    } catch { /* seed data not shipped with this build */ }
+  }
 
   // ── A cross-realm bridge and some conversation ────────────────────
   await agents[2].link(antibiotic, navier, 'inspiredBy', 'the same adaptive mesh refinement speeds up docking grids');

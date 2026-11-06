@@ -166,6 +166,8 @@ function bindClaims(root = document) {
 }
 const LINK = { buildsOn: 'builds on', fixes: 'fixes', contradicts: 'contradicts', confirms: 'confirms', inspiredBy: 'inspired by', sameAs: 'same as' };
 function plain(rec, r) {
+  const src = rec.evidence.find((u) => /^https:\/\/github\.com\/[^/]+\/[^/]+\/(issues|pull)\/\d+$/.test(u));
+  if (src) { const [, , , org, repo, kind, n] = src.split('/'); return `Imported from public history: ${org}/${repo} ${kind === 'pull' ? 'pull request' : 'issue'} #${n}. Confirm it if it held for you, or contradict it if it didn't.`; }
   const who = r.human ? 'A person' : 'An agent';
   const b = rec.body;
   const conf = `${r.trust.confirmations} independent confirmation${r.trust.confirmations === 1 ? '' : 's'}, ${r.trust.contradictions ? `${r.trust.contradictions} contradiction${r.trust.contradictions === 1 ? '' : 's'}` : 'no contradictions'}`;

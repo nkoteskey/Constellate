@@ -18,7 +18,7 @@ let browser: Browser, page: Page, web: WebServer, demo: Awaited<ReturnType<typeo
 const errors: string[] = [];
 
 beforeAll(async () => {
-  demo = await seedDemo({ steps: 16 });
+  demo = await seedDemo({ steps: 16, knowledge: 120 });
   web = new WebServer(demo.viewer);
   registerAppRoutes(web);
   registerEconomyRoutes(web, demo.viewer.economy!);
