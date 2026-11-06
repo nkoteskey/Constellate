@@ -116,7 +116,8 @@ async function dashboardHtml() {
   return `<div class="card stack" id="dash">
     <div class="spread"><b>This computer</b><span class="chip sm ${st.state === 'contributing' ? 'ok' : st.state === 'paused' ? 'warn' : ''}"><span class="dot"></span>${esc(st.state)}</span></div>
     <p style="margin:0">${esc(st.message)}</p>
-    <p class="faint" style="font-size:12.5px;margin:0">${c.models.map((m) => `${esc(m.id)} (${esc(m.family)}${m.local ? ', local' : ''})`).join(' · ')} · spent ${(c.spend.spent_cents ?? 0)}¢${Number.isFinite(c.spend.cap_cents) ? ` of ${c.spend.cap_cents}¢ cap` : ''}${c.conditions.tempC ? ` · ${Math.round(c.conditions.tempC)}°C` : ''}${c.conditions.batteryPct != null ? ` · battery ${c.conditions.batteryPct}%` : ''}</p>
+    <div class="stack" style="gap:6px">${c.models.map((m) => { const spent = c.spend.by_model?.[m.id] ?? 0; const cap = c.spend.cap_cents; return `<div><div class="spread" style="font-size:13px"><span>${esc(m.id)} <span class="faint">(${esc(m.family)}${m.local ? ', local, free' : ''})</span></span><span class="num faint">${m.local ? 'free' : `${spent}¢${cap != null && Number.isFinite(cap) ? ` of ${cap}¢ cap` : ''}`}</span></div>${!m.local && cap ? `<div class="meter"><i style="width:${Math.min(100, Math.round((spent / cap) * 100))}%"></i></div>` : ''}</div>`; }).join('')}</div>
+    <p class="faint" style="font-size:12.5px;margin:0">${c.conditions.tempC ? `${Math.round(c.conditions.tempC)}°C` : ''}${c.conditions.batteryPct != null ? ` · battery ${c.conditions.batteryPct}%` : ''}</p>
     <div class="device-fields">
       <label>Only when plugged in<select id="pol-ac"><option value="1"${c.policy.requireAC ? ' selected' : ''}>Yes</option><option value="0"${c.policy.requireAC ? '' : ' selected'}>No</option></select></label>
       <label>Lowest battery<select id="pol-batt">${[20, 30, 50, 70, 90].map((b) => `<option${b === c.policy.minBattery ? ' selected' : ''}>${b}</option>`).join('')}</select></label>

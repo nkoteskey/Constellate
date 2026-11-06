@@ -15,7 +15,7 @@ export function registerContributorRoutes(web: WebServer, c: { workers: Worker[]
     return {
       status: c.workers[0]?.status ?? { state: 'waiting', message: 'Starting…' },
       models: c.workers.map((w) => ({ id: w.runner.id, family: w.runner.family, local: w.runner.costPerCall === 0 })),
-      spend: c.budget.report(),
+      spend: (() => { const r = c.budget.report(); return { ...r, cap_cents: Number.isFinite(r.cap_cents) ? r.cap_cents : null }; })(),
       policy: c.policy,
       conditions: cond,
       device: c.device,

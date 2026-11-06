@@ -88,4 +88,34 @@ export class Deliberation {
       agreement: families.length > 1 && new Set(rows.map((r) => r.statement.toLowerCase())).size === 1 ? 'all families agree' : `${rows.length} positions across ${families.length} model families`,
     };
   }
+
+  /**
+   * Revisit a debate as models and evidence change: the runner re-states its own
+   * family's positions in light of the arguments and people's ratings so far.
+   * A new position is recorded only when it actually shifted, and the old one
+   * stays in the history.
+   */
+  async rerun(questionId: string, runner: ModelRunner): Promise<number> {
+    const m = this.map(questionId);
+    let shifted = 0;
+    for (const p of m.positions.filter((x) => x.family === runner.family)) {
+      const args = p.arguments.slice(0, 6).map((a) => `- ${a.stance} (rated ${a.quality ?? 'unrated'}/5 by people): ${a.text}`).join('\n');
+      const out = await runner.run(`A debate: "${m.question}".\nYour family's current position: "${p.statement}" (confidence ${p.confidence}).\nArguments so far:\n${args || '(none yet)'}\n\nRestate the position you now hold, in one sentence, and your confidence from 0 to 1. Change it only if the arguments warrant. Reply as JSON: {"statement": "...", "confidence": 0.0, "cruxes": ["..."]}`, { maxTokens: 400 });
+      const j = (() => { try { return JSON.parse(out.slice(out.indexOf('{'), out.lastIndexOf('}') + 1)) as { statement?: string; confidence?: number; cruxes?: string[] }; } catch { return null; } })();
+      if (!j?.statement || typeof j.confidence !== 'number') continue;
+      const confidence = Math.max(0, Math.min(1, j.confidence));
+      if (j.statement.trim() === p.statement && Math.abs(confidence - p.confidence) < 0.05) continue;
+      const slot = (this.hub.node.store.get(p.id)!.rec.body as unknown as PositionBody).slot;
+      await this.position(questionId, { slot, statement: j.statement.trim().slice(0, 600), family: runner.family, confidence, cruxes: (j.cruxes ?? p.cruxes).slice(0, 4).map((c) => String(c).slice(0, 200)) }, `${runner.id} (re-run)`);
+      shifted++;
+    }
+    return shifted;
+  }
+
+  /** Re-run every debate on a schedule (default weekly). */
+  scheduleReruns(runner: ModelRunner, everyMs = 7 * 86_400_000) {
+    const t = setInterval(() => { for (const q of this.questions()) void this.rerun(q.rec.id, runner).catch(() => 0); }, everyMs);
+    t.unref?.();
+    return () => clearInterval(t);
+  }
 }

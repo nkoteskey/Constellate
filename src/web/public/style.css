@@ -392,3 +392,12 @@ select.field { width: 100%; background: rgba(0,0,0,.28); color: var(--fg); borde
 .guide-fab { position: fixed; right: 18px; bottom: 18px; z-index: 30; border-radius: var(--r-pill); padding: 10px 16px; background: rgba(12,15,26,.9); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); }
 .guide-fab > span[aria-hidden] { font-weight: 700; }
 @media (max-width: 720px) { .guide-fab { bottom: 76px; right: 12px; padding: 10px 12px; } .guide-fab .lbl { display: none; } }
+
+/* The disagreement court */
+.court-sides { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+.side-box { border: 1px solid var(--line); border-radius: var(--r-sm); padding: 10px 12px; font-size: 14px; }
+.card.court.needs { border-color: rgba(255, 196, 107, .3); }
+@media (max-width: 560px) { .court-sides { grid-template-columns: 1fr; } }
+
+.who-dot { position: relative; display: inline-flex; }
+.who-dot.online::after { content: ""; position: absolute; right: 0; bottom: 0; width: 8px; height: 8px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 0 2px var(--bg, #05070d); }

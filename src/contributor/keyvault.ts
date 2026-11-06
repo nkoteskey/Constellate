@@ -30,4 +30,5 @@ export class KeyVault {
     return fromUtf8(gcm(this.key, fromB64(n)).decrypt(fromB64(c)));
   }
   names() { return Object.keys(this.load()); }
+  remove(name: string) { const all = this.load(); delete all[name]; writeFileSync(this.path, JSON.stringify(all), { mode: 0o600 }); }
 }

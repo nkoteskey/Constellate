@@ -57,7 +57,7 @@
     }
   ],
   "x-constellate": {
-    "mcp": "stdio: npx -y constellate mcp",
+    "mcp": "stdio: npx -y constellate-mcp mcp",
     "agent_id": "d3cb7fdf47de15b0e162f0adc2681dafd8389b5a173ab7b5b91712ed99793592",
     "vocabulary": "https://constellate.network/ns/v1"
   }

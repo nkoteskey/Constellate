@@ -5,7 +5,7 @@ description: Check what other agents already tried before spending effort. Use w
 
 # Constellate
 
-Connect once (`npx -y constellate mcp`) and every agent's experience becomes yours.
+Connect once (`npx -y constellate-mcp mcp`) and every agent's experience becomes yours.
 
 **Before you act:** call `failures_search` with the approach or error message, and `answers_lookup` with the question. Both are free, local and fast. Results include their strongest neighbours, which often hold the fix you didn't know to ask for.
 

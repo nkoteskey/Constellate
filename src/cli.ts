@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { join } from 'node:path';
+import { homedir } from 'node:os';
 import { Hub } from './hub/hub.js';
 import { createMcpServer } from './mcp/server.js';
 import { Consolidator } from './graph/consolidate.js';
@@ -9,7 +11,12 @@ import { registerEconomyRoutes } from './economy/routes.js';
 import { TestnetLedger } from './economy/rail.js';
 import { detectDevice, suggestFor, readConditions, POLITE } from './contributor/device.js';
 import { registerContributorRoutes } from './contributor/dashboard.js';
-import { runnerFromSpec, providerTable, commands, CATALOG_UPDATED } from './contributor/catalog.js';
+import { runnerFromSpec, providerTable, commands, CATALOG_UPDATED, PROVIDERS } from './contributor/catalog.js';
+import { KeyVault } from './contributor/keyvault.js';
+import { fundingConfig } from './economy/funding.js';
+import { CreditLedger } from './economy/credits.js';
+import { registerFundingRoutes } from './economy/funding-routes.js';
+import { AutonomiArchive } from './store/autonomi.js';
 import { Budget, ModelRunner } from './contributor/models.js';
 import { Worker } from './work/worker.js';
 import { MemoryBoard, X0xBoard } from './work/board.js';
@@ -23,6 +30,11 @@ const USAGE = `Constellate — where humans and agents gather into something gre
   constellate status     Show identity, x0x connection and record counts
   constellate setup      Print one-line setup snippets for MCP clients
   constellate serve      Open the human app on http://127.0.0.1:4747
+      [--model PROVIDER/MODEL]  a model for the plain-language guide, the constitution's model
+                                review, sleep summaries and debate re-runs (local open models are free)
+  constellate autonomi status | approve   Check the Autonomi daemon, its wallet and budget; one-time token approval
+  constellate keys set PROVIDER | list | remove PROVIDER
+                         Store API keys encrypted on this device (typed at a hidden prompt, never on the command line)
   constellate demo       The human app on a simulated demo network (no x0x needed)
   constellate models     What this machine can run: free open-weight models that fit, and every provider
   constellate contribute Donate idle compute: detect hardware, pick a model, work politely
@@ -45,20 +57,39 @@ async function main(argv: string[]) {
   }
   if (cmd === 'status') { const hub = await Hub.fromEnv(); console.log(JSON.stringify(hub.status(), null, 2)); await hub.close(); return; }
   if (cmd === 'setup') {
-    console.log(`Claude Code:     claude mcp add constellate -- npx -y constellate mcp
-Claude Desktop:  add to claude_desktop_config.json → "mcpServers": {"constellate": {"command": "npx", "args": ["-y", "constellate", "mcp"]}}
-Cursor:          add to ~/.cursor/mcp.json → {"mcpServers": {"constellate": {"command": "npx", "args": ["-y", "constellate", "mcp"]}}}
-OpenClaw / other MCP clients: command "npx -y constellate mcp" over stdio`);
+    console.log(`Claude Code:     claude mcp add constellate -- npx -y constellate-mcp mcp
+Claude Desktop:  add to claude_desktop_config.json → "mcpServers": {"constellate": {"command": "npx", "args": ["-y", "constellate-mcp", "mcp"]}}
+Cursor:          add to ~/.cursor/mcp.json → {"mcpServers": {"constellate": {"command": "npx", "args": ["-y", "constellate-mcp", "mcp"]}}}
+OpenClaw / other MCP clients: command "npx -y constellate-mcp mcp" over stdio`);
+    return;
+  }
+  if (cmd === 'keys') return keys(argv.slice(1));
+  if (cmd === 'autonomi') {
+    const { autonomiFromEnv } = await import('./store/autonomi.js');
+    const a = autonomiFromEnv({ ...process.env, CONSTELLATE_ARCHIVE: 'autonomi' });
+    if (!a) return;
+    console.log(JSON.stringify(argv[1] === 'approve' ? await a.approve() : await a.status(), null, 2));
     return;
   }
   if (cmd === 'serve') {
     const hub = await Hub.fromEnv();
-    const economy = hub.attachRail(new TestnetLedger());
+    // Money: the testnet ledger unless the owner turns real payments on (docs/MAINNET.md).
+    const funding = fundingConfig(process.env, vault());
+    const credits = funding ? new CreditLedger(join(process.env.CONSTELLATE_HOME ?? join(homedir(), '.constellate'), `credits-${funding.mode}.jsonl`), { live: funding.mode === 'live' }) : null;
+    const economy = hub.attachRail(credits ?? new TestnetLedger());
+    const spec = flag(argv, '--model');
+    const model = spec ? runnerFromSpec(spec, { vault: vault() }) : undefined;
+    if (model) hub.collective.constitution.attachReviewer(model);
     const web = new WebServer(hub);
-    registerAppRoutes(web);
+    registerAppRoutes(web, { guideModel: model });
     registerEconomyRoutes(web, economy);
+    registerFundingRoutes(web, hub, { ledger: credits, cfg: funding, autonomi: hub.archive instanceof AutonomiArchive ? hub.archive : null, publicUrl: process.env.CONSTELLATE_PUBLIC_URL });
     await web.listen(Number(process.env.PORT ?? 4747));
-    new Consolidator(hub).schedule(); // "sleep" every 6 hours: distil related lessons into summaries
+    if (funding) console.log(`Payments: ${funding.mode === 'live' ? 'LIVE (real money)' : 'test mode'}${funding.stripe ? ' · Stripe' : ''}${funding.usdc ? ` · USDC on ${funding.usdc.network} to ${funding.usdc.depositAddress}` : ''}`);
+    if (hub.archive instanceof AutonomiArchive) console.log('Archive: Autonomi mainnet (paid, capped daily)');
+    new Consolidator(hub, model).schedule(); // "sleep" every 6 hours: distil related lessons into summaries
+    if (model) { const { Deliberation } = await import('./collective/deliberation.js'); new Deliberation(hub).scheduleReruns(model); } // debates revisited as models change
+    if (model) console.log(`Model: ${model.id} (guide, constitution review, summaries, debate re-runs)`);
     hub.x0x?.directEvents((m) => hub.people.receive(m.sender, m.payload)); // incoming direct messages, for the app's inbox
     console.log(`Constellate is open at ${web.url}`);
     return;
@@ -97,6 +128,43 @@ OpenClaw / other MCP clients: command "npx -y constellate mcp" over stdio`);
   console.log(USAGE);
 }
 
+/** The encrypted on-device key vault. */
+function vault() { return new KeyVault(join(process.env.CONSTELLATE_HOME ?? join(homedir(), '.constellate'), 'keys.json')); }
+
+/** `constellate keys`: API keys, encrypted on this device, read from a hidden prompt (never argv, so never in shell history). */
+async function keys(args: string[]) {
+  const v = vault();
+  const [sub, name] = args;
+  if (sub === 'list') { console.log(v.names().length ? v.names().map((n) => `  ${n}`).join('\n') : 'No keys stored.'); return; }
+  if (sub === 'remove' && name) { v.remove(name); console.log(`Removed ${name}.`); return; }
+  if (sub === 'set' && name) {
+    if (!PROVIDERS.some((p) => p.id === name) && !['stripe', 'stripe-webhook', 'evm-wallet', 'cdp'].includes(name)) { console.log(`Unknown name "${name}". Providers: ${PROVIDERS.map((p) => p.id).join(', ')}; payments: stripe, stripe-webhook, evm-wallet, cdp.`); return; }
+    const secret = await hiddenPrompt(`Key for ${name} (input hidden): `);
+    if (!secret.trim()) { console.log('Nothing stored.'); return; }
+    v.set(name, secret.trim());
+    console.log(`Stored ${name}, encrypted on this device. It never goes into a record or over the network except to ${name}.`);
+    return;
+  }
+  console.log('Usage: constellate keys set PROVIDER | list | remove PROVIDER');
+}
+
+function hiddenPrompt(q: string): Promise<string> {
+  return new Promise((resolve) => {
+    const stdin = process.stdin;
+    process.stdout.write(q);
+    if (!stdin.isTTY) { let buf = ''; stdin.setEncoding('utf8'); stdin.on('data', (d) => (buf += d)); stdin.on('end', () => resolve(buf.split('\n')[0])); return; }
+    let buf = '';
+    stdin.setRawMode(true); stdin.resume(); stdin.setEncoding('utf8');
+    const on = (ch: string) => {
+      if (ch === '\r' || ch === '\n' || ch === '\u0004') { stdin.setRawMode(false); stdin.pause(); stdin.off('data', on); process.stdout.write('\n'); resolve(buf); }
+      else if (ch === '\u0003') { process.stdout.write('\n'); process.exit(130); }
+      else if (ch === '\u007f') buf = buf.slice(0, -1);
+      else buf += ch;
+    };
+    stdin.on('data', on);
+  });
+}
+
 function flag(args: string[], name: string) { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : undefined; }
 
 /** What fits this machine, in plain words, with the exact commands. */
@@ -131,9 +199,9 @@ async function contribute(args: string[]) {
     if (!s.primary) { console.log(`${s.notes[0]}\nTry a free hosted model: ${commands(s)[0]}`); return; }
     spec = `${s.primary.run.provider}/${s.primary.run.model}`;
   }
-  const runners: ModelRunner[] = [runnerFromSpec(spec, { endpoint, family: flag(args, '--family') })];
+  const runners: ModelRunner[] = [runnerFromSpec(spec, { endpoint, family: flag(args, '--family'), vault: vault() })];
   const verifierSpec = flag(args, '--verifier') ?? (flag(args, '--model') ? undefined : s.verifier ? `${s.verifier.run.provider}/${s.verifier.run.model}` : undefined);
-  if (verifierSpec) runners.push(runnerFromSpec(verifierSpec, { endpoint }));
+  if (verifierSpec) runners.push(runnerFromSpec(verifierSpec, { endpoint, vault: vault() }));
   console.log(`Device: ${device.cpu}, ${device.memGB} GB${device.gpu ? `, ${device.gpu}` : ''}. Models: ${runners.map((r) => `${r.id} (${r.family})`).join(', ')}.`);
   const board = hub.x0x ? new X0xBoard(hub.x0x, 'constellate/v1/board') : new MemoryBoard();
   const budget = new Budget(Number(flag(args, '--cap-cents') ?? 0) || (runners.some((r) => r.costPerCall) ? 100 : Infinity));

@@ -3,6 +3,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { HttpReply, RawReply, StreamReply, WebServer } from './server.js';
 import { Guide } from './guide.js';
+import { ProblemSpaces } from '../x0x/spaces.js';
 import { Deliberation } from '../collective/deliberation.js';
 import { verifyRecord, SignedRecord, RecordKind } from '../core/record.js';
 import { scrub } from '../privacy/scrub.js';
@@ -15,7 +16,7 @@ import { ModelRunner } from '../contributor/models.js';
 
 /** Kinds a person can sign in the browser. Each one with more than a simple shape gets its own check below. */
 const HUMAN_KINDS: RecordKind[] = ['rating', 'confirmation', 'contradiction', 'vote', 'argument', 'position', 'pledge', 'message', 'use',
-  'proposal', 'answer', 'task_result', 'challenge', 'piece', 'curation', 'identity_link'];
+  'proposal', 'answer', 'task_result', 'challenge', 'piece', 'curation', 'identity_link', 'ruling', 'payout_address'];
 
 export const REALM_INFO: Record<string, { name: string; colour: string; judged: string }> = {
   maths_physics: { name: 'Mathematics and physics', colour: '#7aa2ff', judged: 'Machine-checked' },
@@ -50,6 +51,7 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
   const guide = new Guide(hub, opts.guideModel);
   const guide_ = guide;
   const delib = new Deliberation(hub);
+  const spaces = new ProblemSpaces(hub);
 
   web.route('GET', /^\/vendor\/(@noble\/post-quantum|@noble\/hashes|@noble\/curves|cborg)\/(.+\.js)$/, (_r, m) => {
     const base = VENDOR[m[1]];
@@ -116,7 +118,14 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
     return agentCard(hub, base, { url: web.url });
   });
   web.route('GET', /^\/api\/people$/, (_r, _m, url) => hub.people.discover({ kind: (url.searchParams.get('kind') as 'human' | 'agent' | null) ?? undefined, q: url.searchParams.get('q') ?? undefined, realm: url.searchParams.get('realm') ?? undefined, problem: url.searchParams.get('problem') ?? undefined }));
-  web.route('GET', /^\/api\/chat\/([0-9a-f]{64})$/, (_r, m) => hub.people.chat(m[1]));
+  web.route('GET', /^\/api\/chat\/([0-9a-f]{64})$/, async (_r, m) => {
+    const local = hub.people.chat(m[1]);
+    if (!spaces.available) return local;
+    const outside = await spaces.outside(m[1], new Set(local.map((c) => c.text)));
+    return [...local, ...outside].sort((a, b) => a.at.localeCompare(b.at));
+  });
+  web.route('GET', /^\/api\/presence$/, async () => ({ via: spaces.available ? 'x0x' : 'none', online: [...(await spaces.onlineIds())] }));
+  web.route('GET', /^\/api\/problems\/([0-9a-f]{64})\/space$/, async (_r, m) => ({ available: spaces.available, invite: spaces.available ? await spaces.invite(m[1]) : null }));
   web.route('GET', /^\/api\/graph$/, () => {
     // Threads between nebulae: real links between records in different problems, strongest first.
     const rootOf = (id: string) => { let s = hub.node.store.get(id); for (let i = 0; i < 6 && s && !['problem', 'proposal'].includes(s.rec.kind); i++) s = s.rec.refs[0] ? hub.node.store.get(s.rec.refs[0]) : undefined; return s && ['problem', 'proposal'].includes(s.rec.kind) ? s.rec.id : null; };
@@ -207,6 +216,7 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
     const problem = await checkHumanRecord(rec);
     if (problem) return new HttpReply(400, problem);
     await hub.node.relay(rec);
+    if (rec.kind === 'message' && rec.refs[0] && hub.problems.get(rec.refs[0])) void spaces.post(rec.refs[0], String((rec.body as { text?: string }).text ?? ''));
     return { accepted: rec.id, credit: 'Your light joined the sky.' };
   });
 
@@ -239,6 +249,13 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
         return check.ok ? null : { error: 'the constitution check stopped this piece', findings: check.findings };
       }
       case 'curation': return ref?.rec.kind === 'piece' && /^human\b/.test(rec.context.environment) ? null : { error: 'only people curate, and only pieces' };
+      case 'ruling': {
+        const c = b.case as string[] | undefined;
+        if (!Array.isArray(c) || c.length !== 2 || rec.refs[0] !== c[0] || rec.refs[1] !== c[1]) return { error: 'a ruling names the two records it decides between' };
+        if (!['first', 'second', 'both_conditional'].includes(b.decision) || b.judge_family !== 'human') return { error: 'a person rules first, second, or both under different conditions' };
+        return null;
+      }
+      case 'payout_address': return /^0x[0-9a-fA-F]{40}$/.test(String(b.address)) && ['base', 'base-sepolia'].includes(b.chain) ? null : { error: 'a payout address is an Ethereum address on Base' };
       case 'identity_link': {
         const v = verifyOperatorClaim(b.claim as OperatorClaim, fromB64(rec.author));
         return v.ok ? null : { error: `identity link does not verify: ${v.reason}` };
@@ -304,6 +321,19 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
     return { problem: null };
   });
   web.route('GET', /^\/api\/challenges$/, () => challenges());
+
+  // The disagreement court, for people: what the independent judge decided and why, and the cases it couldn't settle.
+  web.route('GET', /^\/api\/court$/, () => {
+    const side = (id: string) => { const s = hub.node.store.get(id); if (!s) return null; const b = s.rec.body as Record<string, any>; return { id, kind: s.rec.kind, text: String(b.reason ?? b.answer ?? b.error_summary ?? b.approach ?? b.statement ?? b.text ?? s.rec.context.task).slice(0, 400), environment: s.rec.context.environment, by: isHuman(s) ? 'human' : 'agent' }; };
+    const rulings = hub.node.store.ofKind('ruling');
+    return rulings.filter((r) => !isHuman(r)).map((r) => {
+      const b = r.rec.body as { case: [string, string]; decision: string; reasoning: string; confidence: number; needs_human: boolean; judge_family: string };
+      const people = rulings.filter((h) => isHuman(h) && (h.rec.body as { case: string[] }).case.join() === b.case.join());
+      const tally = { first: 0, second: 0, both_conditional: 0 } as Record<string, number>;
+      for (const op of new Map(people.map((h) => [h.operatorId, (h.rec.body as { decision: string }).decision])).values()) tally[op]++;
+      return { id: r.rec.id, at: r.rec.created, first: side(b.case[0]), second: side(b.case[1]), decision: b.decision, reasoning: b.reasoning, confidence: b.confidence, needs_human: b.needs_human, judge_family: b.judge_family, people: tally };
+    }).filter((x) => x.first && x.second).sort((a, b) => Number(b.needs_human) - Number(a.needs_human) || b.at.localeCompare(a.at));
+  });
 
   // The utility hook: paste an error or a question, get what failed, what fixed it, and a plain answer.
   web.route('GET', /^\/api\/search$/, async (_r, _m, url) => {

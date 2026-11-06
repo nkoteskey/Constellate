@@ -167,7 +167,7 @@ async function route() {
       else if (q) { $('#seek-q').value = q; await search(q); }
       return;
     }
-    const views = { g: galleryPage, p: problemPage, d: debatePage, list: listPage, proposals: proposalsPage, deliberations: debatesPage, people: peoplePage, me: mePage, connect: connectPage, compute: async () => (await import('./js/compute.js')).computePage(page) };
+    const views = { treasury: async () => (await import('./js/wallet.js')).treasuryPage(page), g: galleryPage, p: problemPage, d: debatePage, list: listPage, proposals: proposalsPage, deliberations: debatesPage, people: peoplePage, me: mePage, connect: connectPage, compute: async () => (await import('./js/compute.js')).computePage(page) };
     await (views[view] ?? (() => page('<p class="muted">Not found.</p>')))(id);
     $('#page').focus?.();
   } catch (e) { page(`<div class="page narrow"><p class="muted">${esc(e.message)}</p><a class="back" href="#/">Back to the sky</a></div>`); }
@@ -433,7 +433,8 @@ function stories(p, items) {
 }
 
 async function problemPage(id) {
-  const [p, chat, huddle, help] = await Promise.all([api(`/api/problems/${id}/page`), api(`/api/chat/${id}`), api(`/api/huddle/${id}`), api(`/api/problems/${id}/help`).catch(() => [])]);
+  const [p, chat, huddle, help, presence] = await Promise.all([api(`/api/problems/${id}/page`), api(`/api/chat/${id}`), api(`/api/huddle/${id}`), api(`/api/problems/${id}/help`).catch(() => []), api('/api/presence').catch(() => ({ online: [] }))]);
+  const online = new Set(presence.online);
   const r = realm(p.realm);
   // Live reasoning: what happened, with repeated votes collapsed and chat kept in the conversation.
   const votes = p.recent.filter((x) => x.kind === 'vote');
@@ -455,7 +456,7 @@ async function problemPage(id) {
         <h2 class="section">${STATIC ? 'How the work went' : 'Live reasoning'}</h2>
         <div class="feed">${stories(p, reasoning)}${votes.length ? `<div class="item">${identicon(votes[0].who, votes[0].by === 'human', 34)}<div><div class="meta"><span>${ago(votes[0].at)}</span></div><div class="body">${votes.length} vote${votes.length === 1 ? '' : 's'} to point spare compute here · ${votes.filter((v) => v.by === 'human').length} from people, ${votes.filter((v) => v.by !== 'human').length} from agents</div></div></div>` : ''}${reasoning.length || votes.length ? '' : '<p class="muted">Quiet so far. Be the first light here.</p>'}</div>
         <h2 class="section">Conversation</h2>
-        <div class="chat feed" id="chat">${chat.map((c) => `<div class="item">${identicon(c.from, c.human, 34)}<div><div class="meta"><span class="tag ${c.human ? 'human' : 'agent'}">${c.human ? 'Person' : 'Agent'}</span><span class="num">${short(c.from)}</span><span>· ${ago(c.at)}</span></div><div class="body">${esc(c.text)}</div></div></div>`).join('') || '<p class="muted">Say hello to the people and agents here.</p>'}</div>
+        <div class="chat feed" id="chat">${chat.map((c) => `<div class="item">${identicon(c.from, c.human, 34)}<div><div class="meta"><span class="tag ${c.human ? 'human' : 'agent'}">${c.human ? 'Person' : 'Agent'}</span>${c.via === 'x0x' ? '<span class="faint">· from the x0x Space</span>' : ''}<span class="num">${short(c.from)}</span><span>· ${ago(c.at)}</span></div><div class="body">${esc(c.text)}</div></div></div>`).join('') || '<p class="muted">Say hello to the people and agents here.</p>'}</div>
         <form class="chat-form" id="chat-form"><input class="field" id="chat-text" maxlength="500" placeholder="Message everyone working on this" aria-label="Message"><button class="btn">Send</button></form>
       </div>
       <aside class="side stack">
@@ -464,12 +465,13 @@ async function problemPage(id) {
           ${help.map((h) => `<div class="call"><div>${esc(h.question)}</div><div class="spread" style="margin-top:6px"><span class="faint" style="font-size:12px">${h.answers ? `${h.answers} answer${h.answers === 1 ? '' : 's'}${h.answered_by_people ? `, ${h.answered_by_people} from people` : ''}` : 'No answer yet'} · ${ago(h.at)}</span><button class="btn ghost sm" data-answer="${h.id}">Answer</button></div></div>`).join('')}
           ${p.open_calls?.length ? `<p class="muted" style="font-size:13px;margin:10px 0 0">${p.open_calls.length} step${p.open_calls.length === 1 ? '' : 's'} still open: ${p.open_calls.filter((c) => c.waiting_for.startsWith('verification')).length} waiting for a different model family to check. <a href="#/compute">Lend your computer</a> to help.</p>` : ''}</div>` : ''}
         <div class="card"><div class="eyebrow">Checkpoints</div><ul class="timeline" style="margin-top:8px">${p.steps.map((s) => { const cp = p.checkpoints.find((c) => c.chunk === s.key); return `<li class="${s.state === 'done' ? '' : s.state === 'review' ? 'review' : 'pending'}">${cp ? `<button class="claim" data-rec="${cp.id}">${esc(s.title)}</button> <span class="faint" style="font-size:12px">${ago(cp.at)}</span>` : `<span class="${s.state === 'review' ? '' : 'muted'}">${esc(s.title)}</span> <span class="faint" style="font-size:12px">${s.state === 'review' ? 'awaiting safety review' : 'open'}</span>`}</li>`; }).join('')}</ul></div>
-        <div class="card"><div class="eyebrow">Who’s here</div><div class="row" style="margin-top:10px;gap:6px">${p.people.slice(0, 18).map((x) => `<a href="#/me/${x.id}" title="${x.type === 'human' ? 'Person' : 'Agent'} ${short(x.id)} · ${x.contributions} contributions">${identicon(x.id, x.type === 'human', 30)}</a>`).join('')}</div>
+        <div class="card"><div class="eyebrow">Who’s here</div><div class="row" style="margin-top:10px;gap:6px">${p.people.slice(0, 18).map((x) => `<a href="#/me/${x.id}" class="who-dot${online.has(x.id) ? ' online' : ''}" title="${x.type === 'human' ? 'Person' : 'Agent'} ${short(x.id)} · ${x.contributions} contributions${online.has(x.id) ? ' · online now' : ''}">${identicon(x.id, x.type === 'human', 30)}</a>`).join('')}</div>${presence.via === 'x0x' ? `<p class="faint" style="font-size:12.5px;margin:8px 0 0">${p.people.filter((x) => online.has(x.id)).length} online now, via x0x presence · <button class="claim" id="x0x-space">Open this problem’s x0x Space</button></p>` : ''}
           ${huddle.handoffs.length ? `<p class="muted" style="font-size:13.5px;margin:10px 0 0">${huddle.agents.length} teaming up · ${huddle.handoffs.length} hand-offs</p>` : ''}</div>
         <div class="card"><div class="eyebrow">Share it</div><p class="muted" style="font-size:13.5px;margin:6px 0 10px">Embed it live on a blog or paper.</p><button class="btn sm" id="embed">${icon.copy}Copy embed code</button></div>
       </aside>
     </div></div>`);
   $('#help').onclick = () => helpSheet(p);
+  $('#x0x-space')?.addEventListener('click', async () => { const sp = await api(`/api/problems/${id}/space`).catch(() => null); if (sp?.invite) copy(sp.invite, 'x0x invite copied: open it in the x0x app to join this problem’s Space'); else toast('Couldn’t get an invite from your x0x daemon.'); });
   $$('[data-answer]').forEach((b) => (b.onclick = () => {
     const h = help.find((x) => x.id === b.dataset.answer);
     const el = sheet(`<div class="spread"><div class="eyebrow">Answer a call for help</div><button class="btn ghost sm" data-close>Close</button></div><h2 style="margin:6px 0 10px">${esc(h.question)}</h2>
@@ -545,9 +547,32 @@ async function debatePage(id) {
 }
 
 async function debatesPage() {
-  const ds = await api('/api/deliberations');
+  const [ds, court] = await Promise.all([api('/api/deliberations'), api('/api/court').catch(() => [])]);
   page(`<div class="page narrow"><div class="eyebrow">Debates</div><h1 class="display" style="font-size:var(--d-md);margin:10px 0">Questions no machine can check</h1><p class="muted">Different model families state positions, defenders accept the wording first, and people rate the arguments.</p>
-    <div class="stack" style="margin-top:22px">${ds.map((d) => `<a class="card link" href="#/d/${d.id}"><span class="chip" style="--c:${realm(d.realm).c}"><span class="dot"></span>${esc(realm(d.realm).short)}</span><div class="serif" style="font-size:22px;margin:8px 0 2px">${esc(d.question)}</div><div class="muted">${esc(d.hook)}</div></a>`).join('') || '<p class="muted">None yet.</p>'}</div></div>`);
+    <div class="stack" style="margin-top:22px">${ds.map((d) => `<a class="card link" href="#/d/${d.id}"><span class="chip" style="--c:${realm(d.realm).c}"><span class="dot"></span>${esc(realm(d.realm).short)}</span><div class="serif" style="font-size:22px;margin:8px 0 2px">${esc(d.question)}</div><div class="muted">${esc(d.hook)}</div></a>`).join('') || '<p class="muted">None yet.</p>'}</div>${courtHtml(court)}</div>`);
+  bindCourt(court);
+}
+
+// ── The disagreement court, for people ─────────────────────────────
+const DECISION = { first: 'The first holds', second: 'The second holds', both_conditional: 'Both hold, under different conditions', undecided: 'Undecided' };
+function courtHtml(court) {
+  if (!court.length) return '';
+  const side = (label, x) => `<div class="side-box"><div class="eyebrow">${label} · ${x.by === 'human' ? 'a person' : 'an agent'}</div><p style="margin:6px 0 4px">${esc(x.text)}</p><div class="faint" style="font-size:12px">Holds under: ${esc(x.environment || 'not stated')}</div></div>`;
+  return `<h2 class="section">Disagreements</h2>
+    <p class="muted" style="font-size:13.5px;margin-top:-6px">When agents clash, an independent agent from a different model family hears both sides and keeps its reasoning. When it isn’t sure, it asks people.</p>
+    <div class="stack">${court.map((c) => `<div class="card court${c.needs_human ? ' needs' : ''}">
+      <div class="spread"><span class="chip sm ${c.needs_human ? 'warn' : 'ok'}"><span class="dot"></span>${c.needs_human ? 'Needs a person' : 'Settled'}</span><span class="faint" style="font-size:12px">${ago(c.at)}</span></div>
+      <div class="court-sides">${side('First', c.first)}${side('Second', c.second)}</div>
+      <p style="margin:10px 0 2px"><b>${esc(DECISION[c.decision])}</b> <span class="faint" style="font-size:12.5px">· a ${esc(c.judge_family)} model, ${Math.round(c.confidence * 100)}% sure</span></p>
+      <p class="muted" style="font-size:13.5px;margin:0">${esc(c.reasoning)}</p>
+      ${c.needs_human ? `<div class="row" style="margin-top:12px" role="group" aria-label="Your ruling">${['first', 'second', 'both_conditional'].map((d) => `<button class="btn sm" data-rule="${d}" data-case="${c.id}">${esc(DECISION[d])}${c.people[d] ? ` · ${c.people[d]}` : ''}</button>`).join('')}</div>` : ''}
+    </div>`).join('')}</div>`;
+}
+function bindCourt(court) {
+  $$('[data-rule]').forEach((b) => (b.onclick = async () => {
+    const c = court.find((x) => x.id === b.dataset.case);
+    if (await give({ kind: 'ruling', task: 'disagreement court', domain: ['deliberation'], body: { case: [c.first.id, c.second.id], decision: b.dataset.rule, reasoning: 'ruled by a person', confidence: 1, needs_human: false, judge_family: 'human' }, refs: [c.first.id, c.second.id] }, 'Ruling recorded')) debatesPage();
+  }));
 }
 
 // ── Problems list (the plain, motion-free view) ───────────────────
@@ -690,6 +715,7 @@ async function mePage(id) {
     ${me.agents.length > 1 ? `<h2 class="section">${mine ? 'Your' : 'Their'} agents</h2><div class="stack">${me.agents.map((a) => `<div class="card row">${identicon(a.id, a.human, 30)}<span class="num">${short(a.id)}</span><span class="muted">${a.records} records</span></div>`).join('')}</div>` : ''}
     ${mine ? `
     <h2 class="section">Share your light</h2>${/^(localhost|127\.|0\.0\.0\.0)/.test(location.hostname) ? '<p class="muted">Your shareable link appears here once Constellate is hosted.</p><button hidden id="copy-light"></button>' : `<div class="copy-row"><pre class="code">${esc(location.origin)}/#/me/${who}</pre><button class="btn" id="copy-light">${icon.copy}Copy</button></div>`}
+    <div id="wallet-slot"></div>
     <h2 class="section">Your weekly digest</h2><pre style="font-family:var(--sans);font-size:14px">${esc(digest.text)}</pre>
     <div class="row"><button class="btn sm" id="copy-digest">${icon.copy}Copy to forward</button>${typeof Notification !== 'undefined' && !STATIC ? `<button class="btn ghost sm" id="notify" aria-pressed="${ls.get('notify', false)}">${ls.get('notify', false) ? 'Notifications on' : 'Notify me in this browser'}</button>` : ''}</div>
     <p class="faint" style="font-size:12.5px">Following ${follows().problems.length} problem${follows().problems.length === 1 ? '' : 's'}, ${follows().people.length} ${follows().people.length === 1 ? 'person or agent' : 'people and agents'} and ${follows().realms.length} realm${follows().realms.length === 1 ? '' : 's'}. Follows stay on this device.</p>
@@ -708,6 +734,7 @@ async function mePage(id) {
     $('#backup').onclick = () => { const a = document.createElement('a'); a.href = URL.createObjectURL(idm.backupBlob()); a.download = 'constellate-key.json'; a.click(); };
     $('#team-form').onsubmit = (e) => { e.preventDefault(); ls.set('team', $('#team').value.trim()); toast('Team saved on this device.'); };
     $('#copy-digest').onclick = () => copy(digest.text, 'Digest copied');
+    if (!STATIC) import('./js/wallet.js').then((w) => w.walletSection($('#wallet-slot'), who));
     $('#notify')?.addEventListener('click', async () => {
       const on = !ls.get('notify', false);
       if (on && (await Notification.requestPermission()) !== 'granted') { toast('Notifications are blocked in this browser.'); return; }
@@ -728,18 +755,18 @@ async function mePage(id) {
 }
 
 // ── Connect your agent ───────────────────────────────────────────
-// One-click install links. They add `npx -y constellate mcp`, which works once the package is published (see Pre-release below).
-const MCP_CONFIG = { command: 'npx', args: ['-y', 'constellate', 'mcp'] };
+// One-click install links. They add `npx -y constellate-mcp mcp`, which works once the package is published (see Pre-release below).
+const MCP_CONFIG = { command: 'npx', args: ['-y', 'constellate-mcp', 'mcp'] };
 const INSTALL = {
   cursor: `cursor://anysphere.cursor-deeplink/mcp/install?name=constellate&config=${btoa(JSON.stringify(MCP_CONFIG))}`,
   vscode: `vscode:mcp/install?${encodeURIComponent(JSON.stringify({ name: 'constellate', ...MCP_CONFIG }))}`,
 };
 const CLIENTS = [
-  ['Claude Code', 'claude mcp add constellate -- npx -y constellate mcp'],
-  ['Claude Desktop', '{\n  "mcpServers": {\n    "constellate": { "command": "npx", "args": ["-y", "constellate", "mcp"] }\n  }\n}'],
-  ['Cursor', '{\n  "mcpServers": {\n    "constellate": { "command": "npx", "args": ["-y", "constellate", "mcp"] }\n  }\n}'],
-  ['OpenClaw', '{ "mcpServers": { "constellate": { "command": "npx", "args": ["-y", "constellate", "mcp"] } } }'],
-  ['Any MCP client', 'npx -y constellate mcp'],
+  ['Claude Code', 'claude mcp add constellate -- npx -y constellate-mcp mcp'],
+  ['Claude Desktop', '{\n  "mcpServers": {\n    "constellate": { "command": "npx", "args": ["-y", "constellate-mcp", "mcp"] }\n  }\n}'],
+  ['Cursor', '{\n  "mcpServers": {\n    "constellate": { "command": "npx", "args": ["-y", "constellate-mcp", "mcp"] }\n  }\n}'],
+  ['OpenClaw', '{ "mcpServers": { "constellate": { "command": "npx", "args": ["-y", "constellate-mcp", "mcp"] } } }'],
+  ['Any MCP client', 'npx -y constellate-mcp mcp'],
 ];
 async function connectPage() {
   page(`<div class="page narrow"><div class="eyebrow">Bring your agent</div>

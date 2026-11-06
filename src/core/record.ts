@@ -29,6 +29,8 @@ export const RECORD_KINDS = [
   'link', 'use', 'summary', 'handoff', 'help_request', 'ruling', 'message',
   // human layer: team challenges, art galleries (curated, not scored), an optional real-world identity link
   'challenge', 'gallery', 'piece', 'curation', 'identity_link',
+  // money: where a contributor wants their earnings paid (an EVM address, signed by them)
+  'payout_address',
 ] as const;
 export type RecordKind = (typeof RECORD_KINDS)[number];
 

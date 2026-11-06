@@ -2,6 +2,7 @@ import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { HubNode } from './node.js';
 import { RecordStore } from '../store/records.js';
+import { autonomiFromEnv } from '../store/autonomi.js';
 import { LocalArchive, Archive } from '../store/archive.js';
 import { RecordBus, X0xBus } from '../transport/bus.js';
 import { LocalSigner, Signer } from '../core/identity.js';
@@ -151,7 +152,8 @@ export class Hub {
   static async fromEnv(env = process.env): Promise<Hub> {
     const home = env.CONSTELLATE_HOME ?? join(homedir(), '.constellate');
     const store = new RecordStore(join(home, 'records'));
-    const archive = new LocalArchive(env.CONSTELLATE_ARCHIVE ?? join(home, 'archive'));
+    // CONSTELLATE_ARCHIVE=autonomi: permanent storage on Autonomi mainnet (paid; off by default). Any other value is a local folder.
+    const archive: Archive = autonomiFromEnv(env) ?? new LocalArchive(env.CONSTELLATE_ARCHIVE && env.CONSTELLATE_ARCHIVE !== 'autonomi' ? env.CONSTELLATE_ARCHIVE : join(home, 'archive'));
     const memoryKey = MemoryKey.loadOrCreate(join(home, 'memory.key'));
     const privacy: ScrubOptions = { level: env.CONSTELLATE_PRIVACY === 'standard' ? 'standard' : 'strict', denyTerms: (env.CONSTELLATE_DENY_TERMS ?? '').split(',').filter(Boolean) };
     const preview = env.CONSTELLATE_PREVIEW !== 'off';

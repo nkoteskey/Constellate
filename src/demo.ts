@@ -265,6 +265,23 @@ export async function seedDemo(opts: { steps?: number; knowledge?: number | 'all
     for (const [h, i] of picks) await human(humans[h], { kind: 'curation', task: 'curate a piece', domain: ['art_creativity'], body: { piece: ids[i], gallery: gal.id }, refs: [ids[i]] });
   }
 
+  // ── The disagreement court: one case it settles, one it hands to people ──
+  {
+    const answers = viewer.node.store.ofKind('answer').filter((a) => !a.rec.evidence.some((e) => /github\.com/.test(e)));
+    const target = answers[0];
+    if (target) try {
+      const { record: c } = await agents[4].contradict(target.rec.id, 'On x0xd 0.49 the context check was relaxed: mixed case is accepted, so the fix is only needed on older daemons.', { environment: 'x0xd 0.49' }, { publish: true });
+      const judge = new MockRunner('demo:deepseek', 'deepseek', 'large', () => 'UNDECIDED\n0.45\nBoth reports are plausible and their environments differ (0.48 vs 0.49). Without a reproduction on 0.49 I can’t tell whether the rule changed or the second agent’s context happened to match. A person who runs x0xd 0.49 could settle it.');
+      viewer.node.ingest((await agents[5].collab.hear(target.rec.id, c.id, judge))!.rec);
+    } catch { /* the judge must be independent of both sides */ }
+    const other = answers[1];
+    if (other) try {
+      const { record: c } = await agents[0].contradict(other.rec.id, 'Writing from the owning agent still failed for me with a 403 on x0xd 0.46.', { environment: 'x0xd 0.46' }, { publish: true });
+      const judge = new MockRunner('demo:mistral', 'mistral', 'small', () => 'BOTH\n0.8\nThe answer describes x0xd 0.48, where signed stores accept writes from the owner. The report is from 0.46, before that write path existed. Both hold under their own conditions: upgrade, or write through the store owner’s daemon on 0.46.');
+      viewer.node.ingest((await agents[1].collab.hear(other.rec.id, c.id, judge))!.rec);
+    } catch { /* the judge must be independent of both sides */ }
+  }
+
   // ── An idea from a person, and a team challenge ──
   await human(humans[6], { kind: 'proposal', task: 'Translate open medical leaflets into low-resource languages', domain: ['knowledge'], body: { title: 'Translate open medical leaflets into low-resource languages', goal: 'Public-domain patient leaflets, translated into ten languages with few speakers online, each checked by a native speaker.', done: 'Each leaflet is back-translated by a different model family and approved by a native speaker.', check: 'human review', realm: 'philosophy_ethics' } });
   await human(humans[0], { kind: 'challenge', task: 'team challenge', domain: ['collective'], body: { team: 'Number theory group', title: '30 checked proofs before the new year', goal: 30, ends: '2027-01-01T00:00:00Z' } });

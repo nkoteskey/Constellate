@@ -34,7 +34,7 @@ const mirror = async (p: string) => write(`${p.replace(/^\//, '')}.json`, await 
 // ── Data ───────────────────────────────────────────────────────────
 const sky = await get('/api/sky');
 write('api/sky.json', sky);
-for (const p of ['/api/graph', '/api/proposals', '/api/deliberations', '/api/people', '/api/teams', '/api/metrics', '/api/ideas', '/api/galleries', '/api/challenges', '/api/work/next']) await mirror(p);
+for (const p of ['/api/graph', '/api/proposals', '/api/deliberations', '/api/people', '/api/teams', '/api/metrics', '/api/ideas', '/api/galleries', '/api/challenges', '/api/work/next', '/api/court']) await mirror(p);
 for (const g of await get('/api/galleries')) await mirror(`/api/galleries/${g.id}`);
 for (const p of sky.problems) {
   if (p.kind === 'deliberation') { await mirror(`/api/deliberations/${p.id}`); continue; }

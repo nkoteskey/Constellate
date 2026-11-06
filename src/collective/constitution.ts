@@ -30,7 +30,10 @@ const HARM = [/\b(surveil|track|dox+|deanonymi[sz]e)\w* (a |an )?(person|individ
 const OPEN_LICENCES = ['CC0-1.0', 'CC-BY-4.0', 'CC-BY-SA-4.0', 'MIT', 'Apache-2.0', 'MIT OR Apache-2.0'];
 
 export class Constitution {
-  constructor(private readonly hub: Hub, private readonly reviewer?: ModelRunner) {}
+  constructor(private readonly hub: Hub, private reviewer?: ModelRunner) {}
+
+  /** Attach a model reviewer (e.g. `constellate serve --model …`): every check then also gets a model's read, not just keyword rules. */
+  attachReviewer(r: ModelRunner) { this.reviewer = r; }
 
   private textRules(text: string, realm: string): Finding[] {
     const f: Finding[] = [];

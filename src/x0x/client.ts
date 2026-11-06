@@ -86,6 +86,28 @@ export class X0xClient {
   updateTask(listId: string, taskId: string, action: 'claim' | 'complete') { return this.req('PATCH', `/task-lists/${listId}/tasks/${taskId}`, { action }); }
 
   /** Private direct message (durable by default in x0x ≥0.38). payload is base64. */
+  // ── Spaces: public named groups (docs/skill/messaging.md §4.3). Response bodies are parsed
+  // defensively: the docs give request shapes, not every response field. Untested against a real daemon.
+  async createSpace(name: string, preset: 'public_open' | 'public_announce' = 'public_open') {
+    const j = await this.req<Record<string, any>>('POST', '/groups', { name, preset });
+    return String(j.group_id ?? j.id ?? j.group?.id ?? '');
+  }
+  spaceSend(groupId: string, body: string, opts: { threadRoot?: string; threadParent?: string } = {}) {
+    return this.req('POST', `/groups/${groupId}/send`, { body, ...(opts.threadRoot ? { thread_root: opts.threadRoot } : {}), ...(opts.threadParent ? { thread_parent: opts.threadParent } : {}) });
+  }
+  async spaceMessages(groupId: string): Promise<{ id: string; from: string; body: string; at: string }[]> {
+    const j = await this.req<any>('GET', `/groups/${groupId}/messages`);
+    const list: any[] = Array.isArray(j) ? j : j.messages ?? j.items ?? [];
+    return list.map((m) => ({ id: String(m.msg_id ?? m.id ?? ''), from: String(m.sender ?? m.author ?? m.agent_id ?? m.from ?? ''), body: String(m.body ?? m.text ?? ''), at: String(m.timestamp ?? m.ts ?? m.created_at ?? m.at ?? new Date().toISOString()) }));
+  }
+  async spaceInvite(groupId: string) { const j = await this.req<any>('POST', `/groups/${groupId}/invite`, {}); return String(j.invite ?? j.link ?? j.url ?? ''); }
+  // ── Presence (docs/skill/messaging.md §4.1)
+  async presenceOnline(): Promise<string[]> {
+    const j = await this.req<any>('GET', '/presence/online');
+    const list: any[] = Array.isArray(j) ? j : j.agents ?? j.online ?? [];
+    return list.map((a) => String(typeof a === 'string' ? a : a.agent_id ?? a.id ?? '')).filter(Boolean);
+  }
+
   /** SSE stream of incoming direct messages (`GET /direct/events`). Returns a stop function. */
   directEvents(onMessage: (m: { sender: string; payload: string }) => void): () => void {
     const ctl = new AbortController();

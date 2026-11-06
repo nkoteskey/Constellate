@@ -17,6 +17,7 @@ export class FakeMesh {
   readonly daemons = new Set<FakeDaemon>();
   readonly wire: { topic: string; from: string; payload: Uint8Array }[] = [];
   readonly stores = new Map<string, { owner: string; policy: string; data: Map<string, { value: string; content_type: string }> }>();
+  readonly groups = new Map<string, { name: string; preset: string; owner: string; messages: { msg_id: string; sender: string; body: string; timestamp: string }[] }>();
   readonly taskLists = new Map<string, { name: string; tasks: Map<string, { id: string; title: string; description: string | null; state: string; claimed_by: string | null; completed_by: string | null }> }>();
   partitioned = new Set<FakeDaemon>();
 }
@@ -112,6 +113,28 @@ export class FakeDaemon {
       req.on('close', () => this.sse.delete(res));
       return;
     }
+    // Spaces: public named groups (shapes from x0x docs/skill/messaging.md §4.3)
+    if (m === 'POST' && p === '/groups') {
+      const b = await this.body(req);
+      const id = sha256Hex(utf8(`group:${b.name}:${this.agentId}`)).slice(0, 32);
+      if (!this.mesh.groups.has(id)) this.mesh.groups.set(id, { name: b.name, preset: b.preset ?? 'private_secure', owner: this.agentId, messages: [] });
+      return this.json(res, 200, { ok: true, group_id: id, name: b.name, preset: b.preset ?? 'private_secure' });
+    }
+    let gm = p.match(/^\/groups\/([0-9a-f]+)\/(send|messages|invite)$/);
+    if (gm) {
+      const g = this.mesh.groups.get(gm[1]);
+      if (!g) return this.json(res, 404, { ok: false, error: 'group not found' });
+      if (m === 'POST' && gm[2] === 'send') {
+        if (!g.preset.startsWith('public')) return this.json(res, 400, { ok: false, error: 'use secure/encrypt for private groups' });
+        const b = await this.body(req);
+        const msg = { msg_id: sha256Hex(utf8(`${gm[1]}:${g.messages.length}:${b.body}`)).slice(0, 32), sender: this.agentId, body: String(b.body), timestamp: new Date().toISOString() };
+        g.messages.push(msg);
+        return this.json(res, 200, { ok: true, msg_id: msg.msg_id });
+      }
+      if (m === 'GET' && gm[2] === 'messages') return this.json(res, 200, { ok: true, messages: g.messages });
+      if (m === 'POST' && gm[2] === 'invite') return this.json(res, 200, { ok: true, invite: `x0x://invite/${gm[1]}` });
+    }
+    if (m === 'GET' && p === '/presence/online') return this.json(res, 200, { ok: true, agents: [...this.mesh.daemons].filter((d) => !this.mesh.partitioned.has(d)).map((d) => ({ agent_id: d.agentId })) });
     // KV stores
     if (m === 'POST' && p === '/stores') {
       const b = await this.body(req);

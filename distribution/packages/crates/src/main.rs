@@ -3,7 +3,7 @@ use std::process::{exit, Command};
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let status = Command::new("npx").args(["-y", "constellate", "mcp"]).args(&args).status();
+    let status = Command::new("npx").args(["-y", "constellate-mcp", "mcp"]).args(&args).status();
     match status {
         Ok(s) => exit(s.code().unwrap_or(1)),
         Err(_) => {

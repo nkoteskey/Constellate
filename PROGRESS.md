@@ -202,6 +202,27 @@ An audit of DESIGN.md against the code found features built behind the scenes bu
 - Gates: `human_layer` (9 tests, server and browser), `distribution_mcpb`, the dashboard and heat tests in `phase3`, and the newcomer gate updated to the onboarding path. **103 tests pass.**
 - Not done, by design: building on the x0x dashboard and x0x Discover (the owner's call, and it needs the x0x repo), and advertising on x0x (a going-public stop point). Packaged desktop installers need signing; that comes with the first release.
 
+### Audit of the original materials, gaps closed, and real money set up (Nov 6)
+I re-read the design sketch, Amendment 1 and DESIGN.md against the code. The sketch adds nothing DESIGN.md lacks, and the uploaded DESIGN.md is byte-identical to the repo copy. Closed:
+- **Model keys encrypted on the device** (Amendment §5). `constellate keys set|list|remove` prompts with hidden input, never takes a key on the command line, and stores it in the AES-GCM vault. `--model` reads the vault before environment variables.
+- **Spend per model against the cap**, on the contributor dashboard.
+- **The disagreement court, for people.** The Debates page shows each ruling's two sides, the independent judge's family, confidence and reasoning. Cases the judge couldn't settle ask people to rule. Rulings are signed records checked on the server.
+- **Debates revisited.** `Deliberation.rerun` has a model re-state its own family's position given the arguments and ratings. A shift is recorded only if it actually moved, and it runs weekly under `serve --model`.
+- **`constellate serve --model PROVIDER/MODEL`** powers the plain-language guide, the constitution's model review (including the stricter life-sciences review), written sleep summaries and debate re-runs.
+- **One install command**, prepared and not published (`distribution/install/install.sh`). It asks before every install, installs x0x with x0x's own GPG-verifying installer, never starts a daemon unasked, and has `--dry-run`.
+- **Building on x0x.** Each problem gets a public x0x Space (`public_open` group), so people on the plain x0x GUI join the same conversation. App chat is mirrored in, Space messages show up in the app labelled "from the x0x Space", Presence shows who's online, and there's an invite to the Space. It's built from x0x's docs and tested against a stand-in daemon; it needs a real x0xd to confirm.
+- **Found and fixed a supply-chain hazard.** The npm name `constellate` belongs to an unrelated project (constellators/constellate, 2022). Every setup snippet, one-click link, registry entry and package launcher said `npx -y constellate mcp`, which would have run a stranger's code. Nothing was published, so nobody was exposed. Our package is now `constellate-mcp` (free on npm), and a test fails if the bare name ever comes back. **Reserve `constellate-mcp` on npm before someone else does.**
+
+Real money, **ready and off by default** (docs/MAINNET.md):
+- **Credit** in micro-dollars, kept in an append-only journal that can be replayed. Each external payment is applied exactly once. The network pays confirmed work from it with the same signed mandates as the testnet rail.
+- **Card top-ups via Stripe Checkout.** Credit lands only when Stripe's signed webhook says it was paid. The signature is checked over the raw body with a 5-minute tolerance, and rolling secrets are supported.
+- **USDC top-ups from MetaMask on Base.** The hub reads the transfer from the chain and waits for confirmations. The sender proves ownership with a free personal_sign from the same wallet, verified with secp256k1 recovery and keccak. No wallet library and no server key.
+- **Payouts.** Contributors sign a `payout_address` record. The owner's `#/treasury` page (local machine only) pays them in USDC from MetaMask, and credit is debited only once the transfer is confirmed in full.
+- **Autonomi mainnet archive** through the local `antd` daemon's REST API, matching the shapes the official client uses. I didn't add the package: a new dependency was blocked, reasonably. Every upload is priced first and refused past a daily atto-ANT cap before anything is paid. Named pointers live in one index behind a single paid pointer, written in batches and never retried automatically. `constellate autonomi status|approve` covers checks and the one-time approval.
+- Switches: `CONSTELLATE_PAYMENTS=test|live`; live also needs `CONSTELLATE_MAINNET_APPROVED=yes` and a live Stripe key, and test refuses a live key. Autonomi needs `CONSTELLATE_ARCHIVE=autonomi` plus approval, a pointer and a cap.
+- **x402.** Agent-to-agent pay-per-call on mainnet is not wired here. It needs the official `@x402/*` packages (v2 headers `PAYMENT-REQUIRED` / `PAYMENT-SIGNATURE`) and Coinbase CDP facilitator keys. The testnet x402 flow is unchanged. The research and next steps are in the session notes.
+- Gates: `payments_mainnet_ready` (11 tests: switches, journal, Stripe signing and checkout, webhook route, USDC claim and payout against a stand-in Base RPC, Autonomi against a stand-in antd), `x0x_spaces`, `audit_gaps`, `package_name`. **120 tests pass.**
+
 ## Summary of what needs a human
 1. **Live x0x (blocks confidence in every phase):** run the gates against two real `x0xd` daemons. Confirm ML-DSA signature interop between `/agent/sign` and noble, `/stores` and `/task-lists` field names, contacts → pre-trusted operators, and Spaces/DMs for chat.
 2. **Gate 1 behaviour:** `ANTHROPIC_API_KEY=… npx tsx evals/gate1.ts 3`.

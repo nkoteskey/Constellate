@@ -8,7 +8,7 @@ def main() -> None:
     npx = shutil.which("npx")
     if not npx:
         sys.exit("Constellate needs Node.js 22+ (npx was not found on PATH).")
-    os.execv(npx, [npx, "-y", "constellate", "mcp", *sys.argv[1:]])
+    os.execv(npx, [npx, "-y", "constellate-mcp", "mcp", *sys.argv[1:]])
 
 
 if __name__ == "__main__":
