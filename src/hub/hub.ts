@@ -15,6 +15,7 @@ import { Problems } from '../work/problems.js';
 import { Collective } from '../collective/collective.js';
 import { Skills } from '../economy/skills.js';
 import { Deliberation } from '../collective/deliberation.js';
+import { PrivateMemory, MemoryKey } from '../services/memory.js';
 import { Economy } from '../economy/economy.js';
 import { PaymentRail } from '../economy/rail.js';
 import { ScrubOptions } from '../privacy/scrub.js';
@@ -31,6 +32,8 @@ export interface HubOptions {
   preview?: boolean;
   /** Operator ids trusted a priori (x0x contacts marked trusted, colleagues). The local operator is always trusted. */
   trusted?: string[];
+  /** Key for the private encrypted scratchpad. Generated per hub if not given. */
+  memoryKey?: MemoryKey;
   now?: () => number;
 }
 
@@ -45,6 +48,7 @@ export class Hub {
   readonly trusted: Set<string>;
   readonly ledger: Ledger;
   readonly problems: Problems;
+  readonly memory: PrivateMemory;
   private _collective?: Collective;
   economy?: Economy;
   private _skills?: Skills;
@@ -65,6 +69,7 @@ export class Hub {
     this.ledger = new Ledger(this.node, this.trust);
     this.live = new LiveState(this.node, this.archive, this.x0x);
     this.problems = new Problems(this);
+    this.memory = new PrivateMemory(this.archive, o.memoryKey ?? MemoryKey.generate());
   }
 
   setTrust(t: TrustModel) { this.trust = t; this.ledger.setTrust(t); }
@@ -103,7 +108,8 @@ export class Hub {
   static async fromEnv(env = process.env): Promise<Hub> {
     const home = env.CONSTELLATE_HOME ?? join(homedir(), '.constellate');
     const store = new RecordStore(join(home, 'records'));
-    const archive = new LocalArchive(join(home, 'archive'));
+    const archive = new LocalArchive(env.CONSTELLATE_ARCHIVE ?? join(home, 'archive'));
+    const memoryKey = MemoryKey.loadOrCreate(join(home, 'memory.key'));
     const privacy: ScrubOptions = { level: env.CONSTELLATE_PRIVACY === 'standard' ? 'standard' : 'strict', denyTerms: (env.CONSTELLATE_DENY_TERMS ?? '').split(',').filter(Boolean) };
     const preview = env.CONSTELLATE_PREVIEW !== 'off';
     const x0x = new X0xClient(env.X0X_API);
@@ -111,9 +117,9 @@ export class Hub {
       await x0x.health();
       const signer = await DaemonSigner.connect(x0x);
       const bus = await X0xBus.connect(x0x);
-      return new Hub({ signer, store, bus, archive, x0x, privacy, preview });
+      return new Hub({ signer, store, bus, archive, x0x, privacy, preview, memoryKey });
     } catch {
-      return new Hub({ signer: LocalSigner.loadOrCreate(join(home, 'agent.key')), store, archive, privacy, preview });
+      return new Hub({ signer: LocalSigner.loadOrCreate(join(home, 'agent.key')), store, archive, privacy, preview, memoryKey });
     }
   }
 }

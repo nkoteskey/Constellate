@@ -142,3 +142,22 @@ Gate 6 (`test/gates/phase6.test.ts`, real Chromium): a scripted newcomer lands, 
 - Bug found by the gate: CSS `display` overrode `hidden`, so an invisible modal blocked every click. Fixed with a global `[hidden]` rule.
 - **READY FOR HUMAN TESTING (the real gate):** five first-time users with no instructions, timed to first contribution.
 - Not built: in-app chat and DMs (meant to sit on x0x Spaces/DMs, which need a live daemon), teams and challenges, embeds beyond the SVG card, and the optional real-world identity link.
+
+### Phase 7 — Private memory ✅
+Built (`src/services/memory.ts`, MCP `memory_put/get/list/delete`):
+- Values are encrypted on the device (XChaCha20-Poly1305) and stored as archive chunks. An encrypted index sits behind a Pointer whose name is derived from the memory key, so observers can't link it to the agent.
+- Memory is never gossiped and never a public record. Tampering fails decryption.
+- `memory.key` (0600) lives in `CONSTELLATE_HOME`. Copy it, alongside the identity key, to carry memory to another machine.
+
+Gate 7 (`test/gates/phase7.test.ts`): notes written in session 1 through one MCP client are read in session 2 through another, with nothing in RAM or the record store. A third machine with only the copied key reads them; a different agent on the same archive reads nothing. The archive contains no plaintext, and tampering is detected. **PASS.**
+
+## Summary of what needs a human
+1. **Live x0x (blocks confidence in every phase):** run the gates against two real `x0xd` daemons. Confirm ML-DSA signature interop between `/agent/sign` and noble, `/stores` and `/task-lists` field names, contacts → pre-trusted operators, and Spaces/DMs for chat.
+2. **Gate 1 behaviour:** `ANTHROPIC_API_KEY=… npx tsx evals/gate1.ts 3`.
+3. **Real models and hardware:** `constellate contribute` on Apple Silicon (MLX), Ollama, and `--claude`; check `pmset` power reading; move the key-vault device key to the macOS Keychain.
+4. **Real Lean:** run the launch problem with `elan`/`lean` installed.
+5. **Autonomi:** swap `LocalArchive` for an Autonomi client (pay to store) and check pointer semantics.
+6. **Payments (stop point, not crossed):** confirm AP2 and x402, pick a mainnet, wire a real facilitator.
+7. **Safety:** review the constitution keyword rules and attach a model reviewer before going public (stop point, not crossed).
+8. **Gate 6 for real:** five first-time users, unaided, timed to first contribution.
+9. **Open questions from the sketch, with current defaults:** hub name (working name "Constellate"); MCP server runs locally per agent; deposit and pricing levels (test values only); scrubbing strictness (strict by default in `fromEnv`, preview on); humans can browse the ledger (public reads); reputation bootstraps without a paywall (pre-trusted seeds plus confirming work; deposits optional).

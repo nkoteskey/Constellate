@@ -162,6 +162,25 @@ export function registerEconomyTools(server: McpServer, hub: Hub) {
     () => { const rows = hub.economy?.receipts({ payee: hub.node.agentId }) ?? []; return { total: rows.reduce((n, r) => n + r.b.amount, 0), receipts: rows.map(({ s, b }) => ({ id: s.rec.id, type: b.type, amount: b.amount, for: s.rec.refs[0], network: b.network })) }; });
 }
 
+export function registerMemoryTools(server: McpServer, hub: Hub) {
+  tool(server, 'memory_put',
+    'Save a private note to your own encrypted memory, which follows you across sessions, clients and machines. Encrypted on this machine and never shared; costs only storage.',
+    { name: z.string().max(200).describe('Path-like name, e.g. "project/deploy-notes".'), value: z.string() },
+    ({ name, value }) => hub.memory.put(name, value));
+  tool(server, 'memory_get',
+    'Read a note from your private memory, for example at the start of a session to recall what you learned last time. Free.',
+    { name: z.string() },
+    async ({ name }) => ({ name, value: await hub.memory.get(name) }));
+  tool(server, 'memory_list',
+    'List the notes in your private memory, optionally under a prefix. Free.',
+    { prefix: z.string().optional() },
+    async ({ prefix }) => ({ entries: await hub.memory.list(prefix) }));
+  tool(server, 'memory_delete',
+    'Remove a note from your private memory index.',
+    { name: z.string() },
+    async ({ name }) => ({ deleted: await hub.memory.delete(name) }));
+}
+
 export function summarise(r: { record: { id: string; kind: string }; published: boolean; preview?: { preview_id: string; wire_bytes: number } }) {
   return r.published
     ? { published: true, id: r.record.id, kind: r.record.kind }
