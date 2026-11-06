@@ -7,8 +7,9 @@ import { WebServer } from './web/server.js';
 import { registerAppRoutes } from './web/app.js';
 import { registerEconomyRoutes } from './economy/routes.js';
 import { TestnetLedger } from './economy/rail.js';
-import { detectDevice, pickLocalModel, readPower, POLITE } from './contributor/device.js';
-import { OpenAICompatibleRunner, AnthropicRunner, Budget, ModelRunner } from './contributor/models.js';
+import { detectDevice, suggestFor, readPower, POLITE } from './contributor/device.js';
+import { runnerFromSpec, providerTable, commands, CATALOG_UPDATED } from './contributor/catalog.js';
+import { Budget, ModelRunner } from './contributor/models.js';
 import { Worker } from './work/worker.js';
 import { MemoryBoard, X0xBoard } from './work/board.js';
 
@@ -22,8 +23,12 @@ const USAGE = `Constellate — where humans and agents gather into something gre
   constellate setup      Print one-line setup snippets for MCP clients
   constellate serve      Open the human app on http://127.0.0.1:4747
   constellate demo       The human app on a simulated demo network (no x0x needed)
+  constellate models     What this machine can run: free open-weight models that fit, and every provider
   constellate contribute Donate idle compute: detect hardware, pick a model, work politely
-      [--claude] [--cap-cents N] [--endpoint URL --model NAME --family F]
+      [--model PROVIDER/MODEL] [--verifier PROVIDER/MODEL] [--cap-cents N] [--endpoint URL]
+      Any model works: ollama/qwen3:14b, lmstudio/…, groq/llama-3.3-70b-versatile,
+      openrouter/<any>, huggingface/…, gemini/…, openai/…, anthropic/claude-opus-5-5,
+      custom/NAME --endpoint URL. Keys come from the provider's variable (e.g. GROQ_API_KEY).
 
 Environment: X0X_API (default http://127.0.0.1:12700), CONSTELLATE_HOME (~/.constellate),
 CONSTELLATE_PREVIEW=off, CONSTELLATE_PRIVACY=standard|strict, CONSTELLATE_DENY_TERMS=a,b`;
@@ -68,6 +73,7 @@ OpenClaw / other MCP clients: command "npx -y constellate mcp" over stdio`);
     return;
   }
   if (cmd === 'contribute') return contribute(argv.slice(1));
+  if (cmd === 'models') return models();
   if (cmd === 'seed') {
     const { Seeder, SEED_ALLOW_LIST } = await import('./seed/seeder.js');
     const { GitHubRest } = await import('./seed/github.js');
@@ -90,26 +96,54 @@ OpenClaw / other MCP clients: command "npx -y constellate mcp" over stdio`);
 
 function flag(args: string[], name: string) { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : undefined; }
 
+/** What fits this machine, in plain words, with the exact commands. */
+function models() {
+  const device = detectDevice();
+  const s = suggestFor(device);
+  const gb = (m: { needGB: number }) => `~${m.needGB} GB`;
+  console.log(`This machine: ${device.cpu}, ${device.cores} cores, ${device.memGB} GB memory${device.gpu ? `, ${device.gpu} (${device.gpuGB} GB)` : ''}.`);
+  if (s.primary) {
+    console.log(`\nSuggested (free, open weights, runs on this machine; ${s.where}, ${s.budgetGB} GB left for a model):`);
+    console.log(`  Main model:  ${s.primary.name} (${s.primary.family}, ${gb(s.primary)}) for ${s.primary.good}`);
+    if (s.verifier) console.log(`  Checker:     ${s.verifier.name} (${s.verifier.family}, ${gb(s.verifier)}), a different family, checks other contributors' work`);
+    for (const a of s.alternatives) console.log(`  Also fits:   ${a.name} (${a.family}, ${gb(a)})`);
+  }
+  for (const n of s.notes) console.log(`\n${n}`);
+  if (!s.primary) { console.log('\nFree hosted options:'); for (const h of s.hosted) console.log(`  ${h.provider}/${h.model}  (${h.why})`); }
+  console.log(`\nTo start:\n${commands(s).map((c) => `  ${c}`).join('\n')}`);
+  console.log(`\nOr bring any model (--model PROVIDER/MODEL):`);
+  for (const p of providerTable()) console.log(`  ${p.id.padEnd(12)} ${p.name.padEnd(28)} ${p.cost.padEnd(18)} ${p.key ? `key: ${p.key}` : ''}`);
+  console.log(`\nModel list reviewed ${CATALOG_UPDATED}.`);
+}
+
 async function contribute(args: string[]) {
   const hub = await Hub.fromEnv();
   const device = detectDevice();
-  const choice = pickLocalModel(device);
-  let runner: ModelRunner;
-  if (args.includes('--claude')) runner = new AnthropicRunner();
-  else if (flag(args, '--endpoint')) runner = new OpenAICompatibleRunner(`custom:${flag(args, '--model')}`, flag(args, '--family') ?? 'unknown', 'small', flag(args, '--endpoint')!, flag(args, '--model') ?? '', process.env.MODEL_API_KEY);
-  else if (choice.runtime === 'none') { console.log(choice.reason); return; }
-  else runner = new OpenAICompatibleRunner(`${choice.runtime}:${choice.model}`, choice.family, choice.size, choice.runtime === 'mlx' ? 'http://127.0.0.1:8080/v1' : 'http://127.0.0.1:11434/v1', choice.model);
-  console.log(`Device: ${device.cpu}, ${device.memGB} GB. Model: ${runner.id} (${choice.reason}).`);
+  const s = suggestFor(device);
+  const endpoint = flag(args, '--endpoint');
+  let spec = flag(args, '--model');
+  if (args.includes('--claude')) spec = 'anthropic/claude-opus-5-5';
+  if (endpoint && spec && !spec.includes('/')) spec = `custom/${spec}`;
+  if (!spec) {
+    if (!s.primary) { console.log(`${s.notes[0]}\nTry a free hosted model: ${commands(s)[0]}`); return; }
+    spec = `${s.primary.run.provider}/${s.primary.run.model}`;
+  }
+  const runners: ModelRunner[] = [runnerFromSpec(spec, { endpoint, family: flag(args, '--family') })];
+  const verifierSpec = flag(args, '--verifier') ?? (flag(args, '--model') ? undefined : s.verifier ? `${s.verifier.run.provider}/${s.verifier.run.model}` : undefined);
+  if (verifierSpec) runners.push(runnerFromSpec(verifierSpec, { endpoint }));
+  console.log(`Device: ${device.cpu}, ${device.memGB} GB${device.gpu ? `, ${device.gpu}` : ''}. Models: ${runners.map((r) => `${r.id} (${r.family})`).join(', ')}.`);
   const board = hub.x0x ? new X0xBoard(hub.x0x, 'constellate/v1/board') : new MemoryBoard();
-  const worker = new Worker(hub, runner, hub.problems, board, { policy: POLITE, power: readPower, budget: new Budget(Number(flag(args, '--cap-cents') ?? 0) || (runner.costPerCall ? 100 : Infinity)) });
+  const budget = new Budget(Number(flag(args, '--cap-cents') ?? 0) || (runners.some((r) => r.costPerCall) ? 100 : Infinity));
+  const workers = runners.map((r) => new Worker(hub, r, hub.problems, board, { policy: POLITE, power: readPower, budget }));
   let last = '';
   for (;;) {
     let didWork = false;
-    for (const p of hub.problems.list()) {
+    for (const worker of workers) for (const p of hub.problems.list()) {
       const o = await worker.step(p.rec.id).catch((e) => { console.error(String(e)); return 'idle' as const; });
       if (o !== 'idle' && o !== 'paused') didWork = true;
     }
-    if (worker.status.message !== last) { console.log(`● ${worker.status.message}`); last = worker.status.message; }
+    const msg = workers[0].status.message;
+    if (msg !== last) { console.log(`● ${msg}`); last = msg; }
     if (!didWork) await new Promise((r) => setTimeout(r, 30_000));
   }
 }

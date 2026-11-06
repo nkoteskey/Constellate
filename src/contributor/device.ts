@@ -2,26 +2,36 @@ import { cpus, totalmem, platform, arch, loadavg } from 'node:os';
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 
+import { suggest, type Suggestion } from '../web/public/js/models.js';
+
 /** What this machine can contribute, detected without a terminal. */
-export interface Device { platform: string; arch: string; cpu: string; cores: number; memGB: number; appleSilicon: boolean }
+export interface Device { platform: string; arch: string; cpu: string; cores: number; memGB: number; appleSilicon: boolean; gpuGB?: number; gpu?: string }
 
 export function detectDevice(): Device {
   const c = cpus();
   const cpu = c[0]?.model ?? 'unknown';
-  return { platform: platform(), arch: arch(), cpu, cores: c.length, memGB: Math.round(totalmem() / 2 ** 30), appleSilicon: platform() === 'darwin' && arch() === 'arm64' };
+  return { platform: platform(), arch: arch(), cpu, cores: c.length, memGB: Math.round(totalmem() / 2 ** 30), appleSilicon: platform() === 'darwin' && arch() === 'arm64', ...detectGpu() };
 }
 
-export interface ModelChoice { runtime: 'mlx' | 'ollama' | 'none'; model: string; family: string; size: 'small' | 'large'; reason: string }
+/** Best effort: the largest NVIDIA GPU's memory, if nvidia-smi is there. Apple Silicon shares memory, so it needs no GPU read. */
+export function detectGpu(): { gpuGB?: number; gpu?: string } {
+  try {
+    const out = execFileSync('nvidia-smi', ['--query-gpu=name,memory.total', '--format=csv,noheader,nounits'], { encoding: 'utf8', timeout: 3000 });
+    const best = out.trim().split('\n').map((l) => { const [name, mb] = l.split(',').map((x) => x.trim()); return { gpu: name, gpuGB: Math.round(Number(mb) / 1024) }; }).sort((a, b) => b.gpuGB - a.gpuGB)[0];
+    return best && best.gpuGB ? best : {};
+  } catch { return {}; }
+}
 
-/** Pick a fitting open-weight model for the hardware (leaves room for the user's own work). */
+/** Free, open-weight models that fit this machine (shared with the app, so both suggest the same). */
+export function suggestFor(d: Device): Suggestion { return suggest({ memGB: d.memGB, appleSilicon: d.appleSilicon, gpuGB: d.gpuGB, cores: d.cores }); }
+
+export interface ModelChoice { runtime: 'ollama' | 'none'; model: string; family: string; size: 'small' | 'large'; reason: string }
+
+/** The single best fit, kept for older callers. */
 export function pickLocalModel(d: Device): ModelChoice {
-  const runtime = d.appleSilicon ? 'mlx' : 'ollama';
-  const q = (mlx: string, ollama: string) => (d.appleSilicon ? mlx : ollama);
-  if (d.memGB >= 64) return { runtime, model: q('mlx-community/Qwen3-32B-4bit', 'qwen3:32b'), family: 'qwen', size: 'large', reason: `${d.memGB} GB: room for a 32B model` };
-  if (d.memGB >= 24) return { runtime, model: q('mlx-community/Qwen3-14B-4bit', 'qwen3:14b'), family: 'qwen', size: 'small', reason: `${d.memGB} GB: 14B model` };
-  if (d.memGB >= 12) return { runtime, model: q('mlx-community/Llama-3.2-8B-Instruct-4bit', 'llama3.1:8b'), family: 'llama', size: 'small', reason: `${d.memGB} GB: 8B model` };
-  if (d.memGB >= 6) return { runtime, model: q('mlx-community/Llama-3.2-3B-Instruct-4bit', 'llama3.2:3b'), family: 'llama', size: 'small', reason: `${d.memGB} GB: 3B model for verification and screening` };
-  return { runtime: 'none', model: '', family: '', size: 'small', reason: `${d.memGB} GB is too little to run a model alongside your work; you can still review and rate` };
+  const s = suggestFor(d);
+  if (!s.primary) return { runtime: 'none', model: '', family: '', size: 'small', reason: s.notes[0] ?? `${d.memGB} GB is too little to run a model alongside your work` };
+  return { runtime: s.runtime, model: s.primary.run.model, family: s.primary.family, size: s.primary.params >= 20 ? 'large' : 'small', reason: `${s.where}: ${s.primary.name} fits` };
 }
 
 export interface Power { onAC: boolean | null; batteryPct: number | null }

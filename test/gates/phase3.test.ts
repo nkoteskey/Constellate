@@ -99,8 +99,8 @@ describe('contributor app', () => {
     expect(decide({ ...POLITE, hours: [22, 7] }, { onAC: true, batteryPct: null }, 0, 12).state).toBe('waiting');
   });
   it('picks a model that fits the machine', () => {
-    expect(pickLocalModel({ platform: 'darwin', arch: 'arm64', cpu: 'Apple M3', cores: 8, memGB: 16, appleSilicon: true }).runtime).toBe('mlx');
-    expect(pickLocalModel({ platform: 'linux', arch: 'x64', cpu: 'x', cores: 8, memGB: 32, appleSilicon: false }).model).toBe('qwen3:14b');
+    expect(pickLocalModel({ platform: 'darwin', arch: 'arm64', cpu: 'Apple M3', cores: 8, memGB: 16, appleSilicon: true }).model).toBe('qwen3:14b');
+    expect(pickLocalModel({ platform: 'linux', arch: 'x64', cpu: 'x', cores: 8, memGB: 32, appleSilicon: false }).model).toBe('gpt-oss:20b'); // fast on CPU: mixture of experts
     expect(pickLocalModel({ platform: 'linux', arch: 'x64', cpu: 'x', cores: 2, memGB: 4, appleSilicon: false }).runtime).toBe('none');
   });
   it('stops at the spending cap', async () => {

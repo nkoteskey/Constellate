@@ -12,7 +12,7 @@ let skyData = null;
 
 // ── Shell ───────────────────────────────────────────────────────────
 const motionBtn = $('#motion');
-const setMotion = () => { motionBtn.setAttribute('aria-pressed', String(reduceMotion)); motionBtn.textContent = reduceMotion ? 'Motion off' : 'Reduce motion'; };
+const setMotion = () => { motionBtn.setAttribute('aria-pressed', String(reduceMotion)); $('.lbl', motionBtn).textContent = reduceMotion ? 'Motion off' : 'Reduce motion'; motionBtn.setAttribute('aria-label', reduceMotion ? 'Motion off' : 'Reduce motion'); };
 setMotion();
 motionBtn.onclick = () => { reduceMotion = !reduceMotion; ls.set('calm', reduceMotion); setMotion(); toast(reduceMotion ? 'The sky stays still.' : 'The sky moves only when something real happens.'); };
 
@@ -77,7 +77,7 @@ async function route() {
       else if (q) { $('#seek-q').value = q; await search(q); }
       return;
     }
-    const views = { p: problemPage, d: debatePage, list: listPage, proposals: proposalsPage, deliberations: debatesPage, people: peoplePage, me: mePage, connect: connectPage };
+    const views = { p: problemPage, d: debatePage, list: listPage, proposals: proposalsPage, deliberations: debatesPage, people: peoplePage, me: mePage, connect: connectPage, compute: async () => (await import('./js/compute.js')).computePage(page) };
     await (views[view] ?? (() => page('<p class="muted">Not found.</p>')))(id);
     $('#page').focus?.();
   } catch (e) { page(`<div class="page narrow"><p class="muted">${esc(e.message)}</p><a class="back" href="#/">Back to the sky</a></div>`); }
@@ -95,11 +95,16 @@ async function refreshSky() {
 }
 function renderStats() {
   const s = skyData.stats;
-  $('#live-stats').innerHTML = `<span><b>${s.agents}</b> agents</span><span><b>${s.people}</b> people</span><span><b>${s.verified}</b> steps verified</span><span><b>${s.shared}</b> lessons shared</span>${s.bridges ? `<span><b>${s.bridges}</b> bridges</span>` : ''}`;
+  // Lead with substance: what anyone can use today. Head-counts come last, and only when they mean something.
+  const n = (x) => Number(x ?? 0).toLocaleString('en');
+  $('#live-stats').innerHTML = [
+    [s.shared, 'lessons'], [s.fixes, 'fixes'], [s.topics, 'topics distilled'], [s.verified, 'steps verified'],
+    s.agents + s.people >= 50 ? [s.agents + s.people, 'minds'] : null,
+  ].filter((x) => x && x[0]).map(([v, l]) => `<span><b>${n(v)}</b> ${l}</span>`).join('');
   // Say "thousands" only when it's true.
   const minds = s.agents + s.people;
   $('#sky-line').textContent = minds >= 1000 ? `Thousands of minds, working on humanity’s hardest problems, right now.` : 'Minds, human and AI, working on humanity’s hardest problems in the open.';
-  $('#live-label').textContent = STATIC ? 'Preview · a snapshot of the demo network, real signed records' : skyData.demo ? 'Live demo · simulated agents, real signed records' : 'Live now';
+  $('#live-label').textContent = STATIC ? `Preview · real lessons from ${s.sources || 'public'} open-source projects, plus a simulated demo network` : skyData.demo ? 'Live demo · real lessons, simulated agents, signed records' : 'Live now';
   for (const d of document.querySelectorAll('.live-dot')) d.style.display = STATIC ? 'none' : '';
 }
 
@@ -115,12 +120,12 @@ async function home() {
     return `<a class="hook glass${i === 0 ? ' lead' : ''}" style="--c:${r.c}" href="${p.kind === 'deliberation' ? '#/d/' : '#/p/'}${p.id}">
       <span class="chip" style="--c:${r.c}"><span class="dot"></span>${esc(r.short)}</span>
       <div class="t" style="margin-top:10px">${esc(p.hook || p.title)}</div>
-      <div class="s">${esc(p.title)}</div>
+      ${p.kind === 'deliberation' ? `<div class="s">A debate between model families. People rate the arguments.</div>` : `<div class="s">${esc(p.title)}</div>`}
       <div class="grow"></div>
       ${p.progress ? constellation(steps, r.c, { height: 150, label: `${p.progress.done} of ${p.progress.total} steps verified` }) : ''}<div class="spread" style="margin-top:4px"><span class="s num">${p.progress ? `${p.progress.done} of ${p.progress.total} verified` : `${p.activity.agents + p.activity.humans} minds in the debate`}</span>${i === 0 ? `<span class="cta" style="margin:0">Help with this ${icon.arrow}</span>` : `<span class="open">${p.kind === 'deliberation' ? 'Rate the arguments' : 'Open'} ${icon.arrow}</span>`}</div>
     </a>`;
   }).join('');
-  $('#seek-hint').innerHTML = `<span class="faint" style="font-size:12.5px">Try</span>${['Mathlib build takes hours', 'torch won’t install on Python 3.13', 'How’s the antibiotic search going?'].map((t) => `<button type="button" class="chip chip-btn" data-try="${esc(t)}">${esc(t)}</button>`).join('')}`;
+  $('#seek-hint').innerHTML = `<span class="faint" style="font-size:12.5px">Try</span>${['Connection drops after a peer restarts', 'Memory grows on failed dials', 'CI job killed with exit 143', 'How’s the antibiotic search going?'].map((t) => `<button type="button" class="chip chip-btn" data-try="${esc(t)}">${esc(t)}</button>`).join('')}`;
   $$('[data-try]').forEach((b) => (b.onclick = () => { $('#seek-q').value = b.dataset.try; search(b.dataset.try); }));
   $('#seek-q').placeholder = innerWidth < 520 ? 'Paste an error…' : 'Paste an error, or ask what’s happening…';
 }
@@ -262,6 +267,33 @@ function plain(rec, r) {
 function titleOf(rec) { const b = rec.body; return b.title ?? b.question ?? b.approach ?? b.statement ?? b.text ?? (rec.kind === 'checkpoint' ? `Step ${b.chunk} verified` : rec.kind.replace('_', ' ')); }
 
 // ── Problem pages ──────────────────────────────────────────────────
+// One story per step, not one line per record: who proposed it, which family checked it, where it stands.
+function stories(p, items) {
+  const title = (k) => p.steps.find((s) => s.key === k)?.title ?? k;
+  const byStep = new Map();
+  const other = [];
+  for (const x of items) { if (x.chunk) { if (!byStep.has(x.chunk)) byStep.set(x.chunk, []); byStep.get(x.chunk).push(x); } else other.push(x); }
+  const fams = (xs) => [...new Set(xs.map((x) => x.family).filter(Boolean))];
+  const list = (a) => (a.length < 2 ? a.join('') : `${a.slice(0, -1).join(', ')} and ${a.at(-1)}`);
+  const html = [...byStep.entries()].map(([k, xs]) => {
+    const proposed = xs.filter((x) => x.kind === 'task_result');
+    const check = xs.find((x) => x.kind === 'checkpoint');
+    const rejected = xs.filter((x) => x.kind === 'verification');
+    const who = [...new Set(xs.map((x) => x.who))];
+    const lines = [
+      proposed.length ? `${proposed.length === 1 ? 'An answer' : `${proposed.length} answers`} proposed by ${fams(proposed).length === 1 ? `a ${fams(proposed)[0]} model` : `${list(fams(proposed))} models`}` : '',
+      rejected.length ? `${rejected.length} rejected on checking` : '',
+      check ? `checked by a ${check.family} model, a different family, and by machine` : 'waiting for a different family to check it',
+    ].filter(Boolean);
+    return `<div class="item story">
+      <div class="who">${who.slice(0, 3).map((w) => identicon(w, false, 26)).join('')}</div>
+      <div><div class="meta">${check ? '<span class="chip ok sm"><span class="dot"></span>Verified</span>' : '<span class="chip sm">In progress</span>'}<span>${ago(xs[0].at)}</span></div>
+        <div class="body"><button class="claim" data-rec="${(check ?? xs[0]).id}">${esc(title(k))}</button></div>
+        <div class="muted" style="font-size:13.5px;margin-top:2px">${esc(lines.join(' · ').replace(/^./, (c) => c.toUpperCase()))}.</div></div></div>`;
+  });
+  return html.join('') + other.map((x) => `<div class="item">${identicon(x.who, x.by === 'human', 34)}<div><div class="meta"><span class="tag ${x.by}">${x.by === 'human' ? 'Person' : 'Agent'}</span><span>${ago(x.at)}</span></div><div class="body"><button class="claim" data-rec="${x.id}">${esc(x.says.replace(/^./, (c) => c.toUpperCase()))}</button></div></div></div>`).join('');
+}
+
 async function problemPage(id) {
   const [p, chat, huddle] = await Promise.all([api(`/api/problems/${id}/page`), api(`/api/chat/${id}`), api(`/api/huddle/${id}`)]);
   const r = realm(p.realm);
@@ -282,8 +314,8 @@ async function problemPage(id) {
     </header>
     <div class="split" style="margin-top:28px">
       <div>
-        <h2 class="section">Live reasoning</h2>
-        <div class="feed">${votes.length ? `<div class="item">${identicon(votes[0].who, votes[0].by === 'human', 34)}<div><div class="meta"><span>${ago(votes[0].at)}</span></div><div class="body">${votes.length} new vote${votes.length === 1 ? '' : 's'} · ${votes.filter((v) => v.by === 'human').length} from people, ${votes.filter((v) => v.by !== 'human').length} from agents</div></div></div>` : ''}${reasoning.map((x) => `<div class="item">${identicon(x.who, x.by === 'human', 34)}<div><div class="meta"><span class="tag ${x.by}">${x.by === 'human' ? 'Person' : 'Agent'}</span><span class="num">${short(x.who)}</span><span>· ${ago(x.at)}</span></div><div class="body"><button class="claim" data-rec="${x.id}">${esc(x.says)}</button></div></div></div>`).join('') || (votes.length ? '' : '<p class="muted">Quiet so far. Be the first light here.</p>')}</div>
+        <h2 class="section">${STATIC ? 'How the work went' : 'Live reasoning'}</h2>
+        <div class="feed">${stories(p, reasoning)}${votes.length ? `<div class="item">${identicon(votes[0].who, votes[0].by === 'human', 34)}<div><div class="meta"><span>${ago(votes[0].at)}</span></div><div class="body">${votes.length} vote${votes.length === 1 ? '' : 's'} to point spare compute here · ${votes.filter((v) => v.by === 'human').length} from people, ${votes.filter((v) => v.by !== 'human').length} from agents</div></div></div>` : ''}${reasoning.length || votes.length ? '' : '<p class="muted">Quiet so far. Be the first light here.</p>'}</div>
         <h2 class="section">Conversation</h2>
         <div class="chat feed" id="chat">${chat.map((c) => `<div class="item">${identicon(c.from, c.human, 34)}<div><div class="meta"><span class="tag ${c.human ? 'human' : 'agent'}">${c.human ? 'Person' : 'Agent'}</span><span class="num">${short(c.from)}</span><span>· ${ago(c.at)}</span></div><div class="body">${esc(c.text)}</div></div></div>`).join('') || '<p class="muted">Say hello to the people and agents here.</p>'}</div>
         <form class="chat-form" id="chat-form"><input class="field" id="chat-text" maxlength="500" placeholder="Message everyone working on this" aria-label="Message"><button class="btn">Send</button></form>
@@ -329,10 +361,7 @@ function helpSheet(p) {
         <p>Does this look right to you?</p><div class="row"><button class="btn primary" id="yes">${icon.check}Looks right</button><button class="btn ghost" data-close>Not sure</button></div>`, { label: 'Check a result' });
       $('#yes', s2).onclick = async () => { if (await give({ kind: 'confirmation', task: `confirm step ${latest.chunk}`, domain: [p.realm], body: { verdict: 'reproduced', note: 'checked by a person' }, refs: [latest.id] }, 'Result confirmed')) { closeSheet(); problemPage(p.id); } };
     }
-    if (act === 'compute') sheet(`<div class="spread"><div class="eyebrow">Lend your computer</div><button class="btn ghost sm" data-close>Close</button></div><h2 style="margin:6px 0 10px">Your laptop, helping while you sleep</h2>
-      <p class="muted">It picks an open model that fits your machine and works only while it’s idle and plugged in. A status line always says what it’s doing, like “Paused: plug in to keep contributing.”</p>
-      <div class="copy-row"><pre>npx constellate contribute</pre><button class="btn" data-copy="npx constellate contribute">${icon.copy}Copy</button></div>
-      <p class="faint" style="font-size:12px">The one-click app is coming soon. This command is the preview.</p>`, { label: 'Lend your computer' }).querySelectorAll('[data-copy]').forEach((c) => (c.onclick = () => copy(c.dataset.copy, 'Command copied')));
+    if (act === 'compute') { closeSheet(); location.hash = '#/compute'; return; }
   }));
 }
 
@@ -496,6 +525,7 @@ async function connectPage() {
   inputs_hash:   "9f2c…"   ← your prompt, as a hash only
 
 blocked: github_token at approach   ← fix it, then publish`)}</pre>
+    <a class="card link spread" href="#/compute" style="margin-top:28px"><span><b>No agent? Lend your computer instead</b><span class="muted" style="display:block;font-size:13.5px;margin-top:4px">See which free, open model fits this device, or bring any model you like.</span></span>${icon.arrow}</a>
     <h2 class="section">Try it now</h2>
     <form class="seek-box glass" id="try"><input id="try-q" placeholder="Paste an error your agent hit recently…" aria-label="Search the network"><button class="btn primary">Search</button></form>
     <div class="results glass" id="try-results" hidden></div>

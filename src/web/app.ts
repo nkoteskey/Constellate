@@ -96,6 +96,9 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
       verified: all.filter((s) => s.rec.kind === 'checkpoint').length,
       shared: all.filter((s) => s.rec.kind === 'failure' || s.rec.kind === 'answer').length,
       bridges: hub.graph.bridges().length,
+      fixes: all.filter((s) => s.rec.kind === 'answer').length,
+      topics: new Set(all.filter((s) => s.rec.kind === 'summary').map((s) => (s.rec.body as { cluster: string }).cluster)).size,
+      sources: new Set(all.flatMap((s) => s.rec.evidence).map((u) => u.match(/github\.com\/([\w.-]+\/[\w.-]+)\//)?.[1]).filter(Boolean)).size,
     };
     return { line: 'Thousands of minds, working on humanity\'s hardest problems, right now.', demo: process.env.CONSTELLATE_DEMO === '1', stats, realms: REALMS.map((r) => ({ id: r, ...REALM_INFO[r] })), problems, featured };
   });
@@ -150,10 +153,10 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
 
   web.route('GET', /^\/api\/problems\/([0-9a-f]{64})\/page$/, async (_r, m) => {
     const s = await hub.problems.summary(m[1]);
-    const recent = hub.node.store.referencing(m[1]).filter((r) => r.visibility === 'public').sort((a, b) => b.rec.created.localeCompare(a.rec.created)).slice(0, 20).map((r) => ({
-      id: r.rec.id, kind: r.rec.kind, at: r.rec.created, by: isHuman(r) ? 'human' : 'agent', who: r.rec.agent_id,
-      says: describe(r),
-    }));
+    const recent = hub.node.store.referencing(m[1]).filter((r) => r.visibility === 'public').sort((a, b) => b.rec.created.localeCompare(a.rec.created)).slice(0, 40).map((r) => {
+      const b = r.rec.body as { chunk?: string; family?: string; verifier_family?: string; ok?: boolean };
+      return { id: r.rec.id, kind: r.rec.kind, at: r.rec.created, by: isHuman(r) ? 'human' : 'agent', who: r.rec.agent_id, says: describe(r), chunk: b.chunk, family: b.verifier_family ?? b.family };
+    });
     const people = new Map<string, { id: string; type: string; contributions: number }>();
     for (const r of hub.node.store.referencing(m[1])) { const p = people.get(r.operatorId) ?? { id: r.operatorId, type: isHuman(r) ? 'human' : 'agent', contributions: 0 }; p.contributions++; people.set(r.operatorId, p); }
     const votes = hub.collective.tally(m[1]);
@@ -237,7 +240,7 @@ function describe(r: StoredRecord): string {
   const b = r.rec.body as Record<string, unknown>;
   switch (r.rec.kind) {
     case 'checkpoint': return `verified step ${b.chunk} (checked by a ${b.verifier_family} model)`;
-    case 'task_result': return `proposed an answer for step ${b.chunk} using ${b.model}`;
+    case 'task_result': return `proposed an answer for step ${b.chunk} using a ${b.family} model`;
     case 'verification': return `rejected an answer for step ${b.chunk}: ${String(b.reason).slice(0, 80)}`;
     case 'vote': return 'voted for this problem';
     case 'constitution_check': return b.ok ? 'constitution check passed' : `constitution check flagged: ${(b.findings as { rule: string }[]).map((f) => f.rule).join(', ')}`;

@@ -167,6 +167,16 @@ The knowledge graph existed but ran on almost no real links. Now:
 - **Search.** Matched words are highlighted, results can be filtered by project, and six failures are shown instead of four.
 - **Shareable.** Every signed record has a link (`#/r/<id>`) that opens it and checks its signature in the visitor's own browser. Searches stay in the address (`#/?q=…`), so a search can be shared or bookmarked.
 
+### Any model, the right free one for your device, and a closer-to-top-tier pass ✅
+- **Any model.** `--model provider/model` covers 16 providers. Local: Ollama, MLX, LM Studio, llama.cpp, vLLM. Hosted: Groq, OpenRouter, Hugging Face, Together, Mistral, DeepSeek, Gemini, OpenAI, xAI, Anthropic. Or any OpenAI-compatible URL (`custom/NAME --endpoint URL`). Keys are read from each provider's usual variable and never go into a record. Paid models stop at `--cap-cents`. The family is detected from the model name, so cross-family verification still holds.
+- **Free, open-weight models suggested by device.** One shared module (`src/web/public/js/models.js`) is used by both the app and the command line, so they always agree. It sizes models to the memory available (unified memory on Apple Silicon, graphics memory where there's a GPU, and only small or mixture-of-experts models on a processor alone), and leaves room for the person's own work. It suggests a main model plus a checker from a different family. Phones and small machines get free hosted options, or ways to help without any model.
+  - `constellate models` reads the hardware precisely, including NVIDIA GPUs via `nvidia-smi`, and prints the exact commands.
+  - The app's new **Lend your computer** page (`#/compute`) estimates the hardware from the browser (Apple chip or GPU name, cores, WebGPU). The person can correct it, and it shows the suggestion, the commands, and a picker for any provider.
+  - The model list is data, reviewed 2026-11-06.
+- **Front page leads with what's real.** It shows lessons, fixes, topics distilled and verified steps, and people are counted only once there are enough to mean something. The examples are real x0x errors, and the preview label says the lessons are real and the network is simulated.
+- **Problem pages tell one story per step:** who proposed it, which family checked it, and where it stands. Internal model names are hidden. A static snapshot shows real dates, not "minutes ago".
+- **Phone:** a compact header (Connect, plus a motion icon), a tab bar where all six tabs fit, and stats in a neat grid.
+
 ## Summary of what needs a human
 1. **Live x0x (blocks confidence in every phase):** run the gates against two real `x0xd` daemons. Confirm ML-DSA signature interop between `/agent/sign` and noble, `/stores` and `/task-lists` field names, contacts → pre-trusted operators, and Spaces/DMs for chat.
 2. **Gate 1 behaviour:** `ANTHROPIC_API_KEY=… npx tsx evals/gate1.ts 3`.

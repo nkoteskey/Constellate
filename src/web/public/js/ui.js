@@ -15,6 +15,8 @@ export const ls = {
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* private mode */ } },
 };
 export function ago(iso) {
+  // A static snapshot isn't live: show the date it happened, not a "minutes ago" that's already wrong.
+  if (STATIC) return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
   const m = Math.round((Date.now() - Date.parse(iso)) / 60000);
   return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`;
 }
