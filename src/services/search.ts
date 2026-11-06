@@ -33,8 +33,23 @@ export function bm25(query: string, docs: Doc[], opts: { tags?: string[] } = {})
   return out;
 }
 
-/** Overlap of version-ish tokens between two environment strings, 0..1. */
+/** name -> version pairs such as "serde 1.0.210" or "python3.13" or "rustc v1.95". */
+export function versions(env: string): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const m of env.toLowerCase().matchAll(/([a-z][a-z0-9_+-]*?)[\s@=v-]*?(\d+(?:\.\d+)+|\d+(?=\b))/g)) out.set(m[1].replace(/[-_]+$/, ''), m[2]);
+  return out;
+}
+
+const majorMinor = (v: string) => v.split('.').slice(0, 2).join('.');
+
+/**
+ * Similarity of two environments, 0..1. A shared component at a different
+ * major.minor version means "different conditions" (0): "broke on 2.1" is a
+ * fact about 2.1. Otherwise token overlap.
+ */
 export function envSimilarity(a: string, b: string): number {
+  const va = versions(a), vb = versions(b);
+  for (const [k, v] of va) { const w = vb.get(k); if (w !== undefined && majorMinor(w) !== majorMinor(v)) return 0; }
   const ta = new Set(tokens(a)), tb = new Set(tokens(b));
   if (!ta.size || !tb.size) return 0;
   let n = 0; for (const t of ta) if (tb.has(t)) n++;

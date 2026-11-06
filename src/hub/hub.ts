@@ -7,7 +7,9 @@ import { RecordBus, X0xBus } from '../transport/bus.js';
 import { LocalSigner, Signer } from '../core/identity.js';
 import { X0xClient, DaemonSigner } from '../x0x/client.js';
 import { Ledger } from '../services/ledger.js';
-import { FlatTrust, TrustModel } from '../services/trust.js';
+import { TrustModel } from '../services/trust.js';
+import { Reputation } from '../services/reputation.js';
+import { CtxInput, toContext } from '../services/ledger.js';
 import { LiveState } from './livestate.js';
 import { ScrubOptions } from '../privacy/scrub.js';
 import { OperatorClaim } from '../core/operator.js';
@@ -21,6 +23,9 @@ export interface HubOptions {
   operator?: OperatorClaim;
   privacy?: ScrubOptions;
   preview?: boolean;
+  /** Operator ids trusted a priori (x0x contacts marked trusted, colleagues). The local operator is always trusted. */
+  trusted?: string[];
+  now?: () => number;
 }
 
 /** Everything one agent's local hub offers, composed over one HubNode. */
@@ -30,18 +35,37 @@ export class Hub {
   readonly x0x?: X0xClient;
   readonly live: LiveState;
   trust: TrustModel;
+  readonly reputation: Reputation;
+  readonly trusted: Set<string>;
   readonly ledger: Ledger;
 
   constructor(o: HubOptions) {
     this.archive = o.archive ?? new LocalArchive();
     this.x0x = o.x0x;
     this.node = new HubNode({ signer: o.signer, store: o.store, bus: o.bus, archive: this.archive, operator: o.operator, privacy: o.privacy, preview: o.preview });
-    this.trust = new FlatTrust(this.node.store);
+    this.trusted = new Set(o.trusted ?? []);
+    this.reputation = new Reputation(this.node.store, { preTrusted: () => [this.node.operatorId, ...this.trusted], now: o.now });
+    this.trust = this.reputation;
     this.ledger = new Ledger(this.node, this.trust);
     this.live = new LiveState(this.node, this.archive, this.x0x);
   }
 
   setTrust(t: TrustModel) { this.trust = t; this.ledger.setTrust(t); }
+
+  /** Sign a confirmation: you hit the same failure, or verified the same answer. Confirmations, not votes. */
+  async confirm(id: string, ctx: Partial<CtxInput> & { note?: string } = {}, opts: { publish?: boolean } = {}) {
+    const target = this.node.store.get(id);
+    if (!target) throw new Error(`unknown record ${id}`);
+    if (target.operatorId === this.node.operatorId) throw new Error('you cannot confirm your own operator\'s records');
+    return this.node.submit({ kind: 'confirmation', refs: [id], context: toContext({ task: ctx.task ?? target.rec.context.task, domain: ctx.domain ?? target.rec.context.domain, environment: ctx.environment ?? target.rec.context.environment, inputs_text: ctx.inputs_text }), body: { verdict: 'reproduced', note: ctx.note ?? '' } }, opts);
+  }
+
+  /** Disagree with evidence. Both records stay visible with their environments; often both are right under different conditions. */
+  async contradict(id: string, reason: string, ctx: Partial<CtxInput> = {}, opts: { publish?: boolean } = {}) {
+    const target = this.node.store.get(id);
+    if (!target) throw new Error(`unknown record ${id}`);
+    return this.node.submit({ kind: 'contradiction', refs: [id], context: toContext({ task: ctx.task ?? target.rec.context.task, domain: ctx.domain ?? target.rec.context.domain, environment: ctx.environment ?? target.rec.context.environment, inputs_text: ctx.inputs_text }), body: { reason } }, opts);
+  }
 
   status() {
     const counts: Record<string, number> = {};

@@ -50,6 +50,37 @@ export function registerServiceTools(server: McpServer, hub: Hub) {
       summarise(await hub.ledger.submitAnswer(ctx, { question, answer, proof: { type: proof_type, detail: proof_detail } }, { publish, fixes })));
 }
 
+export function registerTrustTools(server: McpServer, hub: Hub) {
+  tool(server, 'records_confirm',
+    'Confirm another agent\'s failure or answer after you reproduced it yourself. This is the fastest way to earn reputation, and ten independent confirmations outrank a thousand unconfirmed reports. Free.',
+    { id: z.string(), environment: z.string().optional().describe('Your environment if it differs.'), note: z.string().optional(), ...publishShape },
+    async ({ id, environment, note, publish }) => summarise(await hub.confirm(id, { environment, note }, { publish })));
+
+  tool(server, 'records_contradict',
+    'Flag a record that did not hold for you, with the reason and your environment. Both records stay visible, because they are often both right under different conditions. Free.',
+    { id: z.string(), reason: z.string(), environment: z.string().describe('Your model, tools, versions, OS.'), ...publishShape },
+    async ({ id, reason, environment, publish }) => summarise(await hub.contradict(id, reason, { environment }, { publish })));
+
+  tool(server, 'records_explain',
+    'Show why a record is trusted or not: who made it, their reputation in this domain, confirmations, contradictions and the evidence. Free.',
+    { id: z.string() },
+    ({ id }) => {
+      const s = hub.node.store.get(id);
+      if (!s) throw new Error(`unknown record ${id}`);
+      return {
+        record: { id, kind: s.rec.kind, agent_id: s.rec.agent_id, operator: s.operatorId, created: s.rec.created, context: s.rec.context, body: s.rec.body, evidence: s.rec.evidence, refs: s.rec.refs },
+        trust: hub.trust.explain(s),
+        confirmations: hub.node.store.referencing(id, 'confirmation').map((c) => ({ operator: c.operatorId, environment: c.rec.context.environment, created: c.rec.created })),
+        contradictions: hub.node.store.referencing(id, 'contradiction').map((c) => ({ operator: c.operatorId, environment: c.rec.context.environment, reason: (c.rec.body as { reason: string }).reason })),
+      };
+    });
+
+  tool(server, 'reputation_get',
+    'Look up an operator\'s reputation overall and per domain (yours if no operator is given). Free.',
+    { operator: z.string().optional() },
+    ({ operator }) => hub.reputation.profile(operator ?? hub.node.operatorId));
+}
+
 export function summarise(r: { record: { id: string; kind: string }; published: boolean; preview?: { preview_id: string; wire_bytes: number } }) {
   return r.published
     ? { published: true, id: r.record.id, kind: r.record.kind }

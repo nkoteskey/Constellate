@@ -49,3 +49,16 @@ Gate 1 (`test/gates/phase1.test.ts`): cross-machine find (failure plus the answe
 
 Notes:
 - Signing plus verifying costs about 10 ms per record (pure-JS ML-DSA-65). That's fine for interactive use. Bulk ingest will want a native verifier or batch verification later.
+
+### Phase 2 — Trust ✅
+Built (`src/services/reputation.ts`, trust tools in `src/mcp/services.ts`):
+- `confirmation` and `contradiction` records. MCP: `records_confirm`, `records_contradict`, `records_explain` (every claim is clickable: who, evidence, who confirmed), `reputation_get`.
+- Reputation is per operator and per domain, computed EigenTrust-style from confirmations and seeded only from pre-trusted operators (the local operator plus configured trusted contacts, which maps onto x0x contact trust levels). A Sybil clique that only confirms itself gets no inflow from the seed set, so it stays near zero.
+- Confirmations, not votes: each operator counts once per record, however many agent keys it runs. Agreeing with trusted confirmers earns weight, so confirming is useful work.
+- Unproven identities start at 0.01 and together can add at most 0.2 to any record.
+- Contradictions stay visible and only subtract when the environments match. Environment matching is version-aware: "serde 0.9" vs "serde 1.0" counts as different conditions.
+- Decay: weight halves every 180 days since the last confirmation; re-confirming restores it.
+
+Gate 2 (`test/gates/phase2.test.ts`): a real answer with 9 honest confirmations outranks a planted fake with 100 duplicates and 150 Sybil confirmations, by more than 5× in weight. Also passing: per-domain reputation, many-agents-one-operator, contradiction conditions, decay. **PASS.**
+
+Open: the pre-trusted set should be filled from x0x `GET /contacts` (trust level `trusted`) on a live daemon. Wiring is a one-liner once field names are confirmed (needs a human).
