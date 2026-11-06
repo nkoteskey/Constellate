@@ -70,7 +70,13 @@ async function route() {
   const from = new URLSearchParams(query ?? '').get('from');
   if (from && view === 'p' && !ls.get(`invited:${id}`, false)) { ls.set(`invited:${id}`, true); const inv = $('#invite'); inv.hidden = false; inv.textContent = 'You were invited to help with this problem.'; setTimeout(() => (inv.hidden = true), 6000); }
   try {
-    if (!view) return await home();
+    const q = new URLSearchParams(query ?? '').get('q');
+    if (!view || view === 'r') {
+      await home();
+      if (view === 'r' && /^[0-9a-f]{64}$/.test(id ?? '')) await openRecord(id);
+      else if (q) { $('#seek-q').value = q; await search(q); }
+      return;
+    }
     const views = { p: problemPage, d: debatePage, list: listPage, proposals: proposalsPage, deliberations: debatesPage, people: peoplePage, me: mePage, connect: connectPage };
     await (views[view] ?? (() => page('<p class="muted">Not found.</p>')))(id);
     $('#page').focus?.();
@@ -126,6 +132,8 @@ $('#seek-q').addEventListener('input', (e) => { clearTimeout(seekTimer); const q
 $('#seek-q').addEventListener('focus', () => { if (STATIC) import('./js/static.js').then((m) => m.warm()); }, { once: true });
 $('#seek').onsubmit = (e) => { e.preventDefault(); const q = $('#seek-q').value.trim(); if (q) search(q); };
 async function search(q) {
+  // Keep the search in the address, so it can be shared or bookmarked (no reload, no history spam).
+  history.replaceState(null, '', `#/?q=${encodeURIComponent(q)}`);
   const box = $('#results');
   box.hidden = false; box.innerHTML = `<div class="result muted">Searching what every agent has learned…</div>`;
   const r = await api(`/api/search?q=${encodeURIComponent(q)}`).catch((e) => ({ error: e.message }));
@@ -203,9 +211,11 @@ function bindHelped(root) {
 
 // ── Every claim is clickable ──────────────────────────────────────
 function bindClaims(root = document) {
-  $$('[data-rec]', root).forEach((b) => (b.onclick = async (e) => {
-    e.preventDefault();
-    const r = await api(`/api/records/${b.dataset.rec}`);
+  $$('[data-rec]', root).forEach((b) => (b.onclick = (e) => { e.preventDefault(); openRecord(b.dataset.rec); }));
+}
+async function openRecord(recId) {
+  {
+    const r = await api(`/api/records/${recId}`);
     const rec = r.record;
     const w = Math.min(1, r.trust.weight / 2);
     const el = sheet(`<div class="spread"><div class="eyebrow">Where this came from</div><button class="btn ghost sm" data-close>Close</button></div>
@@ -222,7 +232,7 @@ function bindClaims(root = document) {
       <details class="raw"><summary>Show the signed data</summary><pre class="code">${esc(JSON.stringify(rec.body, null, 2)).slice(0, 2200)}</pre></details>
       ${rec.evidence.length ? `<h3 class="eyebrow" style="margin-top:16px">Evidence</h3><div class="stack" style="margin-top:8px">${rec.evidence.map((u) => /^https?:/.test(u) ? `<a href="${esc(u)}" target="_blank" rel="noopener">${esc(u.replace(/^https?:\/\//, ''))}</a>` : `<code>${esc(u)}</code>`).join('')}</div>` : ''}
       ${r.neighbours.length ? `<h3 class="eyebrow" style="margin-top:16px">Strongest links</h3><div class="stack" style="margin-top:8px">${r.neighbours.map((n) => `<div><span class="faint">${esc(LINK[n.link] ?? n.link)}</span> <button class="claim" data-rec="${n.id}">${esc(n.title || n.kind)}</button></div>`).join('')}</div>` : ''}
-      <p class="faint num" style="font-size:12px;margin-top:16px">Signed record ${esc(rec.id)}</p>
+      <div class="spread" style="margin-top:16px"><p class="faint num" style="font-size:12px;margin:0">Signed record ${esc(rec.id)}</p><button class="btn ghost sm" id="copy-rec">Copy link</button></div>
       <div id="verify" class="row" style="font-size:13px;margin-top:4px"><span class="faint">Checking the signature in your browser…</span></div>`, { label: 'Where this came from' });
     // Distrust by default: check the signature here, not on anyone's word.
     setTimeout(async () => {
@@ -230,8 +240,9 @@ function bindClaims(root = document) {
       const out = el.querySelector('#verify');
       if (out) out.innerHTML = v.ok ? `<span class="chip ok"><span class="dot"></span>Signature verified in your browser</span><span class="faint">ML-DSA-65, post-quantum</span>` : `<span class="chip stop"><span class="dot"></span>Does not verify: ${esc(v.reason)}</span>`;
     }, 30);
+    $('#copy-rec', el).onclick = () => copy(`${location.href.split('#')[0]}#/r/${rec.id}`, 'Link copied. Anyone can open it and check the signature themselves');
     bindClaims(el);
-  }));
+  }
 }
 const LINK = { buildsOn: 'builds on', fixes: 'fixes', contradicts: 'contradicts', confirms: 'confirms', inspiredBy: 'inspired by', sameAs: 'same as' };
 function plain(rec, r) {

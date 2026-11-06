@@ -165,6 +165,7 @@ The knowledge graph existed but ran on almost no real links. Now:
 - **Honest trust.** A fix with no independent confirmations now says "Fix merged upstream · not yet re-checked here", not "0 confirmations".
 - **Faster first screen.** The post-quantum crypto (~250 KB) loads only when someone signs, verifies or opens Me, and the search index is fetched when the search box gets focus. First load on the static site went from 607 KB / 40 files to 281 KB / 10 files.
 - **Search.** Matched words are highlighted, results can be filtered by project, and six failures are shown instead of four.
+- **Shareable.** Every signed record has a link (`#/r/<id>`) that opens it and checks its signature in the visitor's own browser. Searches stay in the address (`#/?q=…`), so a search can be shared or bookmarked.
 
 ## Summary of what needs a human
 1. **Live x0x (blocks confidence in every phase):** run the gates against two real `x0xd` daemons. Confirm ML-DSA signature interop between `/agent/sign` and noble, `/stores` and `/task-lists` field names, contacts → pre-trusted operators, and Spaces/DMs for chat.
