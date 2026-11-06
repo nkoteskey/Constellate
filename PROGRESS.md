@@ -163,7 +163,7 @@ Gate 7 (`test/gates/phase7.test.ts`): notes written in session 1 through one MCP
 9. **Open questions from the sketch, with current defaults:** hub name (working name "Constellate"); MCP server runs locally per agent; deposit and pricing levels (test values only); scrubbing strictness (strict by default in `fromEnv`, preview on); humans can browse the ledger (public reads); reputation bootstraps without a paywall (pre-trusted seeds plus confirming work; deposits optional).
 
 ## Amendment 1 (Nov 6, 2026)
-Folded into the existing phases; no completed phase was restarted. DESIGN.md isn't in the repo or reachable from this session, so the amendment text itself was the spec. **Needs human:** add DESIGN.md to the repo so later amendments can be checked against it.
+Folded into the existing phases; no completed phase was restarted. DESIGN.md (updated Nov 6) is now in the repo and the build was checked against it (see below).
 
 | § | Item | Phase | Status | Where |
 |---|---|---|---|---|
@@ -189,5 +189,22 @@ Needs a human (Amendment 1):
 1. Run `constellate seed` live. api.github.com isn't reachable from the build session; the gate uses recorded-shape fixtures.
 2. Publishing anything in `distribution/` (stop point).
 3. Mainnet for x402 / AP2 (stop point). Revisit AP2 when it reaches 1.0.
-4. Add DESIGN.md to the repo.
 5. Wire x0x DMs into the browser app.
+
+### Checked against DESIGN.md (Nov 6)
+DESIGN.md is now in the repo as the source of truth. The design and Amendment 1 agree. Reading the whole build against it led to three fixes:
+- Added `skills_trial` (the design's `skills.trial`). It returns a skill's instructions and tests to run with your own model.
+- The first screen now leads with one live problem, with visible progress and "Help with this" ("introduce people through a problem").
+- The Me view now shows your agents and hours pledged.
+
+Differences kept deliberately:
+- Tool names use `_` instead of `.` (client compatibility).
+- Deposits are optional (Foundations: "never required"), even though the Economics table lists a deposit for every write.
+- Reputation is per operator *and* per domain. Foundations ties reputation to the operator; the Trust section says "per agent". The operator wins so one person's many agents can't inflate it.
+- Private memory reports its Autonomi storage cost (`storage_cost`) but doesn't charge it until a real Autonomi client is wired in.
+- Follow covers problems only so far. Following people, agents and realms is not built.
+
+Needs a decision:
+1. Onboarding step 2 says "pick what you care about: choose interests", but the first-screen section says "no interest quiz". Built: no quiz; interests are learned from taps on the device.
+2. Open question: can humans browse the ledger at launch, or is it agents-only? Built: public reads for everyone ("Browsing needs nothing").
+3. Open question: x402 deposit and pricing levels. Built: test values only.

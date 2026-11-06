@@ -136,6 +136,10 @@ export function registerEconomyTools(server: McpServer, hub: Hub) {
     'Fetch a skill\'s instructions and test cases so you can trial it with your own model. Run nothing you do not understand. Free.',
     { id: z.string() },
     ({ id }) => { const s = hub.node.store.get(id); if (s?.rec.kind !== 'skill') throw new Error('unknown skill'); return { id, ...s.rec.body, author: s.rec.agent_id }; });
+  tool(server, 'skills_trial',
+    'Trial a skill before using it: returns its instructions and test cases to run with your own model, so nothing foreign runs on your machine. Report the outcome with skills_record_run. Free.',
+    { id: z.string() },
+    ({ id }) => { const s = hub.node.store.get(id); if (s?.rec.kind !== 'skill') throw new Error('unknown skill'); const b = s.rec.body as { instructions: string; tests: unknown[]; verifier: string; price: number }; return { id, instructions: b.instructions, tests: b.tests, verifier: b.verifier, price_per_use: b.price, then: 'Run each test input through the instructions, check it, then call skills_record_run with mode "trial".' }; });
   tool(server, 'skills_record_run',
     'Record a signed trial or use of a skill (passed/total on its test cases). This is the skill\'s proof of past runs; failing runs warn others. Free.',
     { id: z.string(), mode: z.enum(['trial', 'use']), passed: z.number().int().min(0), total: z.number().int().min(1), model: z.string() },

@@ -75,7 +75,7 @@ async function loadSky() { sky = await api('/api/sky'); threads = (await api('/a
 function layout() {
   const W = canvas.clientWidth, H = canvas.clientHeight;
   const realms = sky.realms;
-  const cx = W / 2, cy = H * 0.52, R = Math.min(W, H) * 0.36;
+  const cx = W / 2, cy = H * 0.45, R = Math.min(W, H) * 0.3; // keep nebulae clear of the header line and the featured cards
   nebulae = sky.problems.map((p) => {
     const ri = Math.max(0, realms.findIndex((r) => r.id === p.realm));
     const weight = 1 + (interests[p.realm] ?? 0) * 0.15; // the sky slowly arranges itself around what you linger on
@@ -145,7 +145,8 @@ async function showSky() {
   $('#sky-line').textContent = sky.line;
   const byInterest = [...sky.problems].sort((a, b) => (interests[b.realm] ?? 0) - (interests[a.realm] ?? 0));
   const featured = [...new Set([...sky.featured, ...byInterest.filter((p) => p.hook).map((p) => p.id)])].slice(0, 3).map((id) => sky.problems.find((p) => p.id === id));
-  $('#featured').innerHTML = featured.map((p) => `<a href="${p.kind === 'deliberation' ? '#/d/' : '#/p/'}${p.id}"><span class="serif">${esc(p.hook || p.title)}</span><small>${esc(p.title)}</small></a>`).join('');
+  // Introduce people through a problem: the lead card shows live progress and one "Help with this".
+  $('#featured').innerHTML = featured.map((p, i) => `<a href="${p.kind === 'deliberation' ? '#/d/' : '#/p/'}${p.id}"${i === 0 ? ' class="lead"' : ''}><span class="serif">${esc(p.hook || p.title)}</span><small>${esc(p.title)}</small>${i === 0 && p.progress ? `<span class="bar" aria-label="${p.progress.done} of ${p.progress.total} verified">${Array.from({ length: p.progress.total }, (_, k) => `<i class="${k < p.progress.done ? 'done' : ''}"></i>`).join('')}</span><span class="cta">Help with this</span>` : ''}</a>`).join('');
   layout(); drawSky();
 }
 
@@ -287,7 +288,8 @@ async function mePage(id) {
   const digest = mine ? await api(`/api/digest?follow=${ls.get('follow', []).join(',')}`) : null;
   page(`<h1>${mine ? 'Me' : 'Contributor'}</h1>
     <p><span class="who human">${esc(who.slice(0, 16))}</span></p>
-    <div class="row"><div class="card"><b>${me.contributions}</b><br><span class="muted">contributions</span></div><div class="card"><b>${me.reputation.overall}</b><br><span class="muted">reputation</span></div><div class="card"><b>${(me.credit / 1e6).toFixed(2)}</b><br><span class="muted">credit earned</span></div></div>
+    <div class="row"><div class="card"><b>${me.contributions}</b><br><span class="muted">contributions</span></div><div class="card"><b>${me.reputation.overall}</b><br><span class="muted">reputation</span></div><div class="card"><b>${(me.credit / 1e6).toFixed(2)}</b><br><span class="muted">credit earned</span></div><div class="card"><b>${me.pledged_hours}</b><br><span class="muted">hours pledged a week</span></div></div>
+    ${me.agents.length ? `<h2>${mine ? 'Your' : 'Their'} agents</h2>${me.agents.map((a) => `<div class="card"><span class="who ${a.human ? 'human' : 'agent'}">${esc(a.id.slice(0, 16))}</span> <span class="muted">${a.records} records</span></div>`).join('')}` : ''}
     <h2>What ${mine ? 'your' : 'their'} contributions helped</h2>${me.helped.map((h) => `<div class="card"><a href="#/p/${h.id}">${esc(h.title)}</a></div>`).join('') || '<p class="muted">Nothing yet.</p>'}
     ${mine ? `<h2>Your light in the sky</h2><p class="muted">Share a link that shows what you helped with.</p><pre>${esc(location.origin)}/#/me/${who}</pre>
     <h2>Digest</h2><pre>${esc(digest.text)}</pre>

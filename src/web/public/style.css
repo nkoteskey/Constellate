@@ -72,3 +72,7 @@ pre { white-space: pre-wrap; background: var(--panel-2); padding: 12px; border-r
 .chat .msg { padding: 6px 0; border-bottom: 1px solid var(--line); }
 .chat-form { display: flex; gap: 8px; margin-top: 8px; }
 .chat-form input { flex: 1; min-width: 0; background: var(--panel-2); color: var(--fg); border: 1px solid var(--line); border-radius: 999px; padding: 8px 14px; font: inherit; }
+
+.featured a.lead { border-color: var(--human); }
+.featured a .bar { margin: 8px 0 6px; }
+.featured a .cta { display: inline-block; margin-top: 2px; color: var(--human); font-weight: 600; font-size: 14px; }
