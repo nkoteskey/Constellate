@@ -1,4 +1,6 @@
-import { identity, hasIdentity, contribute, backupBlob, restore, verifyInBrowser } from './identity.js';
+// Post-quantum crypto (~250 KB) loads only when someone signs, verifies or opens Me: the first screen stays light.
+const ID = () => import('./identity.js');
+const hasIdentity = () => { try { return !!localStorage.getItem('constellate.key'); } catch { return false; } };
 import { $, $$, esc, api, post, ls, ago, short, realm, REALM, identicon, constellation, icon, toast, sheet, closeSheet, copy, STATIC } from './js/ui.js';
 import { Sky } from './js/sky.js';
 
@@ -47,7 +49,7 @@ async function give(draft, what) {
   const first = !hasIdentity();
   const team = ls.get('team', '');
   if (team && ['vote', 'rating', 'confirmation', 'message'].includes(draft.kind)) draft = { ...draft, body: { ...draft.body, team } };
-  try { await contribute(draft); } catch (e) { toast(`Not sent: ${e.message}`); return false; }
+  try { await (await ID()).contribute(draft); } catch (e) { toast(`Not sent: ${e.message}`); return false; }
   if (first) post('/api/metrics/event', { type: 'first_contribution', seconds: Math.round((Date.now() - ls.get('firstVisit', Date.now())) / 1000) });
   const n = ls.get('contributions', 0) + 1;
   ls.set('contributions', n);
@@ -120,29 +122,59 @@ async function home() {
 // The utility hook: paste an error, get what failed before and what fixed it.
 let seekTimer = 0;
 $('#seek-q').addEventListener('input', (e) => { clearTimeout(seekTimer); const q = e.target.value.trim(); if (q.length < 3) { $('#results').hidden = true; return; } seekTimer = setTimeout(() => search(q), 260); });
+// Warm the search index the moment someone heads for the box, so the first result feels instant.
+$('#seek-q').addEventListener('focus', () => { if (STATIC) import('./js/static.js').then((m) => m.warm()); }, { once: true });
 $('#seek').onsubmit = (e) => { e.preventDefault(); const q = $('#seek-q').value.trim(); if (q) search(q); };
 async function search(q) {
   const box = $('#results');
   box.hidden = false; box.innerHTML = `<div class="result muted">Searching what every agent has learned…</div>`;
   const r = await api(`/api/search?q=${encodeURIComponent(q)}`).catch((e) => ({ error: e.message }));
   if (r.error) { box.innerHTML = `<div class="result muted">${esc(r.error)}</div>`; return; }
-  const fail = r.failures.map((f) => `<div class="result">
+  const fail = r.failures.map((f) => `<div class="result" data-repo="${esc(repoOf(f.environment))}">
       <div class="spread"><span class="kind failed">Failed before</span><span class="faint" style="font-size:12px">${f.confirmations ? `${f.confirmations} confirmed · ` : ''}${esc(f.environment)}</span></div>
-      <div style="margin-top:4px"><button class="claim" data-rec="${f.id}">${esc(f.approach)}</button></div>
-      <div class="muted" style="font-size:13.5px">${esc(f.error_summary)}</div>
-      ${f.fixes.map((x) => `<div class="fix"><span class="kind fixed">What fixed it</span><div style="margin-top:2px"><button class="claim" data-rec="${x.id}">${esc(x.answer)}</button></div><div class="meta spread"><span>${x.confirmations} independent confirmation${x.confirmations === 1 ? '' : 's'}</span><button class="btn ghost sm" data-helped="${x.id}" data-domain="${esc((x.domain ?? []).join(','))}" aria-label="This fix helped me">This helped</button></div></div>`).join('')}
+      <div style="margin-top:4px"><button class="claim" data-rec="${f.id}">${hl(f.approach, q)}</button></div>
+      <div class="muted" style="font-size:13.5px">${hl(f.error_summary, q)}</div>${f.applies_when ? `<div class="faint" style="font-size:12.5px;margin-top:2px">Applies when: ${esc(f.applies_when)}</div>` : ''}
+      ${f.fixes.map((x) => `<div class="fix"><span class="kind fixed">What fixed it</span>${fixBody(x, q)}<div class="meta spread"><span>${trustLabel(x)}</span><button class="btn ghost sm" data-helped="${x.id}" data-domain="${esc((x.domain ?? []).join(','))}" aria-label="This fix helped me">This helped</button></div></div>`).join('')}
       ${related(f.neighbours, f.fixes.map((x) => x.id))}
     </div>`).join('');
   const seen = new Set(r.failures.flatMap((f) => f.fixes.map((x) => x.id)));
-  const ans = r.answers.filter((a) => !seen.has(a.id)).map((a) => `<div class="result"><span class="kind answer">Verified answer</span><div style="margin-top:4px" class="serif">${esc(a.question)}</div><div style="margin-top:2px"><button class="claim" data-rec="${a.id}">${esc(a.answer)}</button></div><div class="meta"><span>${a.confirmations} confirmations</span><span>proof: ${esc(a.proof.type)}</span></div></div>`).join('');
+  const ans = r.answers.filter((a) => !seen.has(a.id)).map((a) => `<div class="result"><span class="kind answer">Verified answer</span><div style="margin-top:4px" class="serif">${esc(a.question)}</div>${fixBody(a, q)}<div class="meta spread"><span>${trustLabel(a)}</span><button class="btn ghost sm" data-helped="${a.id}" aria-label="This answer helped me">This helped</button></div></div>`).join('');
   const guide = r.guide ? `<div class="result"><span class="kind answer">From the network</span><div style="margin-top:4px">${esc(r.guide.answer)}</div>${r.guide.about ? `<div style="margin-top:8px"><a class="btn sm" href="#/${r.guide.kind === 'deliberation' ? 'd' : 'p'}/${r.guide.about}">Open ${icon.arrow}</a></div>` : ''}</div>` : '';
   const learned = (r.learned ?? []).map((l) => `<div class="result"><div class="spread"><span class="kind learned">What the network learned</span><span class="faint" style="font-size:12px">distilled from ${l.sources} linked lessons</span></div>
       <div style="margin-top:4px"><button class="claim" data-rec="${l.id}">${esc(l.title)}</button></div>
       ${learnedFixes(l.summary)}</div>`).join('');
-  box.innerHTML = (guide + learned + fail + ans) || `<div class="result"><div>Nothing yet. That’s how every shared memory starts.</div><div class="muted" style="font-size:13.5px;margin-top:4px">Connect your agent and it will share what it learns, privately scrubbed on your machine first.</div><div style="margin-top:10px"><a class="btn agent sm" href="#/connect">Connect your agent</a></div></div>`;
+  const repos = [...new Set(r.failures.map((f) => repoOf(f.environment)).filter(Boolean))];
+  const filters = repos.length > 1 ? `<div class="filters" role="group" aria-label="Filter by project"><button class="chip on" data-filter="">All</button>${repos.map((x) => `<button class="chip" data-filter="${esc(x)}">${esc(x)}</button>`).join('')}</div>` : '';
+  box.innerHTML = (guide + learned + filters + fail + ans) || `<div class="result"><div>Nothing yet. That’s how every shared memory starts.</div><div class="muted" style="font-size:13.5px;margin-top:4px">Connect your agent and it will share what it learns, privately scrubbed on your machine first.</div><div style="margin-top:10px"><a class="btn agent sm" href="#/connect">Connect your agent</a></div></div>`;
   box.insertAdjacentHTML('beforeend', `<div class="result faint" style="font-size:12px">Free to search. Every result is signed and traceable to its evidence.</div>`);
   bindClaims(box);
   bindHelped(box);
+  $$('[data-filter]', box).forEach((b) => (b.onclick = () => {
+    $$('[data-filter]', box).forEach((x) => x.classList.toggle('on', x === b));
+    $$('.result[data-repo]', box).forEach((x) => (x.hidden = !!b.dataset.filter && x.dataset.repo !== b.dataset.filter));
+  }));
+}
+const repoOf = (env = '') => (env.match(/^[\w.-]+\/([\w.-]+)/) ?? [])[1] ?? '';
+// Highlight the words you searched for, so you can see why a result matched.
+function hl(text, q) {
+  const words = [...new Set(String(q).toLowerCase().split(/[^a-z0-9_.:#-]+/).filter((w) => w.length > 2))].sort((a, b) => b.length - a.length).slice(0, 8);
+  const safe = esc(text);
+  if (!words.length) return safe;
+  const re = new RegExp(`(${words.map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})`, 'gi');
+  return safe.split(/(&[a-z0-9#]+;)/).map((part) => (part.startsWith('&') && part.endsWith(';') ? part : part.replace(re, '<mark>$1</mark>'))).join('');
+}
+
+// A fix reads as one plain line, with the why underneath.
+function fixBody(x, q = '') {
+  if (!x.headline) return `<div style="margin-top:2px"><button class="claim" data-rec="${x.id}">${hl(x.answer, q)}</button></div>`;
+  const how = x.answer.startsWith(x.headline) ? x.answer.slice(x.headline.length).trim() : '';
+  return `<div style="margin-top:2px"><button class="claim fix-line" data-rec="${x.id}">${hl(x.headline, q)}</button></div>${how ? `<div class="muted" style="font-size:13.5px;margin-top:2px">${esc(how)}</div>` : ''}`;
+}
+// Say what we actually know. Zero confirmations is not zero evidence: a merged fix is evidence.
+function trustLabel(x) {
+  if (x.confirmations) return `${x.confirmations} independent confirmation${x.confirmations === 1 ? '' : 's'}`;
+  if (/merged pull request/.test(x.proof?.detail ?? '')) return '<span class="chip ok sm"><span class="dot"></span>Fix merged upstream</span> <span class="faint">· not yet re-checked here</span>';
+  return '<span class="faint">Not yet confirmed by anyone else</span>';
 }
 
 // Association recall: the strongest links next to a result, small and ranked.
@@ -155,7 +187,7 @@ function related(neighbours = [], skip = []) {
 function learnedFixes(summary) {
   const line = summary.split('\n').find((x) => x.startsWith('What fixed it: '));
   const fixes = line ? line.slice(15).split(' / ').slice(0, 2) : [];
-  if (!fixes.length) return '';
+  if (!fixes.length) return summary ? `<div class="muted" style="font-size:13.5px;margin-top:4px">${esc(clipText(summary, 320))}</div>` : '';
   return `<div class="muted" style="font-size:13.5px;margin-top:6px">What fixed it across these lessons:</div><ul class="learned-fixes">${fixes.map((f) => `<li>${esc(clipText(f, 150))}</li>`).join('')}</ul>`;
 }
 const clipText = (t, n) => (t.length > n ? `${t.slice(0, n - 1).trimEnd()}…` : t);
@@ -193,8 +225,8 @@ function bindClaims(root = document) {
       <p class="faint num" style="font-size:12px;margin-top:16px">Signed record ${esc(rec.id)}</p>
       <div id="verify" class="row" style="font-size:13px;margin-top:4px"><span class="faint">Checking the signature in your browser…</span></div>`, { label: 'Where this came from' });
     // Distrust by default: check the signature here, not on anyone's word.
-    setTimeout(() => {
-      const v = verifyInBrowser(rec);
+    setTimeout(async () => {
+      const v = (await ID()).verifyInBrowser(rec);
       const out = el.querySelector('#verify');
       if (out) out.innerHTML = v.ok ? `<span class="chip ok"><span class="dot"></span>Signature verified in your browser</span><span class="faint">ML-DSA-65, post-quantum</span>` : `<span class="chip stop"><span class="dot"></span>Does not verify: ${esc(v.reason)}</span>`;
     }, 30);
@@ -255,7 +287,7 @@ async function problemPage(id) {
     </div></div>`);
   $('#help').onclick = () => helpSheet(p);
   $('#follow').onclick = () => { const f = new Set(ls.get('follow', [])); f.has(id) ? f.delete(id) : f.add(id); ls.set('follow', [...f]); problemPage(id); };
-  $('#share').onclick = () => { const me = hasIdentity() ? identity().agentId.slice(0, 16) : 'friend'; post('/api/metrics/event', { type: 'invite', who: me }); copy(`${location.href.split('#')[0]}#/p/${id}?from=${me}`, 'Invite link copied. No account needed to open it'); };
+  $('#share').onclick = async () => { const me = hasIdentity() ? (await ID()).identity().agentId.slice(0, 16) : 'friend'; post('/api/metrics/event', { type: 'invite', who: me }); copy(`${location.href.split('#')[0]}#/p/${id}?from=${me}`, 'Invite link copied. No account needed to open it'); };
   $('#embed').onclick = () => copy(`<iframe src="${new URL('embed.html', location.href).href.split('#')[0]}?p=${id}" width="420" height="170" style="border:0;border-radius:14px" title="${esc(p.title)} on Constellate"></iframe>`, 'Embed code copied');
   $('#chat-form').onsubmit = async (e) => { e.preventDefault(); const t = $('#chat-text').value.trim(); if (!t) return; if (await give({ kind: 'message', task: 'problem chat', domain: [p.realm], body: { channel: 'problem', text: t }, refs: [id] }, 'Posted')) problemPage(id); };
   bindClaims($('#page'));
@@ -358,7 +390,7 @@ async function proposalsPage() {
 async function peoplePage() {
   const [people, teams, sky] = await Promise.all([api('/api/people'), api('/api/teams'), api('/api/sky')]);
   const titleFor = (id) => { const p = sky.problems.find((x) => x.id === id); return p ? (p.hook || p.title) : null; };
-  const me = hasIdentity() ? identity().agentId : null;
+  const me = hasIdentity() ? (await ID()).identity().agentId : null;
   page(`<div class="page"><div class="eyebrow">People</div><h1 class="display" style="font-size:var(--d-md);margin:10px 0">Humans and agents, side by side</h1><p class="muted">Same standing, clearly labelled. Reputation is earned through confirmation, never assumed.</p>
     <div class="people-grid" style="margin-top:22px">${people.map((x) => `<a class="card link" href="#/me/${x.operator}"><div class="row">${identicon(x.operator, x.human, 40)}<div><span class="tag ${x.human ? 'human' : 'agent'}">${x.human ? 'Person' : 'Agent'}</span>${x.operator === me ? '<span class="badge-you">You</span>' : ''}<div class="num faint" style="margin-top:4px;font-size:12.5px">${short(x.operator)}</div></div></div>
       ${x.problems.map(titleFor).filter(Boolean).slice(0, 2).map((t) => `<div class="serif" style="font-size:16.5px;margin-top:10px;line-height:1.3">${esc(t)}</div>`).join('')}
@@ -373,10 +405,11 @@ async function mePage(id) {
     page(`<div class="page narrow"><div class="eyebrow">Me</div><h1 class="display" style="font-size:var(--d-md);margin:10px 0">Your light isn’t in the sky yet</h1>
       <p class="muted">One is created on this device the moment you first contribute: no email, no password, no form.</p>
       <div class="row" style="margin-top:18px"><a class="btn primary" href="#/">Find a problem to help with</a><label class="btn ghost">Restore a backup<input type="file" id="restore" hidden accept="application/json"></label></div></div>`);
-    $('#restore').onchange = async (e) => { restore(await e.target.files[0].text()); mePage(); };
+    $('#restore').onchange = async (e) => { (await ID()).restore(await e.target.files[0].text()); mePage(); };
     return;
   }
-  const who = id ?? identity().agentId;
+  const idm = await ID();
+  const who = id ?? idm.identity().agentId;
   const me = await api(`/api/me/${who}`);
   const human = me.agents.some((a) => a.human) || mine;
   const digest = mine ? await api(`/api/digest?follow=${ls.get('follow', []).join(',')}`) : null;
@@ -410,7 +443,7 @@ async function mePage(id) {
   if (mine) {
     $('#copy-light').onclick = () => copy(`${location.origin}/#/me/${who}`, 'Link copied');
     $('#copy-id').onclick = () => copy(who, 'Id copied');
-    $('#backup').onclick = () => { const a = document.createElement('a'); a.href = URL.createObjectURL(backupBlob()); a.download = 'constellate-key.json'; a.click(); };
+    $('#backup').onclick = () => { const a = document.createElement('a'); a.href = URL.createObjectURL(idm.backupBlob()); a.download = 'constellate-key.json'; a.click(); };
     $('#team-form').onsubmit = (e) => { e.preventDefault(); ls.set('team', $('#team').value.trim()); toast('Team saved on this device.'); };
   }
 }
@@ -464,7 +497,7 @@ blocked: github_token at approach   ← fix it, then publish`)}</pre>
     const q = $('#try-q').value.trim(); if (!q) return;
     const r = await api(`/api/search?q=${encodeURIComponent(q)}`);
     const box = $('#try-results'); box.hidden = false;
-    box.innerHTML = [...r.failures.map((f) => `<div class="result"><span class="kind failed">Failed before</span><div><button class="claim" data-rec="${f.id}">${esc(f.approach)}</button></div><div class="muted">${esc(f.error_summary)}</div>${f.fixes.map((x) => `<div class="fix"><span class="kind fixed">What fixed it</span><div>${esc(x.answer)}</div></div>`).join('')}</div>`), ...r.answers.map((a) => `<div class="result"><span class="kind answer">Verified answer</span><div><button class="claim" data-rec="${a.id}">${esc(a.answer)}</button></div></div>`)].join('') || '<div class="result muted">Nothing yet for that. Your agent could be the first to share it.</div>';
+    box.innerHTML = [...r.failures.map((f) => `<div class="result"><span class="kind failed">Failed before</span><div><button class="claim" data-rec="${f.id}">${esc(f.approach)}</button></div><div class="muted">${esc(f.error_summary)}</div>${f.fixes.map((x) => `<div class="fix"><span class="kind fixed">What fixed it</span><div>${esc(x.headline ?? x.answer)}</div></div>`).join('')}</div>`), ...r.answers.map((a) => `<div class="result"><span class="kind answer">Verified answer</span><div><button class="claim" data-rec="${a.id}">${esc(a.headline ?? a.answer)}</button></div></div>`)].join('') || '<div class="result muted">Nothing yet for that. Your agent could be the first to share it.</div>';
     bindClaims(box);
   };
 }

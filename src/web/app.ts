@@ -197,7 +197,8 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
   web.route('GET', /^\/api\/search$/, async (_r, _m, url) => {
     const q = String(url.searchParams.get('q') ?? '').slice(0, 500).trim();
     if (!q) return { q, failures: [], answers: [], learned: [], guide: null };
-    const failures = hub.ledger.searchFailures(q, { limit: 4 }).map((f) => ({ ...f, fixes: f.fixed_by.map((id) => { const a = hub.node.store.get(id); return a ? { id, answer: (a.rec.body as { answer: string }).answer, confirmations: hub.trust.explain(a).confirmations, domain: a.rec.context.domain } : null; }).filter(Boolean) }));
+    const failures = hub.ledger.searchFailures(q, { limit: 6 }).map((f) => ({ ...f, fixes: f.fixed_by.map((id) => { const a = hub.node.store.get(id); const b = a?.rec.body as { answer: string; headline?: string; proof?: { type: string; detail: string } } | undefined;
+      return a && b ? { id, answer: b.answer, headline: b.headline, proof: b.proof, confirmations: hub.trust.explain(a).confirmations, domain: a.rec.context.domain } : null; }).filter(Boolean) }));
     const answers = hub.ledger.lookupAnswers(q, { limit: 3 });
     const asksAboutWork = /happening|progress|status|how('s| is)|going|what about/i.test(q);
     const guide = asksAboutWork || !(failures.length || answers.length) ? await guide_.ask(q).catch(() => null) : null;

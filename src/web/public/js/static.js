@@ -22,7 +22,7 @@ let index = null;
 async function ledger() {
   if (index) return index;
   const l = await file('api/ledger.json');
-  const docs = l.records.map((r) => ({ r, t: toks([r.task, r.approach, r.error_summary, r.question, r.answer, (r.domain ?? []).join(' '), r.environment].filter(Boolean).join(' ')) }));
+  const docs = l.records.map((r) => ({ r, t: toks([r.task, r.approach, r.original, r.error_summary, r.question, r.answer, (r.domain ?? []).join(' '), r.environment].filter(Boolean).join(' ')) }));
   const df = new Map();
   for (const d of docs) for (const w of new Set(d.t)) df.set(w, (df.get(w) ?? 0) + 1);
   const avg = docs.reduce((n, d) => n + d.t.length, 0) / Math.max(1, docs.length);
@@ -36,11 +36,13 @@ function score(q, d, ix) {
   for (const w of q) { const f = tf.get(w); if (!f) continue; const n = ix.df.get(w) ?? 0; s += Math.log(1 + (ix.docs.length - n + 0.5) / (n + 0.5)) * (f * 2.2) / (f + 1.2 * (0.25 + 0.75 * d.t.length / ix.avg)); }
   return s * (1 + Math.log1p(d.r.confirmations ?? 0) * 0.5);
 }
+/** Fetch and index the ledger ahead of the first query. */
+export function warm() { ledger().catch(() => {}); }
 async function search(q) {
   const ix = await ledger();
   const qt = [...new Set(toks(q))];
   const ranked = ix.docs.map((d) => [d, score(qt, d, ix)]).filter(([, s]) => s > 0).sort((a, b) => b[1] - a[1]);
-  const failures = ranked.filter(([d]) => d.r.kind === 'failure').slice(0, 4).map(([d]) => ({ ...d.r, fixes: (d.r.fixed_by ?? []).map((id) => ix.byId.get(id)).filter(Boolean).map((a) => ({ id: a.id, answer: a.answer, confirmations: a.confirmations ?? 0, domain: a.domain })) }));
+  const failures = ranked.filter(([d]) => d.r.kind === 'failure').slice(0, 6).map(([d]) => ({ ...d.r, fixes: (d.r.fixed_by ?? []).map((id) => ix.byId.get(id)).filter(Boolean).map((a) => ({ id: a.id, answer: a.answer, headline: a.headline, proof: a.proof, confirmations: a.confirmations ?? 0, domain: a.domain })) }));
   const answers = ranked.filter(([d]) => d.r.kind === 'answer').slice(0, 3).map(([d]) => d.r);
   const lavg = ix.learned.reduce((n, d) => n + d.t.length, 0) / Math.max(1, ix.learned.length);
   const learned = ix.learned.map((d) => [d, score(qt, { t: d.t, r: {} }, { ...ix, avg: lavg })]).filter(([, s]) => s > 0).sort((a, b) => b[1] - a[1]).slice(0, 2).map(([d]) => d.x);

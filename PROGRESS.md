@@ -159,6 +159,13 @@ The knowledge graph existed but ran on almost no real links. Now:
 - **"This helped".** Each fix has a button that signs a `use` record on the device. Use strengthens the link that led there. On the static preview the record is kept on the device.
 - Gate 2 has two new tests: sleep distils only lessons, skips sprawl and is searchable; "this helped" strengthens a link. 87 tests pass.
 
+### Quality pass: plain language, written summaries, honest trust, speed ✅
+- **Plain-language lessons.** All 1,102 seeded issues and fixes were rewritten into a one-line problem, a short explanation and "applies when". Fixes became a one-line action plus why it works. Exact technical names, such as error text, functions, files and versions, were kept. They live in `data/seed/plain-lessons.json` and can be reviewed like code. The original title stays in the record (`original`) and in its task, so pasting the original jargon still finds it. The source issue or pull request stays linked as evidence. No API key was available in this cloud session, so the rewrites were written in-session by Claude and checked for coverage, length and banned content: URLs, issue numbers, bot footers. The privacy scrubber blocks one rewrite (a number that looks like a phone number); it stays out.
+- **Sleep splits sprawl.** Large components are split into topic-sized groups by deterministic label propagation, falling back to neighbourly breadth-first chunks. Nothing is skipped now: 40 summaries on the real data. Each has a written title and summary (`data/seed/cluster-summaries.json`), matched by a hash of the members' sources, so the match is stable across rebuilds. A cluster that changes falls back to the extractive summary.
+- **Honest trust.** A fix with no independent confirmations now says "Fix merged upstream · not yet re-checked here", not "0 confirmations".
+- **Faster first screen.** The post-quantum crypto (~250 KB) loads only when someone signs, verifies or opens Me, and the search index is fetched when the search box gets focus. First load on the static site went from 607 KB / 40 files to 281 KB / 10 files.
+- **Search.** Matched words are highlighted, results can be filtered by project, and six failures are shown instead of four.
+
 ## Summary of what needs a human
 1. **Live x0x (blocks confidence in every phase):** run the gates against two real `x0xd` daemons. Confirm ML-DSA signature interop between `/agent/sign` and noble, `/stores` and `/task-lists` field names, contacts → pre-trusted operators, and Spaces/DMs for chat.
 2. **Gate 1 behaviour:** `ANTHROPIC_API_KEY=… npx tsx evals/gate1.ts 3`.

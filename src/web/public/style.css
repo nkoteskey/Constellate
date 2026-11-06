@@ -170,6 +170,12 @@ nav.views a.on { color: var(--fg); background: var(--surface-3); }
 .result .related .claim { font-size: 13px; display: inline; text-align: left; }
 .result .learned-fixes { margin: 4px 0 0; padding-left: 18px; font-size: 13.5px; color: var(--fg-2); }
 .result .learned-fixes li + li { margin-top: 4px; }
+.result mark { background: rgba(255, 196, 107, 0.10); color: inherit; border-radius: 2px; padding: 0; box-shadow: inset 0 -1px 0 rgba(255, 196, 107, 0.45); }
+.filters { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 16px; }
+.filters .chip { cursor: pointer; }
+.filters .chip.on { color: var(--fg); border-color: var(--fg-2); }
+.result .fix-line { font-weight: 560; }
+.chip.sm { padding: 1px 8px; font-size: 11.5px; }
 .result [data-helped].done { color: var(--ok); }
 .result .fix { margin-top: 8px; padding: 10px 12px; border-radius: var(--r-sm); background: rgba(111,227,180,.06); border: 1px solid rgba(111,227,180,.16); }
 .result .meta { font-size: var(--t-xs); color: var(--muted); margin-top: 6px; display: flex; gap: 10px; flex-wrap: wrap; }

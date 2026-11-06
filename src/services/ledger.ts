@@ -50,7 +50,7 @@ export class Ledger {
     const recs = this.node.store.ofKind(kind);
     const text = (s: StoredRecord) => {
       const b = s.rec.body as Record<string, string>;
-      return [s.rec.context.task, s.rec.context.domain.join(' '), b.approach, b.error_summary, b.question, b.answer, s.rec.context.environment].filter(Boolean).join(' ');
+      return [s.rec.context.task, s.rec.context.domain.join(' '), b.approach, b.original, b.error_summary, b.question, b.answer, s.rec.context.environment].filter(Boolean).join(' ');
     };
     const rel = bm25(query, recs.map((s) => ({ id: s.rec.id, text: text(s), tags: s.rec.context.domain })), { tags: domain });
     const scored = recs.filter((s) => rel.has(s.rec.id)).map((s) => {
@@ -67,6 +67,7 @@ export class Ledger {
       const b = s.rec.body as FailureBody;
       return {
         id: s.rec.id, task: s.rec.context.task, approach: b.approach, outcome: b.outcome, error_summary: b.error_summary,
+        original: (b as { original?: string }).original, applies_when: (b as { applies_when?: string }).applies_when,
         environment: s.rec.context.environment, env_match: round(env), confidence: b.confidence,
         weight: round(t.weight), confirmations: t.confirmations, contradictions: t.contradictions, age_days: Math.floor(ageDays(s)),
         fixed_by: this.node.store.referencing(s.rec.id, 'answer').map((a) => a.rec.id).slice(0, 3),
@@ -79,7 +80,7 @@ export class Ledger {
     return this.rank('answer', question, opts.domain, opts.environment, opts.limit ?? 3).map(({ s, t, env }) => {
       const b = s.rec.body as AnswerBody;
       return {
-        id: s.rec.id, question: b.question, answer: b.answer, proof: b.proof, environment: s.rec.context.environment, env_match: round(env),
+        id: s.rec.id, question: b.question, answer: b.answer, headline: (b as { headline?: string }).headline, proof: b.proof, environment: s.rec.context.environment, env_match: round(env),
         weight: round(t.weight), confirmations: t.confirmations, contradictions: t.contradictions, age_days: Math.floor(ageDays(s)), fixes: s.rec.refs,
         neighbours: this.graph?.neighbours(s.rec.id, 3) ?? [],
       };

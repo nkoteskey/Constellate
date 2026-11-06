@@ -56,7 +56,7 @@ const ledger = store.all().filter((s) => s.visibility === 'public' && (s.rec.kin
   const t = demo.viewer.trust.explain(s);
   return {
     id: s.rec.id, kind: s.rec.kind, task: s.rec.context.task, domain: s.rec.context.domain, environment: s.rec.context.environment,
-    approach: b.approach, outcome: b.outcome, error_summary: b.error_summary, question: b.question, answer: b.answer, proof: b.proof,
+    approach: b.approach, original: b.original, applies_when: b.applies_when, headline: b.headline, outcome: b.outcome, error_summary: b.error_summary, question: b.question, answer: b.answer, proof: b.proof,
     confirmations: t.confirmations, contradictions: t.contradictions, evidence: s.rec.evidence,
     fixed_by: s.rec.kind === 'failure' ? store.referencing(s.rec.id, 'answer').map((a) => a.rec.id) : undefined,
     neighbours: demo.viewer.graph.neighbours(s.rec.id, 3).map((n) => ({ id: n.id, link: n.link, kind: n.kind, title: n.title.slice(0, 140) })),

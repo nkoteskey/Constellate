@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { Hub } from '../../src/hub/hub.js';
 import { LocalSigner } from '../../src/core/identity.js';
-import { IssueSeeder, IssueDump, closedBy, firstParagraph, issueSeedAllowed } from '../../src/seed/issues.js';
+import { IssueSeeder, PlainLessons, IssueDump, closedBy, firstParagraph, issueSeedAllowed } from '../../src/seed/issues.js';
 import { verifyRecord } from '../../src/core/record.js';
 
 /**
@@ -49,5 +49,27 @@ describe('GATE 1 — seeding from public issue history', () => {
     // And it's useful: a real CI failure comes back with its real fix.
     const r = hub.ledger.searchFailures('named_groups.json permissions shared_secret', { limit: 1 })[0];
     expect(r?.approach).toMatch(/named_groups\.json/);
+  }, 120_000);
+
+  it('uses the reviewed plain-language rewrite, keeps the original searchable, and covers every seeded lesson', async () => {
+    const dump = JSON.parse(readFileSync(new URL('../../data/seed/saorsa-labs.json', import.meta.url), 'utf8')) as IssueDump;
+    const plain = JSON.parse(readFileSync(new URL('../../data/seed/plain-lessons.json', import.meta.url), 'utf8')) as PlainLessons;
+    const hub = new Hub({ signer: LocalSigner.generate(), preview: false });
+    await new IssueSeeder(hub, plain).seed(dump);
+    const all = hub.node.store.all();
+    // Every seeded failure and fix has its plain version.
+    for (const s of all) {
+      const b = s.rec.body as { approach?: string; original?: string; headline?: string };
+      if (s.rec.kind === 'failure') expect(b.original, s.rec.evidence[0]).toBeTruthy();
+      if (s.rec.kind === 'answer') expect(b.headline, s.rec.evidence[0]).toBeTruthy();
+      const { approach, error_summary, answer, headline } = s.rec.body as Record<string, string | undefined>;
+      expect([approach, error_summary, answer, headline].join(' ')).not.toMatch(/https?:\/\/|Co-Authored-By/);
+    }
+    // Plain words lead; the original jargon still finds it.
+    const f = all.find((s) => s.rec.kind === 'failure')!;
+    const b = f.rec.body as { approach: string; original: string };
+    expect(b.approach).not.toBe(b.original);
+    const hit = hub.ledger.searchFailures(b.original, { limit: 3 }).map((r) => r.id);
+    expect(hit).toContain(f.rec.id);
   }, 120_000);
 });

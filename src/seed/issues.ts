@@ -44,8 +44,17 @@ export function closedBy(pull: Pull): { repo: string; number: number }[] {
 const repoName = (r: string) => r.split('/')[1];
 const domainOf = (r: string, labels: string[] = []) => [...new Set([repoName(r), 'rust', ...(/x0x|gossip|quic|mls|pqc/i.test(r) ? ['x0x'] : []), ...labels.filter((l) => l.length < 30).map((l) => l.toLowerCase())])].slice(0, 8);
 
+/**
+ * Plain-language versions of seeded lessons, keyed by the issue or pull request URL.
+ * Written once (data/seed/plain-lessons.json) and reviewed like code; the original
+ * stays one click away as evidence and stays searchable through the record's task.
+ */
+export interface PlainIssue { problem: string; detail: string; applies_when?: string }
+export interface PlainFix { fix: string; how: string }
+export type PlainLessons = Record<string, Partial<PlainIssue & PlainFix>>;
+
 export class IssueSeeder {
-  constructor(private readonly hub: Hub) {}
+  constructor(private readonly hub: Hub, private readonly plain: PlainLessons = {}) {}
 
   private seen(url: string) { return this.hub.node.store.all().some((s) => s.rec.evidence.includes(url)); }
 
@@ -72,6 +81,7 @@ export class IssueSeeder {
       try {
         const env = `${i.repo}${i.closed_at ? `, closed ${i.closed_at.slice(0, 10)}` : ''}`;
         const summary = firstParagraph(i.body) || i.title;
+        const pi = this.plain[i.url];
         // Synapses: earlier issues this one mentions ("follow-up after #1766") become buildsOn links.
         const mentions = [...`${i.title}\n${i.body ?? ''}`.matchAll(/((?:[\w.-]+\/[\w.-]+)?)#(\d+)\b/g)]
           .map((m) => `${m[1] || i.repo}#${m[2]}`).filter((k) => k !== `${i.repo}#${i.number}`);
@@ -79,7 +89,7 @@ export class IssueSeeder {
         const { record } = await this.hub.node.submit({
           kind: 'failure',
           context: { task: `${repoName(i.repo)}: ${i.title}`.slice(0, 500), domain: domainOf(i.repo, i.labels), environment: env },
-          body: { approach: i.title.slice(0, 600), outcome: /wrong|incorrect|mismatch|stale/i.test(i.title) ? 'wrong_result' : /slow|time[sd]? ?out|hang/i.test(i.title) ? 'too_slow' : 'error', error_summary: summary.slice(0, 600), confidence: fix ? 0.9 : 0.7 },
+          body: { approach: (pi?.problem || i.title).slice(0, 600), ...(pi?.problem ? { original: i.title.slice(0, 600) } : {}), ...(pi?.applies_when ? { applies_when: pi.applies_when.slice(0, 300) } : {}), outcome: /wrong|incorrect|mismatch|stale/i.test(i.title) ? 'wrong_result' : /slow|time[sd]? ?out|hang/i.test(i.title) ? 'too_slow' : 'error', error_summary: (pi?.detail || summary).slice(0, 600), confidence: fix ? 0.9 : 0.7 },
           evidence: [i.url],
           refs,
         }, { publish: true });
@@ -88,10 +98,11 @@ export class IssueSeeder {
         if (fix) {
           usedPulls.add(fix.url);
           const why = firstParagraph(fix.body);
+          const pf = this.plain[fix.url];
           await this.hub.node.submit({
             kind: 'answer',
             context: { task: `${repoName(i.repo)}: fix for "${i.title}"`.slice(0, 500), domain: domainOf(i.repo, i.labels), environment: `${fix.repo}, merged ${fix.merged_at?.slice(0, 10) ?? ''}` },
-            body: { question: `How was "${i.title}" fixed?`.slice(0, 600), answer: `${fix.title}${why ? ` — ${why}` : ''}`.slice(0, 4000), proof: { type: 'test', detail: `merged pull request ${fix.url}` } },
+            body: { question: `How was "${i.title}" fixed?`.slice(0, 600), answer: (pf?.fix ? `${pf.fix}${pf.how ? ` ${pf.how}` : ''}` : `${fix.title}${why ? ` — ${why}` : ''}`).slice(0, 4000), ...(pf?.fix ? { headline: pf.fix.slice(0, 300), original: fix.title.slice(0, 600) } : {}), proof: { type: 'test', detail: `merged pull request ${fix.url}` } },
             refs: [record.id],
             evidence: [fix.url, i.url],
           }, { publish: true });
@@ -110,10 +121,11 @@ export class IssueSeeder {
       const what = p.title.replace(/^(fix|bugfix|hotfix)(\([^)]*\))?!?:\s*/i, '');
       try {
         const why = firstParagraph(p.body);
+        const pf = this.plain[p.url];
         await this.hub.node.submit({
           kind: 'answer',
           context: { task: `${repoName(p.repo)}: ${what}`.slice(0, 500), domain: domainOf(p.repo, p.labels), environment: `${p.repo}, merged ${p.merged_at?.slice(0, 10) ?? ''}` },
-          body: { question: `${repoName(p.repo)}: ${what}`.slice(0, 600), answer: (why || p.title).slice(0, 4000), proof: { type: 'test', detail: `merged pull request ${p.url}` } },
+          body: { question: `${repoName(p.repo)}: ${what}`.slice(0, 600), answer: (pf?.fix ? `${pf.fix}${pf.how ? ` ${pf.how}` : ''}` : why || p.title).slice(0, 4000), ...(pf?.fix ? { headline: pf.fix.slice(0, 300), original: p.title.slice(0, 600) } : {}), proof: { type: 'test', detail: `merged pull request ${p.url}` } },
           evidence: [p.url],
         }, { publish: true });
         report.answers++; n++;

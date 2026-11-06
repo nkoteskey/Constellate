@@ -103,7 +103,7 @@ describe('GATE 2 — knowledge graph plasticity', () => {
     expect(await hub.archive.getPointer(Consolidator.pointerName(key))).toBeTruthy();
   });
 
-  it('sleep distils only lessons, leaves sprawling clusters alone, and its summaries are searchable', async () => {
+  it('sleep distils only lessons, splits sprawling clusters into topic-sized ones, and its summaries are searchable', async () => {
     const hub = new Hub({ signer: LocalSigner.generate(), preview: false });
     const s = LocalSigner.generate();
     const root = await signRecord({ kind: 'failure', context: ctx('pip install torch on 3.13', ['python']), body: { approach: 'pip install torch==2.1', outcome: 'error', error_summary: 'no wheel for cp313', confidence: 0.8 } }, s);
@@ -115,12 +115,16 @@ describe('GATE 2 — knowledge graph plasticity', () => {
     let prev = '';
     for (let i = 0; i < 12; i++) { const r = await signRecord({ kind: 'failure', context: ctx(`chain ${i}`, ['rust']), body: { approach: `step ${i}`, outcome: 'error', error_summary: 'e', confidence: 0.7 }, refs: prev ? [prev] : [] }, s); hub.node.ingest(r); prev = r.id; }
     const c = new Consolidator(hub, undefined, { maxSize: 10 });
-    expect(await c.sleep()).toEqual({ summarised: 1, skipped: 1 });
-    const sum = hub.node.store.ofKind('summary')[0];
+    // The torch cluster, plus the 12-long chain split into two neighbourly halves.
+    expect(await c.sleep()).toEqual({ summarised: 3, skipped: 0 });
+    const sums = hub.node.store.ofKind('summary').map((x) => x.rec.body as { members: string[]; title: string });
+    expect(sums.map((x) => x.members.length).sort()).toEqual([4, 6, 6]);
+    expect(await c.sleep()).toEqual({ summarised: 0, skipped: 3 });
+    const sum = hub.node.store.ofKind('summary').find((x) => (x.rec.body as { members: string[] }).members.includes(root.id))!;
     const body = sum.rec.body as { title: string; summary: string; members: string[] };
     expect(body.members).toHaveLength(4); // the failure and its three fixes, no votes
     expect(body.title).toBe('pip install torch==2.1');
-    expect(body.summary).toMatch(/What went wrong: .*no wheel/);
+    expect(body.summary).toMatch(/What went wrong: pip install torch==2.1/);
     expect(body.summary).toMatch(/What fixed it: use torch 2\.5/);
     const found = hub.ledger.learned('torch wheel 3.13');
     expect(found[0]).toMatchObject({ id: sum.rec.id, sources: 4 });

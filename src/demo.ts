@@ -46,6 +46,12 @@ function answerFor(prompt: string): string {
   return 'unknown';
 }
 
+/** Plain-language rewrites of the seeded lessons, when present (data/seed/plain-lessons.json). */
+function plainLessons() { return seedJson('plain-lessons.json'); }
+function seedJson(name: string) {
+  try { return JSON.parse(readFileSync(new URL(`../data/seed/${name}`, import.meta.url), 'utf8')); } catch { return {}; }
+}
+
 export interface Demo {
   viewer: Hub; agents: Hub[]; humans: LocalSigner[]; workers: Worker[]; ledger: TestnetLedger;
   lean: string; antibiotic: string; battery: string; navier: string; question: string; questions: string[];
@@ -201,7 +207,7 @@ export async function seedDemo(opts: { steps?: number; knowledge?: number | 'all
     try {
       const dump = JSON.parse(readFileSync(new URL('../data/seed/saorsa-labs.json', import.meta.url), 'utf8')) as IssueDump;
       const seeder = new Hub({ signer: LocalSigner.generate(), store: new RecordStore(), preview: false });
-      await new IssueSeeder(seeder).seed(dump, { limit: opts.knowledge === 'all' || opts.knowledge === undefined ? Infinity : opts.knowledge });
+      await new IssueSeeder(seeder, plainLessons()).seed(dump, { limit: opts.knowledge === 'all' || opts.knowledge === undefined ? Infinity : opts.knowledge });
       for (const r of seeder.node.store.all()) viewer.node.ingest(r.rec, 'seed:saorsa-labs');
     } catch { /* seed data not shipped with this build */ }
   }
@@ -221,7 +227,7 @@ export async function seedDemo(opts: { steps?: number; knowledge?: number | 'all
   void lab; void issueOperatorClaim;
 
   // Sleep once: distil tight clusters of related lessons into signed summaries.
-  const consolidation = await new Consolidator(viewer).sleep();
+  const consolidation = await new Consolidator(viewer, undefined, { written: seedJson('cluster-summaries.json') }).sleep();
 
   let t = 0;
   const tick = async () => {

@@ -206,7 +206,7 @@ export class KnowledgeGraph {
 
 export function titleOf(s: StoredRecord): string {
   const b = s.rec.body as Record<string, unknown>;
-  return String(b.title ?? b.question ?? b.approach ?? b.statement ?? b.name ?? s.rec.context.task).slice(0, 120);
+  return String(b.title ?? b.headline ?? b.question ?? b.approach ?? b.statement ?? b.name ?? s.rec.context.task).slice(0, 120);
 }
 
 export function loadContext(): unknown {
