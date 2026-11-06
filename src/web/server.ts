@@ -5,6 +5,8 @@ import { join, extname, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Hub } from '../hub/hub.js';
 
+export class HttpReply { constructor(readonly status: number, readonly body: unknown, readonly headers: Record<string, string> = {}) {} }
+
 export type ApiHandler = (req: IncomingMessage, url: URL, body: () => Promise<any>) => Promise<unknown> | unknown;
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -47,6 +49,7 @@ export class WebServer {
       if (m && r.method === req.method) {
         try {
           const out = await r.fn(req, m, url, body);
+          if (out instanceof HttpReply) { res.writeHead(out.status, { 'content-type': 'application/json', ...out.headers }); return res.end(JSON.stringify(out.body)); }
           res.writeHead(200, { 'content-type': 'application/json' });
           return res.end(JSON.stringify(out));
         } catch (e) {

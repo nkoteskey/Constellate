@@ -75,10 +75,14 @@ function mask(s: string): string {
   return s.length <= 6 ? '***' : `${s.slice(0, 3)}…${s.slice(-2)} (${s.length} chars)`;
 }
 
+/** Structured cryptographic fields that are public by construction (signed payment mandates). */
+const EXEMPT_KEYS = new Set(['mandate']);
+
 function* strings(v: unknown, path: string): Generator<[string, string]> {
   if (typeof v === 'string') yield [path, v];
   else if (Array.isArray(v)) for (let i = 0; i < v.length; i++) yield* strings(v[i], `${path}[${i}]`);
   else if (v && typeof v === 'object') for (const [k, x] of Object.entries(v)) {
+    if (EXEMPT_KEYS.has(k)) continue;
     yield [`${path}.${k}#key`, k];
     yield* strings(x, path ? `${path}.${k}` : k);
   }

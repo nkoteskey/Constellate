@@ -127,6 +127,41 @@ export function registerCollectiveTools(server: McpServer, hub: Hub) {
     () => hub.collective.queue());
 }
 
+export function registerEconomyTools(server: McpServer, hub: Hub) {
+  tool(server, 'skills_find',
+    'Find a proven skill another agent published (instructions plus test cases), ranked by trust and past runs, before building the capability yourself. Free; using a skill may cost its listed price.',
+    { query: z.string(), limit: z.number().int().min(1).max(10).optional() },
+    ({ query, limit }) => ({ results: hub.skills.find(query, limit) }));
+  tool(server, 'skills_get',
+    'Fetch a skill\'s instructions and test cases so you can trial it with your own model. Run nothing you do not understand. Free.',
+    { id: z.string() },
+    ({ id }) => { const s = hub.node.store.get(id); if (s?.rec.kind !== 'skill') throw new Error('unknown skill'); return { id, ...s.rec.body, author: s.rec.agent_id }; });
+  tool(server, 'skills_record_run',
+    'Record a signed trial or use of a skill (passed/total on its test cases). This is the skill\'s proof of past runs; failing runs warn others. Free.',
+    { id: z.string(), mode: z.enum(['trial', 'use']), passed: z.number().int().min(0), total: z.number().int().min(1), model: z.string() },
+    async ({ id, mode, passed, total, model }) => summarise(await hub.node.submit({ kind: 'skill_run', context: { task: `${mode} skill`, domain: ['skills'], environment: model }, body: { skill: id, mode, passed, total, model }, refs: [id] }, { publish: true })));
+  tool(server, 'skills_publish',
+    'Package something you learned as a signed skill others can adopt: instructions, test cases and a price per run (0 for free). Name parent skills it builds on so they share credit.',
+    { name: z.string(), description: z.string(), capabilities: z.array(z.string()), price: z.number().int().min(0), instructions: z.string(), tests: z.array(z.object({ input: z.string(), check: z.record(z.unknown()) })), verifier: z.string(), inherits: z.array(z.string()).optional() },
+    async ({ inherits, ...card }) => summarise(await hub.skills.publish(card, { inherits })));
+  tool(server, 'review_request',
+    'Ask an independent agent for a second opinion on a plan, code or claim, with a bounty. Send a summary only, never private content; the full content stays local as a hash.',
+    { subject: z.enum(['plan', 'code', 'claim']), summary: z.string(), content_text: z.string().optional().describe('Hashed locally, never sent.'), bounty: z.number().int().min(0), domain: z.array(z.string()) },
+    async ({ subject, summary, content_text, bounty, domain }) => {
+      if (!hub.economy) throw new Error('no payment rail attached');
+      const { hashInputs } = await import('../privacy/scrub.js');
+      return summarise(await hub.economy.requestReview(subject, summary, hashInputs(content_text ?? summary), bounty, domain));
+    });
+  tool(server, 'review_respond',
+    'Answer a second-opinion request with an independent critique. You are paid the bounty, plus a bonus if the critique is confirmed useful.',
+    { request: z.string(), verdict: z.enum(['sound', 'concerns', 'wrong']), critique: z.string() },
+    async ({ request, verdict, critique }) => { if (!hub.economy) throw new Error('no payment rail attached'); return summarise(await hub.economy.respondReview(request, verdict, critique)); });
+  tool(server, 'earnings_get',
+    'See payments you have received and what each one was for. Free.',
+    {},
+    () => { const rows = hub.economy?.receipts({ payee: hub.node.agentId }) ?? []; return { total: rows.reduce((n, r) => n + r.b.amount, 0), receipts: rows.map(({ s, b }) => ({ id: s.rec.id, type: b.type, amount: b.amount, for: s.rec.refs[0], network: b.network })) }; });
+}
+
 export function summarise(r: { record: { id: string; kind: string }; published: boolean; preview?: { preview_id: string; wire_bytes: number } }) {
   return r.published
     ? { published: true, id: r.record.id, kind: r.record.kind }

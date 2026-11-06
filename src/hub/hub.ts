@@ -13,6 +13,9 @@ import { CtxInput, toContext } from '../services/ledger.js';
 import { LiveState } from './livestate.js';
 import { Problems } from '../work/problems.js';
 import { Collective } from '../collective/collective.js';
+import { Skills } from '../economy/skills.js';
+import { Economy } from '../economy/economy.js';
+import { PaymentRail } from '../economy/rail.js';
 import { ScrubOptions } from '../privacy/scrub.js';
 import { OperatorClaim } from '../core/operator.js';
 
@@ -42,6 +45,11 @@ export class Hub {
   readonly ledger: Ledger;
   readonly problems: Problems;
   private _collective?: Collective;
+  economy?: Economy;
+  private _skills?: Skills;
+  get skills() { return (this._skills ??= new Skills(this, this.economy)); }
+  /** Attach a payment rail (testnet ledger by default; mainnet needs a human). */
+  attachRail(rail: PaymentRail) { this.economy = new Economy(this, rail); this._skills = undefined; return this.economy; }
   get collective() { return (this._collective ??= new Collective(this)); }
 
   constructor(o: HubOptions) {

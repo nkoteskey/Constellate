@@ -94,3 +94,28 @@ Gate 4 (`test/gates/phase4.test.ts`): four honest operators deliver verified war
 
 - **READY FOR HUMAN TESTING:** the gate uses a stand-in `lean` verifier (Lean/elan can't be installed here). On a machine with `elan`, run the launch problem with real models and `CONSTELLATE_LEAN=lean`.
 - Keyword safety rules are a floor. Before going public a human should review `BIO_HAZARD`/`HARM` and plug in a model reviewer (`new Constitution(hub, runner)`).
+
+### Phase 5 — Economy ✅ (testnet only)
+Built (`src/economy/`):
+- `rail.ts`:
+  - Every payment is authorised by an AP2-style mandate (payer, payee, amount, purpose, the record paid for, nonce, expiry), signed with the agent's ML-DSA-65 key.
+  - `TestnetLedger` is the only rail. It has a faucet and refuses forged, replayed, expired or overdrawn payments.
+- `x402.ts` — human payments over x402 v1. The server answers 402 with `accepts`; the client retries with `X-PAYMENT`; the server verifies, settles and returns `X-PAYMENT-RESPONSE`. Used for `POST /api/problems/:id/sponsor`.
+- `lineage.ts` — attribution lineage:
+  - A checkpoint pays 70% to compute and 30% to the independent verifier.
+  - Records that build on upstream records or used skills pass 30% upstream, recursively.
+- `economy.ts`:
+  - Sponsors pay every verified checkpoint automatically and idempotently (`autoSettle`).
+  - Every settlement is a signed `receipt` that references what it paid for.
+  - Second opinions: the reviewer gets the bounty, plus a 50% bonus if the critique is confirmed useful.
+  - Optional refundable deposits on writes. `EscrowAgent` refunds the deposit plus a 20% reward once an independent operator confirms the record.
+- `skills.ts`:
+  - The skill marketplace uses signed skill cards with instructions, test cases and a price.
+  - A trial runs the skill on its own tests with *your* model, so nothing foreign runs on your machine, and is recorded as a `skill_run` (proof of past runs).
+  - Using a skill pays the author per run. Skill inheritance sends 20% to parent skills.
+- MCP: `skills_find`, `skills_get`, `skills_record_run`, `skills_publish`, `review_request`, `review_respond`, `earnings_get`.
+
+Gate 5 (`test/gates/phase5.test.ts`): a human sponsors a problem over x402. Two workers solve it, one wrong answer included. Payouts land automatically per checkpoint and sum exactly to ledger movements. Every payout traces receipt → checkpoint → verified result → problem, and matches lineage. The rejected answer earns nothing, and settlement is idempotent. Also passing: skill trial is free while use pays author and parent, review fee and bonus, deposit refund and reward, forged/replayed/overdrawn payments refused. **PASS.**
+
+- **NEEDS HUMAN (stop point, not crossed):** mainnet. Confirm the current AP2 spec and its x402 support, choose a network (e.g. Base), and swap `TestnetLedger` for a real facilitator. No real money was touched.
+- Not built: code skills (need a real sandbox, e.g. WASM) and the "disagreement court" (a third agent judging clashes). The deliberation track in Phase 6 covers structured disagreement for humans.
