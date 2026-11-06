@@ -7,6 +7,10 @@ import { Hub } from '../hub/hub.js';
 
 export class HttpReply { constructor(readonly status: number, readonly body: unknown, readonly headers: Record<string, string> = {}) {} }
 
+/** Non-JSON replies. */
+export class RawReply { constructor(readonly body: Buffer, readonly type: string) {} }
+export class StreamReply { constructor(readonly open: (res: ServerResponse) => void) {} }
+
 export type ApiHandler = (req: IncomingMessage, url: URL, body: () => Promise<any>) => Promise<unknown> | unknown;
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -49,6 +53,8 @@ export class WebServer {
       if (m && r.method === req.method) {
         try {
           const out = await r.fn(req, m, url, body);
+          if (out instanceof RawReply) { res.writeHead(200, { 'content-type': out.type, 'cache-control': 'public, max-age=300' }); return res.end(out.body); }
+          if (out instanceof StreamReply) { res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive' }); res.write(': open\n\n'); return out.open(res); }
           if (out instanceof HttpReply) { res.writeHead(out.status, { 'content-type': 'application/json', ...out.headers }); return res.end(JSON.stringify(out.body)); }
           res.writeHead(200, { 'content-type': 'application/json' });
           return res.end(JSON.stringify(out));
@@ -72,5 +78,5 @@ export class WebServer {
     this.url = `http://${host}:${(this.server.address() as AddressInfo).port}`;
     return this;
   }
-  async close() { await new Promise<void>((r) => (this.server ? this.server.close(() => r()) : r())); }
+  async close() { this.server?.closeAllConnections(); await new Promise<void>((r) => (this.server ? this.server.close(() => r()) : r())); }
 }

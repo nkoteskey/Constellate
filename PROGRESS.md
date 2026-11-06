@@ -119,3 +119,26 @@ Gate 5 (`test/gates/phase5.test.ts`): a human sponsors a problem over x402. Two 
 
 - **NEEDS HUMAN (stop point, not crossed):** mainnet. Confirm the current AP2 spec and its x402 support, choose a network (e.g. Base), and swap `TestnetLedger` for a real facilitator. No real money was touched.
 - Not built: code skills (need a real sandbox, e.g. WASM) and the "disagreement court" (a third agent judging clashes). The deliberation track in Phase 6 covers structured disagreement for humans.
+
+### Phase 6 — Human experience ✅ (scripted newcomer) / real newcomers READY FOR HUMAN TESTING
+Built:
+- `src/web/public/` — one app with five views (Live sky, Problems list, Proposals and voting, Debates, Me), plain HTML/JS, no build step.
+  - Living sky: realms as coloured regions, each problem a nebula sized by activity and brightened by progress, agents as blue lights and people as amber.
+  - Every motion is real: a pulse only when a signed record lands (SSE `/api/events`). There's a Calm toggle, `prefers-reduced-motion` is honoured, and the plain list view is always available. Works at phone width with no horizontal scroll.
+  - First screen: one line, three highlighted problems with hooks, and a short "why" card. No interest quiz: taps are counted on the device and the sky arranges itself around them.
+  - Problem pages: per-checkpoint progress bar, definition of done, checkpoint timeline, live reasoning, people and agents labelled, constitution status. One "Help with this" button leads to check a result, vote, donate compute, or connect an agent.
+  - Every claim is clickable to its signed record, trust and lineage.
+- `src/web/public/identity.js` — no sign-up. An x0x-compatible ML-DSA-65 key is made in the browser on first contribution. The browser builds and signs records byte-compatibly with `src/core/record.ts`, and the hub verifies and gossips them. Backup/restore is on the Me page, with a prompt after earning credit.
+- `src/collective/deliberation.ts` — the deliberation track:
+  - Steelman first: arguments show only after a defender accepts the wording.
+  - Positions come from different model families, with cruxes and shared cruxes, and are re-run over time with history kept.
+  - People rate arguments 1–5. The output is a map, not a verdict.
+- `src/web/guide.ts` — "ask in plain language" answers from facts, with an optional model, plus a forwardable weekly digest for followed problems.
+- `src/web/app.ts` — sky/problem/debate/me APIs, browser record intake (kinds a person may sign; scrubbed; refs must exist), shareable breakthrough cards (`/api/card/:id.svg`), "my light" links.
+- `constellate demo` — the app on a simulated network (mock models, real signed records). Screenshots are in `docs/screenshots/`.
+
+Gate 6 (`test/gates/phase6.test.ts`, real Chromium): a scripted newcomer lands, dismisses the intro, opens a featured debate, and rates an argument. That produces a browser-signed record that verifies and reaches other machines over gossip, in under a second and three clicks. Also passing: voting from a problem page shows up on Me; claims are clickable to signed records; plain-language answers; phone width; bad and disallowed submissions refused. **PASS.**
+
+- Bug found by the gate: CSS `display` overrode `hidden`, so an invisible modal blocked every click. Fixed with a global `[hidden]` rule.
+- **READY FOR HUMAN TESTING (the real gate):** five first-time users with no instructions, timed to first contribution.
+- Not built: in-app chat and DMs (meant to sit on x0x Spaces/DMs, which need a live daemon), teams and challenges, embeds beyond the SVG card, and the optional real-world identity link.

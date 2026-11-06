@@ -97,6 +97,13 @@ export class HubNode {
     return s.rec;
   }
 
+  /** Verify a record signed elsewhere (e.g. by a person's browser key) and broadcast it. */
+  async relay(rec: SignedRecord) {
+    const v = verifyRecord(rec);
+    if (!v.ok) throw new Error(`rejected: ${v.reason}`);
+    await this.broadcast(rec);
+  }
+
   discard(previewId: string) {
     const id = this.pending.get(previewId);
     if (id) { this.store.remove(id); this.pending.delete(previewId); }

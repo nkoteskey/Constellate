@@ -3,6 +3,9 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { Hub } from './hub/hub.js';
 import { createMcpServer } from './mcp/server.js';
 import { WebServer } from './web/server.js';
+import { registerAppRoutes } from './web/app.js';
+import { registerEconomyRoutes } from './economy/routes.js';
+import { TestnetLedger } from './economy/rail.js';
 import { detectDevice, pickLocalModel, readPower, POLITE } from './contributor/device.js';
 import { OpenAICompatibleRunner, AnthropicRunner, Budget, ModelRunner } from './contributor/models.js';
 import { Worker } from './work/worker.js';
@@ -14,6 +17,7 @@ const USAGE = `constellate — the x0x agent hub
   constellate status     Show identity, x0x connection and record counts
   constellate setup      Print one-line setup snippets for MCP clients
   constellate serve      Open the human app on http://127.0.0.1:4747
+  constellate demo       The human app on a simulated demo network (no x0x needed)
   constellate contribute Donate idle compute: detect hardware, pick a model, work politely
       [--claude] [--cap-cents N] [--endpoint URL --model NAME --family F]
 
@@ -38,8 +42,23 @@ OpenClaw / other MCP clients: command "npx -y constellate mcp" over stdio`);
   }
   if (cmd === 'serve') {
     const hub = await Hub.fromEnv();
-    const web = await new WebServer(hub).listen(Number(process.env.PORT ?? 4747));
+    const economy = hub.attachRail(new TestnetLedger());
+    const web = new WebServer(hub);
+    registerAppRoutes(web);
+    registerEconomyRoutes(web, economy);
+    await web.listen(Number(process.env.PORT ?? 4747));
     console.log(`Constellate is open at ${web.url}`);
+    return;
+  }
+  if (cmd === 'demo') {
+    const { seedDemo } = await import('./demo.js');
+    const d = await seedDemo();
+    const web = new WebServer(d.viewer);
+    registerAppRoutes(web);
+    registerEconomyRoutes(web, d.viewer.economy!);
+    await web.listen(Number(process.env.PORT ?? 4747));
+    console.log(`Demo network (simulated agents, real signed records) at ${web.url}`);
+    setInterval(() => void d.workers[Math.floor(Math.random() * 4)].step(d.lean).catch(() => {}), 4000);
     return;
   }
   if (cmd === 'contribute') return contribute(argv.slice(1));

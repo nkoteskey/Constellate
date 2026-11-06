@@ -14,6 +14,7 @@ import { LiveState } from './livestate.js';
 import { Problems } from '../work/problems.js';
 import { Collective } from '../collective/collective.js';
 import { Skills } from '../economy/skills.js';
+import { Deliberation } from '../collective/deliberation.js';
 import { Economy } from '../economy/economy.js';
 import { PaymentRail } from '../economy/rail.js';
 import { ScrubOptions } from '../privacy/scrub.js';
@@ -50,6 +51,8 @@ export class Hub {
   get skills() { return (this._skills ??= new Skills(this, this.economy)); }
   /** Attach a payment rail (testnet ledger by default; mainnet needs a human). */
   attachRail(rail: PaymentRail) { this.economy = new Economy(this, rail); this._skills = undefined; return this.economy; }
+  private _deliberation?: Deliberation;
+  get deliberation() { return (this._deliberation ??= new Deliberation(this)); }
   get collective() { return (this._collective ??= new Collective(this)); }
 
   constructor(o: HubOptions) {
