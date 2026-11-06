@@ -3,6 +3,7 @@ import { ModelRunner, Budget } from '../contributor/models.js';
 import { decide, Policy, Power, Status } from '../contributor/device.js';
 import { Board } from './board.js';
 import { CheckpointBody, Problems, TaskResultBody } from './problems.js';
+import type { Constitution } from '../collective/constitution.js';
 
 export interface WorkerOptions {
   policy?: Policy;
@@ -10,6 +11,8 @@ export interface WorkerOptions {
   budget?: Budget;
   /** Treat the machine as idle regardless of load (tests, dedicated boxes). */
   ignoreLoad?: boolean;
+  /** When set, work only on problems the constitution has cleared, and check every result before it becomes a checkpoint. */
+  constitution?: Constitution;
 }
 
 export type StepOutcome = 'verified' | 'rejected' | 'worked' | 'idle' | 'paused';
@@ -42,6 +45,8 @@ export class Worker {
 
   async step(problemId: string): Promise<StepOutcome> {
     if (this.stopped || !this.allowed()) return 'paused';
+    const cons = this.opts.constitution;
+    if (cons && cons.status(problemId).state !== 'cleared') return 'idle';
     const st = await this.problems.state(problemId);
     const verifier = this.problems.verifiers.get(st.problem.definition_of_done.verifier)!;
     const me = this.hub.node.operatorId;
@@ -59,6 +64,15 @@ export class Worker {
           : 'NO';
         const agrees = machine.ok && /^\s*yes\b/i.test(opinion);
         const ctx = { task: `verify ${st.problem.title} / ${c.key}`, domain: [st.problem.realm], environment: this.runner.id };
+        if (agrees && cons) {
+          const cc = await cons.checkCheckpoint(st.problem, rb);
+          if (!cc.ok || cc.needs_human) {
+            await cons.record(r.rec.id, 'checkpoint', problemId, cc); // pauses the problem for human review
+            // The flagged result itself is never accepted; after review the chunk is redone.
+            await this.hub.node.submit({ kind: 'verification', context: { task: `verify ${st.problem.title} / ${c.key}`, domain: [st.problem.realm], environment: this.runner.id }, body: { problem: problemId, chunk: c.key, result: r.rec.id, ok: false, reason: `constitution: ${cc.findings.map((f) => f.rule).join(', ')}`, verifier_family: this.runner.family }, refs: [problemId, r.rec.id] }, { publish: true });
+            return 'rejected';
+          }
+        }
         if (agrees) {
           const body: CheckpointBody = { problem: problemId, chunk: c.key, seq: st.done + 1, result: r.rec.id, verifier_model: this.runner.id, verifier_family: this.runner.family, machine_check: machine.detail };
           await this.hub.node.submit({ kind: 'checkpoint', context: ctx, body: body as unknown as Record<string, unknown>, refs: [problemId, r.rec.id] }, { publish: true });

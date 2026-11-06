@@ -12,6 +12,7 @@ import { Reputation } from '../services/reputation.js';
 import { CtxInput, toContext } from '../services/ledger.js';
 import { LiveState } from './livestate.js';
 import { Problems } from '../work/problems.js';
+import { Collective } from '../collective/collective.js';
 import { ScrubOptions } from '../privacy/scrub.js';
 import { OperatorClaim } from '../core/operator.js';
 
@@ -40,6 +41,8 @@ export class Hub {
   readonly trusted: Set<string>;
   readonly ledger: Ledger;
   readonly problems: Problems;
+  private _collective?: Collective;
+  get collective() { return (this._collective ??= new Collective(this)); }
 
   constructor(o: HubOptions) {
     this.archive = o.archive ?? new LocalArchive();

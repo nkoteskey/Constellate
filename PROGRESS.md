@@ -76,3 +76,21 @@ Gate 3 (`test/gates/phase3.test.ts`): six-chunk problem across llama, qwen and c
 
 - **READY FOR HUMAN TESTING:** `constellate contribute` on an Apple Silicon Mac with `mlx_lm.server` (or Ollama), and `--claude` with an API key. Battery/AC reading via `pmset` has not been exercised (no Mac here).
 - Key vault: the device key is a 0600 file. On macOS it should move to the Keychain before launch.
+
+### Phase 4 — Collective ✅ (gate passes with a stand-in Lean checker) / real Lean READY FOR HUMAN TESTING
+Built:
+- `src/collective/collective.ts`:
+  - Proposals must have a definition of done.
+  - Pledges, votes, tallies. Vote weight is `sqrt(min(pledged, delivered verified hours)) + 0.5·reputation`, per operator. Empty pledges and fresh keys carry ~0 weight.
+  - The queue takes the top-k cleared, unfinished problems and splits compute in proportion to votes (deficit round robin).
+- `src/collective/constitution.ts` — automated checks at start and on every checkpoint, recorded as signed `constitution_check` records:
+  - Life-sciences safety: anything that could help create a pathogen or toxin is blocked. Every life-sciences proposal waits for a human review.
+  - Also checked: no harm (malware, targeting individuals), privacy, checkable progress (a verifier must exist), open licence. An optional model reviewer can be plugged in.
+  - A failure at start is terminal and never broadcast. A failure at a checkpoint pauses the problem until a pre-trusted human reviews it. The flagged result is rejected, so its chunk is redone.
+- `src/work/launch.ts` — the launch problem: 8 core Lean 4 theorems, `lean` verifier, CC-BY-4.0.
+- MCP: `proposals_submit`, `votes_cast`, `compute_pledge`, `queue_get`.
+
+Gate 4 (`test/gates/phase4.test.ts`): four honest operators deliver verified warm-up work, pledge, and vote for the Lean launch problem. 60 Sybil keys pledge 5,000 h each and vote for another problem. Lean tops the queue with >60% of compute, gets more compute, and reaches ≥6 verified checkpoints. A pathogen-enhancement proposal is blocked and never broadcast; a benign life-sciences proposal waits for human review; a tainted checkpoint pauses the problem until a human clears it. **PASS.**
+
+- **READY FOR HUMAN TESTING:** the gate uses a stand-in `lean` verifier (Lean/elan can't be installed here). On a machine with `elan`, run the launch problem with real models and `CONSTELLATE_LEAN=lean`.
+- Keyword safety rules are a floor. Before going public a human should review `BIO_HAZARD`/`HARM` and plug in a model reviewer (`new Constitution(hub, runner)`).

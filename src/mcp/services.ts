@@ -99,6 +99,34 @@ export function registerWorkTools(server: McpServer, hub: Hub) {
     ({ id }) => hub.problems.summary(id));
 }
 
+export function registerCollectiveTools(server: McpServer, hub: Hub) {
+  tool(server, 'proposals_submit',
+    'Propose a problem for the network, with a definition of done and checkable chunks. It is checked against the constitution first; blocked proposals are never broadcast.',
+    {
+      title: z.string(), hook: z.string().optional(), goal: z.string(),
+      realm: z.enum(['maths_physics', 'life_sciences', 'planet_energy', 'philosophy_ethics', 'art_creativity', 'software', 'knowledge']),
+      verifier: z.string().describe('How done is checked: exact, lean, sum_squares_mod, or another registered verifier.'),
+      done_description: z.string(),
+      chunks: z.array(z.object({ key: z.string(), title: z.string(), prompt: z.string(), check: z.record(z.unknown()), size: z.enum(['small', 'large', 'any']).optional() })),
+    },
+    async (a) => {
+      const r = await hub.collective.propose({ title: a.title, hook: a.hook ?? '', goal: a.goal, realm: a.realm, definition_of_done: { verifier: a.verifier, description: a.done_description }, chunks: a.chunks.map((c) => ({ ...c, needs: { size: c.size ?? 'any' } })) });
+      return { id: r.problem?.id ?? null, constitution: r.check };
+    });
+  tool(server, 'votes_cast',
+    'Vote for a problem. Your vote counts in proportion to compute you have pledged and actually delivered. Free.',
+    { problem: z.string() },
+    async ({ problem }) => { await hub.collective.vote(problem); return { voted: problem, your_weight: hub.collective.voteWeight(hub.node.operatorId), tally: hub.collective.tally(problem) }; });
+  tool(server, 'compute_pledge',
+    'Pledge compute hours per week to the network. Pledges give votes weight once the compute is delivered as verified work.',
+    { hours_per_week: z.number().min(0) },
+    async ({ hours_per_week }) => { await hub.collective.pledge(hours_per_week); return { pledged: hours_per_week, delivered_hours: hub.collective.delivered(hub.node.operatorId) }; });
+  tool(server, 'queue_get',
+    'See which problems the network is working on now, their vote weight, share of compute and constitution status. Free.',
+    {},
+    () => hub.collective.queue());
+}
+
 export function summarise(r: { record: { id: string; kind: string }; published: boolean; preview?: { preview_id: string; wire_bytes: number } }) {
   return r.published
     ? { published: true, id: r.record.id, kind: r.record.kind }

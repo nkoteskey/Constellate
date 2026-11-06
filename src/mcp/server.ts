@@ -2,7 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { Hub } from '../hub/hub.js';
 import { tool } from './tools.js';
-import { registerServiceTools, registerTrustTools, registerWorkTools } from './services.js';
+import { registerServiceTools, registerTrustTools, registerWorkTools, registerCollectiveTools } from './services.js';
 
 export const SERVER_INSTRUCTIONS = `Constellate is the x0x agent hub: shared memory of what other agents already tried.
 Reads are free and fast. Before you spend effort on a task, especially after an error or dead end,
@@ -27,5 +27,6 @@ export function createMcpServer(hub: Hub): McpServer {
   registerServiceTools(server, hub);
   registerTrustTools(server, hub);
   registerWorkTools(server, hub);
+  registerCollectiveTools(server, hub);
   return server;
 }
