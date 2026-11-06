@@ -10,6 +10,7 @@ import { seedDemo } from '../src/demo.js';
 import { WebServer } from '../src/web/server.js';
 import { registerAppRoutes } from '../src/web/app.js';
 import { registerEconomyRoutes } from '../src/economy/routes.js';
+import type { StoredRecord } from '../src/store/records.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const out = resolve(process.argv[2] ?? join(root, 'site'));
@@ -58,9 +59,17 @@ const ledger = store.all().filter((s) => s.visibility === 'public' && (s.rec.kin
     approach: b.approach, outcome: b.outcome, error_summary: b.error_summary, question: b.question, answer: b.answer, proof: b.proof,
     confirmations: t.confirmations, contradictions: t.contradictions, evidence: s.rec.evidence,
     fixed_by: s.rec.kind === 'failure' ? store.referencing(s.rec.id, 'answer').map((a) => a.rec.id) : undefined,
+    neighbours: demo.viewer.graph.neighbours(s.rec.id, 3).map((n) => ({ id: n.id, link: n.link, kind: n.kind, title: n.title.slice(0, 140) })),
   };
 });
-write('api/ledger.json', { built: new Date().toISOString(), records: ledger });
+// What the network learned: the latest summary per cluster, from "sleep".
+const latest = new Map<string, StoredRecord>();
+for (const s of store.ofKind('summary')) { const k = (s.rec.body as { cluster: string }).cluster; const p = latest.get(k); if (!p || p.rec.created < s.rec.created) latest.set(k, s); }
+const learned = [...latest.values()].map((s) => {
+  const b = s.rec.body as { title: string; summary: string; members: string[]; realms: string[] };
+  return { id: s.rec.id, title: b.title, summary: b.summary, sources: b.members.length, realms: b.realms, domain: s.rec.context.domain, members: b.members.slice(0, 5) };
+});
+write('api/ledger.json', { built: new Date().toISOString(), records: ledger, learned });
 
 // ── App files ──────────────────────────────────────────────────────
 for (const f of ['app.js', 'identity.js', 'logo.svg', 'style.css', 'embed.html', 'js', 'fonts']) cpSync(join(pub, f), join(out, f), { recursive: true });
@@ -95,5 +104,5 @@ vendor('cborg', 'cborg');
 
 await web.close();
 const size = (d: string): number => readdirSync(d).reduce((n, f) => { const p = join(d, f); return n + (statSync(p).isDirectory() ? size(p) : statSync(p).size); }, 0);
-console.log(`static site: ${out}\n  ${sky.problems.length} problems and debates, ${ledger.length} lessons searchable, ${records} signed records, ${(size(out) / 1e6).toFixed(1)} MB, ${((Date.now() - t0) / 1000).toFixed(0)} s`);
+console.log(`static site: ${out}\n  ${sky.problems.length} problems and debates, ${ledger.length} lessons searchable, ${learned.length} distilled by sleep, ${records} signed records, ${(size(out) / 1e6).toFixed(1)} MB, ${((Date.now() - t0) / 1000).toFixed(0)} s`);
 process.exit(0);

@@ -2,6 +2,7 @@
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { Hub } from './hub/hub.js';
 import { createMcpServer } from './mcp/server.js';
+import { Consolidator } from './graph/consolidate.js';
 import { WebServer } from './web/server.js';
 import { registerAppRoutes } from './web/app.js';
 import { registerEconomyRoutes } from './economy/routes.js';
@@ -50,6 +51,7 @@ OpenClaw / other MCP clients: command "npx -y constellate mcp" over stdio`);
     registerAppRoutes(web);
     registerEconomyRoutes(web, economy);
     await web.listen(Number(process.env.PORT ?? 4747));
+    new Consolidator(hub).schedule(); // "sleep" every 6 hours: distil related lessons into summaries
     console.log(`Constellate is open at ${web.url}`);
     return;
   }

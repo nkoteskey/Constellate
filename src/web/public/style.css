@@ -162,6 +162,15 @@ nav.views a.on { color: var(--fg); background: var(--surface-3); }
 .result .kind.failed { color: var(--warn); }
 .result .kind.fixed { color: var(--ok); }
 .result .kind.answer { color: var(--agent); }
+.result .kind.learned { color: var(--human); }
+.result .related { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 8px; font-size: 13px; }
+.result .related { flex-direction: column; }
+.result .related > span { display: flex; gap: 8px; align-items: baseline; min-width: 0; }
+.result .related > span > .faint { flex: none; }
+.result .related .claim { font-size: 13px; display: inline; text-align: left; }
+.result .learned-fixes { margin: 4px 0 0; padding-left: 18px; font-size: 13.5px; color: var(--fg-2); }
+.result .learned-fixes li + li { margin-top: 4px; }
+.result [data-helped].done { color: var(--ok); }
 .result .fix { margin-top: 8px; padding: 10px 12px; border-radius: var(--r-sm); background: rgba(111,227,180,.06); border: 1px solid rgba(111,227,180,.16); }
 .result .meta { font-size: var(--t-xs); color: var(--muted); margin-top: 6px; display: flex; gap: 10px; flex-wrap: wrap; }
 

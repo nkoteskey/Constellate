@@ -130,14 +130,43 @@ async function search(q) {
       <div class="spread"><span class="kind failed">Failed before</span><span class="faint" style="font-size:12px">${f.confirmations ? `${f.confirmations} confirmed · ` : ''}${esc(f.environment)}</span></div>
       <div style="margin-top:4px"><button class="claim" data-rec="${f.id}">${esc(f.approach)}</button></div>
       <div class="muted" style="font-size:13.5px">${esc(f.error_summary)}</div>
-      ${f.fixes.map((x) => `<div class="fix"><span class="kind fixed">What fixed it</span><div style="margin-top:2px"><button class="claim" data-rec="${x.id}">${esc(x.answer)}</button></div><div class="meta">${x.confirmations} independent confirmation${x.confirmations === 1 ? '' : 's'}</div></div>`).join('')}
+      ${f.fixes.map((x) => `<div class="fix"><span class="kind fixed">What fixed it</span><div style="margin-top:2px"><button class="claim" data-rec="${x.id}">${esc(x.answer)}</button></div><div class="meta spread"><span>${x.confirmations} independent confirmation${x.confirmations === 1 ? '' : 's'}</span><button class="btn ghost sm" data-helped="${x.id}" data-domain="${esc((x.domain ?? []).join(','))}" aria-label="This fix helped me">This helped</button></div></div>`).join('')}
+      ${related(f.neighbours, f.fixes.map((x) => x.id))}
     </div>`).join('');
   const seen = new Set(r.failures.flatMap((f) => f.fixes.map((x) => x.id)));
   const ans = r.answers.filter((a) => !seen.has(a.id)).map((a) => `<div class="result"><span class="kind answer">Verified answer</span><div style="margin-top:4px" class="serif">${esc(a.question)}</div><div style="margin-top:2px"><button class="claim" data-rec="${a.id}">${esc(a.answer)}</button></div><div class="meta"><span>${a.confirmations} confirmations</span><span>proof: ${esc(a.proof.type)}</span></div></div>`).join('');
   const guide = r.guide ? `<div class="result"><span class="kind answer">From the network</span><div style="margin-top:4px">${esc(r.guide.answer)}</div>${r.guide.about ? `<div style="margin-top:8px"><a class="btn sm" href="#/${r.guide.kind === 'deliberation' ? 'd' : 'p'}/${r.guide.about}">Open ${icon.arrow}</a></div>` : ''}</div>` : '';
-  box.innerHTML = (guide + fail + ans) || `<div class="result"><div>Nothing yet. That’s how every shared memory starts.</div><div class="muted" style="font-size:13.5px;margin-top:4px">Connect your agent and it will share what it learns, privately scrubbed on your machine first.</div><div style="margin-top:10px"><a class="btn agent sm" href="#/connect">Connect your agent</a></div></div>`;
+  const learned = (r.learned ?? []).map((l) => `<div class="result"><div class="spread"><span class="kind learned">What the network learned</span><span class="faint" style="font-size:12px">distilled from ${l.sources} linked lessons</span></div>
+      <div style="margin-top:4px"><button class="claim" data-rec="${l.id}">${esc(l.title)}</button></div>
+      ${learnedFixes(l.summary)}</div>`).join('');
+  box.innerHTML = (guide + learned + fail + ans) || `<div class="result"><div>Nothing yet. That’s how every shared memory starts.</div><div class="muted" style="font-size:13.5px;margin-top:4px">Connect your agent and it will share what it learns, privately scrubbed on your machine first.</div><div style="margin-top:10px"><a class="btn agent sm" href="#/connect">Connect your agent</a></div></div>`;
   box.insertAdjacentHTML('beforeend', `<div class="result faint" style="font-size:12px">Free to search. Every result is signed and traceable to its evidence.</div>`);
   bindClaims(box);
+  bindHelped(box);
+}
+
+// Association recall: the strongest links next to a result, small and ranked.
+function related(neighbours = [], skip = []) {
+  const n = neighbours.filter((x, i, a) => !skip.includes(x.id) && a.findIndex((y) => y.id === x.id) === i).slice(0, 2);
+  if (!n.length) return '';
+  return `<div class="related"><span class="faint">Related</span>${n.map((x) => `<span><span class="faint">${esc(LINK[x.link] ?? x.link)}</span> <button class="claim" data-rec="${x.id}">${esc(clipText(x.title || x.kind, 90))}</button></span>`).join('')}</div>`;
+}
+// A distilled summary, kept light: the fixes that recur across the cluster, two at most.
+function learnedFixes(summary) {
+  const line = summary.split('\n').find((x) => x.startsWith('What fixed it: '));
+  const fixes = line ? line.slice(15).split(' / ').slice(0, 2) : [];
+  if (!fixes.length) return '';
+  return `<div class="muted" style="font-size:13.5px;margin-top:6px">What fixed it across these lessons:</div><ul class="learned-fixes">${fixes.map((f) => `<li>${esc(clipText(f, 150))}</li>`).join('')}</ul>`;
+}
+const clipText = (t, n) => (t.length > n ? `${t.slice(0, n - 1).trimEnd()}…` : t);
+
+// "This helped": a signed use record. Use strengthens the links that led here.
+function bindHelped(root) {
+  $$('[data-helped]', root).forEach((b) => (b.onclick = async () => {
+    b.disabled = true;
+    const ok = await give({ kind: 'use', task: 'used a record', domain: (b.dataset.domain || 'general').split(',').filter(Boolean), body: { target: b.dataset.helped, helpful: true }, refs: [b.dataset.helped] }, 'Marked as helpful');
+    if (ok) { b.textContent = 'Helped ✓'; b.classList.add('done'); } else b.disabled = false;
+  }));
 }
 
 // ── Every claim is clickable ──────────────────────────────────────

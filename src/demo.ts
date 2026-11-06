@@ -13,6 +13,7 @@ import { Verifier } from './work/verifiers.js';
 import { TestnetLedger } from './economy/rail.js';
 import { Constitution } from './collective/constitution.js';
 import { KnowledgeGraph } from './graph/graph.js';
+import { Consolidator } from './graph/consolidate.js';
 import { Seeder } from './seed/seeder.js';
 import { GitHubSource } from './seed/github.js';
 import { IssueSeeder, IssueDump } from './seed/issues.js';
@@ -52,6 +53,8 @@ export interface Demo {
   tick(): Promise<void>;
   /** Kept for older callers. */
   sums: string;
+  /** The first "sleep": how many clusters were distilled into summaries. */
+  consolidation: { summarised: number; skipped: number };
 }
 
 export async function seedDemo(opts: { steps?: number; knowledge?: number | 'all' } = {}): Promise<Demo> {
@@ -217,6 +220,9 @@ export async function seedDemo(opts: { steps?: number; knowledge?: number | 'all
   }
   void lab; void issueOperatorClaim;
 
+  // Sleep once: distil tight clusters of related lessons into signed summaries.
+  const consolidation = await new Consolidator(viewer).sleep();
+
   let t = 0;
   const tick = async () => {
     t++;
@@ -229,5 +235,5 @@ export async function seedDemo(opts: { steps?: number; knowledge?: number | 'all
     }
   };
 
-  return { viewer, agents, humans, workers, ledger, lean, antibiotic, battery, navier, question, questions: [question, q2, q3], tick, sums: battery };
+  return { viewer, agents, humans, workers, ledger, lean, antibiotic, battery, navier, question, questions: [question, q2, q3], tick, sums: battery, consolidation };
 }

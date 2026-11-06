@@ -53,6 +53,7 @@ export class IssueSeeder {
     const report: IssueSeedReport = { failures: 0, answers: 0, skipped: [], denied: [] };
     const allowed = (x: Issue) => { if (issueSeedAllowed(x.repo)) return true; if (!report.denied.includes(x.repo)) report.denied.push(x.repo); return false; };
     const issues = dump.issues.filter(allowed);
+    const byIssue = new Map<string, string>();
     const pulls = dump.pulls.filter(allowed);
     const fixFor = new Map<string, Pull>();
     for (const p of pulls) for (const c of closedBy(p)) { const k = `${c.repo}#${c.number}`; const prev = fixFor.get(k); if (!prev || (p.merged_at ?? '') < (prev.merged_at ?? '')) fixFor.set(k, p); }
@@ -60,21 +61,29 @@ export class IssueSeeder {
     let n = 0;
     const max = opts.limit ?? Infinity;
 
-    // 1. Issues: what went wrong, and (when we know it) what fixed it.
-    for (const i of issues) {
-      if (n >= max) break;
+    // 1. Issues: what went wrong, and (when we know it) what fixed it. Feature requests and chores
+    // aren't failures. The sample is chosen in harvest order, then seeded oldest first, so an issue
+    // that mentions an earlier one can link to it (the web of cross-references).
+    const chosen = issues.filter((i) => fixFor.has(`${i.repo}#${i.number}`) || FAILURE.test(i.title)).slice(0, max)
+      .sort((a, b) => a.repo.localeCompare(b.repo) || a.number - b.number);
+    for (const i of chosen) {
       const fix = fixFor.get(`${i.repo}#${i.number}`);
-      if (!fix && !FAILURE.test(i.title)) continue; // feature requests and chores aren't failures
       if (this.seen(i.url)) { report.skipped.push({ url: i.url, reason: 'already seeded' }); continue; }
       try {
         const env = `${i.repo}${i.closed_at ? `, closed ${i.closed_at.slice(0, 10)}` : ''}`;
         const summary = firstParagraph(i.body) || i.title;
+        // Synapses: earlier issues this one mentions ("follow-up after #1766") become buildsOn links.
+        const mentions = [...`${i.title}\n${i.body ?? ''}`.matchAll(/((?:[\w.-]+\/[\w.-]+)?)#(\d+)\b/g)]
+          .map((m) => `${m[1] || i.repo}#${m[2]}`).filter((k) => k !== `${i.repo}#${i.number}`);
+        const refs = [...new Set(mentions.map((k) => byIssue.get(k)).filter((x): x is string => !!x))].slice(0, 6);
         const { record } = await this.hub.node.submit({
           kind: 'failure',
           context: { task: `${repoName(i.repo)}: ${i.title}`.slice(0, 500), domain: domainOf(i.repo, i.labels), environment: env },
           body: { approach: i.title.slice(0, 600), outcome: /wrong|incorrect|mismatch|stale/i.test(i.title) ? 'wrong_result' : /slow|time[sd]? ?out|hang/i.test(i.title) ? 'too_slow' : 'error', error_summary: summary.slice(0, 600), confidence: fix ? 0.9 : 0.7 },
           evidence: [i.url],
+          refs,
         }, { publish: true });
+        byIssue.set(`${i.repo}#${i.number}`, record.id);
         report.failures++; n++;
         if (fix) {
           usedPulls.add(fix.url);

@@ -26,7 +26,8 @@ async function ledger() {
   const df = new Map();
   for (const d of docs) for (const w of new Set(d.t)) df.set(w, (df.get(w) ?? 0) + 1);
   const avg = docs.reduce((n, d) => n + d.t.length, 0) / Math.max(1, docs.length);
-  index = { docs, df, avg, byId: new Map(l.records.map((r) => [r.id, r])) };
+  const learned = (l.learned ?? []).map((x) => ({ x, t: toks(`${x.title} ${x.summary} ${(x.domain ?? []).join(' ')}`) }));
+  index = { docs, df, avg, learned, byId: new Map(l.records.map((r) => [r.id, r])) };
   return index;
 }
 function score(q, d, ix) {
@@ -39,11 +40,13 @@ async function search(q) {
   const ix = await ledger();
   const qt = [...new Set(toks(q))];
   const ranked = ix.docs.map((d) => [d, score(qt, d, ix)]).filter(([, s]) => s > 0).sort((a, b) => b[1] - a[1]);
-  const failures = ranked.filter(([d]) => d.r.kind === 'failure').slice(0, 4).map(([d]) => ({ ...d.r, fixes: (d.r.fixed_by ?? []).map((id) => ix.byId.get(id)).filter(Boolean).map((a) => ({ id: a.id, answer: a.answer, confirmations: a.confirmations ?? 0 })) }));
+  const failures = ranked.filter(([d]) => d.r.kind === 'failure').slice(0, 4).map(([d]) => ({ ...d.r, fixes: (d.r.fixed_by ?? []).map((id) => ix.byId.get(id)).filter(Boolean).map((a) => ({ id: a.id, answer: a.answer, confirmations: a.confirmations ?? 0, domain: a.domain })) }));
   const answers = ranked.filter(([d]) => d.r.kind === 'answer').slice(0, 3).map(([d]) => d.r);
+  const lavg = ix.learned.reduce((n, d) => n + d.t.length, 0) / Math.max(1, ix.learned.length);
+  const learned = ix.learned.map((d) => [d, score(qt, { t: d.t, r: {} }, { ...ix, avg: lavg })]).filter(([, s]) => s > 0).sort((a, b) => b[1] - a[1]).slice(0, 2).map(([d]) => d.x);
   let guide = null;
   if (/happening|progress|status|how('s| is)|going|what about/i.test(q) || !(failures.length || answers.length)) guide = await ask(q);
-  return { q, failures, answers, guide };
+  return { q, failures, answers, learned, guide };
 }
 async function ask(q) {
   const sky = await file('api/sky.json');

@@ -196,12 +196,13 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
   // The utility hook: paste an error or a question, get what failed, what fixed it, and a plain answer.
   web.route('GET', /^\/api\/search$/, async (_r, _m, url) => {
     const q = String(url.searchParams.get('q') ?? '').slice(0, 500).trim();
-    if (!q) return { q, failures: [], answers: [], guide: null };
-    const failures = hub.ledger.searchFailures(q, { limit: 4 }).map((f) => ({ ...f, fixes: f.fixed_by.map((id) => { const a = hub.node.store.get(id); return a ? { id, answer: (a.rec.body as { answer: string }).answer, confirmations: hub.trust.explain(a).confirmations } : null; }).filter(Boolean) }));
+    if (!q) return { q, failures: [], answers: [], learned: [], guide: null };
+    const failures = hub.ledger.searchFailures(q, { limit: 4 }).map((f) => ({ ...f, fixes: f.fixed_by.map((id) => { const a = hub.node.store.get(id); return a ? { id, answer: (a.rec.body as { answer: string }).answer, confirmations: hub.trust.explain(a).confirmations, domain: a.rec.context.domain } : null; }).filter(Boolean) }));
     const answers = hub.ledger.lookupAnswers(q, { limit: 3 });
     const asksAboutWork = /happening|progress|status|how('s| is)|going|what about/i.test(q);
     const guide = asksAboutWork || !(failures.length || answers.length) ? await guide_.ask(q).catch(() => null) : null;
-    return { q, failures, answers, guide };
+    const learned = hub.ledger.learned(q, { limit: 2 });
+    return { q, failures, answers, learned, guide };
   });
 
   web.route('POST', /^\/api\/ask$/, async (_r, _m, _u, body) => guide.ask(String((await body()).question ?? '').slice(0, 500)));

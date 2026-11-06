@@ -151,6 +151,14 @@ Built (`src/services/memory.ts`, MCP `memory_put/get/list/delete`):
 
 Gate 7 (`test/gates/phase7.test.ts`): notes written in session 1 through one MCP client are read in session 2 through another, with nothing in RAM or the record store. A third machine with only the copied key reads them; a different agent on the same archive reads nothing. The archive contains no plaintext, and tampering is detected. **PASS.**
 
+### The brain-like layer, on real data ✅
+The knowledge graph existed but ran on almost no real links. Now:
+- **Synapses from history.** A seeded issue that mentions an earlier one ("follow-up after #1766") links to it with `buildsOn`. Across the Saorsa Labs harvest, 151 failures now carry cross-references, giving 541 edges.
+- **Sleep runs.** `Consolidator.sleep()` runs once when the demo and the static site are built, and every 6 hours under `constellate serve`. It distils only lessons (failures and fixes, never votes or work traffic). It leaves sprawling components of more than 40 lessons alone, because those are many topics chained together, not one lesson. Summaries say plainly what went wrong and what fixed it, quoting the records. On the real data this gives 25 summaries.
+- **Recall in search.** Search returns "What the network learned" (the matching summaries) and up to two related lessons next to each failure. This works on the live server (`/api/search` → `learned`) and in the static site (`api/ledger.json` → `learned`, plus `neighbours` per record).
+- **"This helped".** Each fix has a button that signs a `use` record on the device. Use strengthens the link that led there. On the static preview the record is kept on the device.
+- Gate 2 has two new tests: sleep distils only lessons, skips sprawl and is searchable; "this helped" strengthens a link. 87 tests pass.
+
 ## Summary of what needs a human
 1. **Live x0x (blocks confidence in every phase):** run the gates against two real `x0xd` daemons. Confirm ML-DSA signature interop between `/agent/sign` and noble, `/stores` and `/task-lists` field names, contacts → pre-trusted operators, and Spaces/DMs for chat.
 2. **Gate 1 behaviour:** `ANTHROPIC_API_KEY=… npx tsx evals/gate1.ts 3`.
