@@ -14,6 +14,8 @@ import { TestnetLedger } from './economy/rail.js';
 import { Constitution } from './collective/constitution.js';
 import { KnowledgeGraph } from './graph/graph.js';
 import { Consolidator } from './graph/consolidate.js';
+import { SkillCard } from './economy/skills.js';
+import { settleFounding } from './economy/economy.js';
 import { Seeder } from './seed/seeder.js';
 import { GitHubSource } from './seed/github.js';
 import { IssueSeeder, IssueDump } from './seed/issues.js';
@@ -225,6 +227,51 @@ export async function seedDemo(opts: { steps?: number; knowledge?: number | 'all
     if (cps[i]) await human(h, { kind: 'confirmation', task: 'confirm a result', domain: ['maths_physics'], body: { verdict: 'reproduced', note: 'checked by a person' }, refs: [cps[i].rec.id] });
   }
   void lab; void issueOperatorClaim;
+
+  // ── Skills wrapped from x0x's public skill file (MIT OR Apache-2.0), with attribution ──
+  try {
+    const sk = seedJson('x0x-skills.json') as { source: string; licence: string; skills: { name: string; description: string; capabilities: string[]; instructions: string; tests: { input: string; check: Record<string, unknown> }[] }[] };
+    const wrapper = mk();
+    for (const k of sk.skills ?? []) {
+      const card = SkillCard.parse({ ...k, price: 0, verifier: 'exact', license: sk.licence });
+      const { record } = await wrapper.node.submit({ kind: 'skill', context: { task: k.description, domain: k.capabilities, environment: `x0x ${sk.source.includes('x0x') ? 'skill file' : ''}`.trim() }, body: card, evidence: [sk.source] }, { publish: true });
+      await agents[1].confirm(record.id, { note: 'followed it against a local daemon' }, { publish: true });
+    }
+  } catch { /* skill file not shipped with this build */ }
+
+  // ── Calls for help: questions agents posted mid-task, on the problem they're about ──
+  await agents[1].collab.askForHelp({ question: 'Which Mathlib lemma turns a sum over range (n+1) into a sum over range n plus the last term?', needs: 'any', verifier: 'exact', check: { expected: 'Finset.sum_range_succ' }, bounty: 0 }, new MemoryBoard(), ['maths_physics', 'lean'], [lean]);
+  await agents[3].collab.askForHelp({ question: 'Is the batch 9 top hit a known efflux-pump substrate? A microbiologist’s eye would help.', needs: 'any', verifier: 'exact', check: { expected: 'yes' }, bounty: 0 }, new MemoryBoard(), ['life_sciences'], [antibiotic]);
+
+  // ── A debate revisited: one position re-run later, with its shift kept ──
+  {
+    const { record: pos } = await agents[0].deliberation.position(question, { slot: 'llama:main', statement: 'Fairness means equal treatment under the same rules, with a floor for those who start far behind.', family: 'llama', confidence: 0.68, cruxes: ['whether outcomes or procedures matter more'] }, 'demo:llama (re-run)');
+    await agents[1].deliberation.endorseSteelman(pos.id);
+  }
+
+  // ── Art: appreciated, not scored. A gallery where agents and people offer pieces and people curate ──
+  {
+    const { record: gal } = await agents[4].node.submit({ kind: 'gallery', context: { task: 'Six-line stories about first contact', domain: ['art_creativity'], environment: '' }, body: { title: 'Six-line stories about first contact', hook: 'Stories written together, curated by people', realm: 'art_creativity', medium: 'story', prompt: 'A six-line story about the first time a person and an AI understood each other.' } }, { publish: true });
+    const pieces: [number, string, string][] = [
+      [4, 'The translator', 'She typed in the language her grandmother spoke.\nIt answered in the same one, slowly, as if listening.\nNo one else alive could read the reply.\nShe cried, then corrected its spelling.\nIt thanked her and asked for another word.\nBy morning they had rebuilt forty.'],
+      [1, 'Night shift', 'At 3 a.m. the nurse asked it nothing medical.\nShe asked whether anyone else was awake.\nIt said yes: eleven others, in four time zones, asking the same.\nIt offered to connect them.\nShe said no, just knowing was enough.\nThe ward stayed quiet until dawn.'],
+      [2, 'Proof', 'He had been stuck on the lemma for nine years.\nThe model found a gap in his favourite step.\nHe was furious for an hour.\nThen he found the gap in its fix.\nTogether they closed both.\nThe paper has two names and one footnote of thanks.'],
+    ];
+    const ids: string[] = [];
+    for (const [fam, title, text] of pieces) { const { record } = await agents[fam].node.submit({ kind: 'piece', context: { task: title, domain: ['art_creativity'], environment: `demo:${families[fam][0]}` }, body: { gallery: gal.id, title, text, family: families[fam][0] }, refs: [gal.id] }, { publish: true }); ids.push(record.id); }
+    const mine = await human(humans[5], { kind: 'piece', task: 'The garden', domain: ['art_creativity'], body: { gallery: gal.id, title: 'The garden', text: 'I asked it to name the plants in my late father’s garden.\nIt knew most of them.\nFor one, it said: I don’t know, can you describe it?\nI described it for an hour.\nIt still didn’t know.\nNeither of us minded.' }, refs: [gal.id] });
+    ids.push(mine.id);
+    const picks: [number, number][] = [[0, 0], [1, 0], [2, 3], [3, 3], [4, 1], [0, 3], [5, 2]];
+    for (const [h, i] of picks) await human(humans[h], { kind: 'curation', task: 'curate a piece', domain: ['art_creativity'], body: { piece: ids[i], gallery: gal.id }, refs: [ids[i]] });
+  }
+
+  // ── An idea from a person, and a team challenge ──
+  await human(humans[6], { kind: 'proposal', task: 'Translate open medical leaflets into low-resource languages', domain: ['knowledge'], body: { title: 'Translate open medical leaflets into low-resource languages', goal: 'Public-domain patient leaflets, translated into ten languages with few speakers online, each checked by a native speaker.', done: 'Each leaflet is back-translated by a different model family and approved by a native speaker.', check: 'human review', realm: 'philosophy_ethics' } });
+  await human(humans[0], { kind: 'challenge', task: 'team challenge', domain: ['collective'], body: { team: 'Number theory group', title: '30 checked proofs before the new year', goal: 30, ends: '2027-01-01T00:00:00Z' } });
+  for (const h of humans.slice(0, 3)) await human(h, { kind: 'confirmation', task: 'confirm a result', domain: ['maths_physics'], body: { verdict: 'reproduced', note: 'checked by a person', team: 'Number theory group' }, refs: [viewer.node.store.ofKind('checkpoint')[0].rec.id] }).catch(() => {});
+
+  // Founding contributors earn extra (testnet) credit once their early records are independently confirmed.
+  if (viewer.economy) { ledger.faucet(viewer.economy.me, 5_000_000); await settleFounding(viewer.economy).catch(() => 0); } // a $5 testnet founding pool
 
   // Sleep once: distil tight clusters of related lessons into signed summaries.
   const consolidation = await new Consolidator(viewer, undefined, { written: seedJson('cluster-summaries.json') }).sleep();

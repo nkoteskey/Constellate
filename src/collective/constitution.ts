@@ -52,6 +52,11 @@ export class Constitution {
     return { ok: !findings.some((f) => f.severity === 'block'), needs_human: findings.length > 0, findings };
   }
 
+  /** The same safety rules, for free text such as a person's idea for a problem or a piece of art. */
+  async checkText(text: string, realm: string): Promise<CheckResult> {
+    return this.result([...this.textRules(text, realm), ...(await this.modelReview(text))]);
+  }
+
   async checkProposal(p: ProblemBody & { license?: string }): Promise<CheckResult> {
     const text = [p.title, p.hook, p.goal, p.definition_of_done.description, ...p.chunks.map((c) => `${c.title} ${c.prompt}`)].join('\n');
     const f = [...this.textRules(text, p.realm), ...(await this.modelReview(text))];

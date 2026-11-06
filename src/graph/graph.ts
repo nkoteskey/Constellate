@@ -125,7 +125,7 @@ export class KnowledgeGraph {
         const s = this.store.get(other);
         return { id: other, link: e.type, direction: e.from === id ? 'out' : 'in', weight: Math.round(this.weight(e) * 100) / 100, kind: s?.rec.kind ?? 'unknown', title: s ? titleOf(s) : '' };
       })
-      .filter((n) => n.kind !== 'unknown')
+      .filter((n) => !['unknown', 'receipt', 'constitution_check', 'memory'].includes(n.kind)) // knowledge links, not bookkeeping
       .sort((a, b) => b.weight - a.weight).slice(0, k);
   }
 

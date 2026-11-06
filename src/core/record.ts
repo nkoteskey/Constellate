@@ -27,6 +27,8 @@ export const RECORD_KINDS = [
   'memory',
   // amendment 1: knowledge graph, hand-offs, help, court, conversation
   'link', 'use', 'summary', 'handoff', 'help_request', 'ruling', 'message',
+  // human layer: team challenges, art galleries (curated, not scored), an optional real-world identity link
+  'challenge', 'gallery', 'piece', 'curation', 'identity_link',
 ] as const;
 export type RecordKind = (typeof RECORD_KINDS)[number];
 

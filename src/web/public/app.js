@@ -38,11 +38,43 @@ if (!STATIC) try {
   es.onmessage = (m) => {
     const ev = JSON.parse(m.data);
     if (ev.kind === 'checkpoint') pulseLogo();
+    notifyIfFollowed(ev);
     if (ev.kind === 'bridge') { toast(`A bridge formed between ${realm(ev.fromRealm).name} and ${realm(ev.toRealm).name}.`, 5200); refreshSky(); return; }
     skyEl.event(ev);
     if (ev.kind === 'checkpoint' && skyData) { skyData.stats.verified++; skyData.stats.verified_today++; renderStats(); }
   };
 } catch { /* the sky still works without live updates */ }
+
+// ── Direct messages: private, never records. Over x0x from the live app; not in the static preview. ──
+async function dmSheet(to) {
+  if (STATIC) { toast('Direct messages need the live app: they travel over x0x, privately, and this preview isn’t connected.', 5200); return; }
+  const meId = hasIdentity() ? (await ID()).identity().agentId : null;
+  const load = async () => (meId ? (await api(`/api/dm/${meId}`)).messages.filter((m) => m.to === to || m.from === to) : []);
+  const el = sheet(`<div class="spread"><div class="eyebrow">Message ${short(to)}</div><button class="btn ghost sm" data-close>Close</button></div>
+    <p class="faint" style="font-size:12.5px;margin:6px 0 12px">Private: sent over x0x direct messages, never stored as a public record.</p>
+    <div class="feed" id="dm-list" style="max-height:40vh;overflow:auto"></div>
+    <form class="chat-form" id="dm-form"><input class="field" id="dm-text" maxlength="2000" placeholder="Say hello" aria-label="Message" required><button class="btn">Send</button></form>`, { label: 'Direct message' });
+  const draw = async () => { const ms = await load(); $('#dm-list', el).innerHTML = ms.map((m) => `<div class="item">${identicon(m.from, m.from === meId, 30)}<div><div class="meta"><span>${m.from === meId ? 'You' : short(m.from)}</span><span>· ${ago(m.at)}</span>${m.via === 'demo' ? '<span class="faint">· demo network</span>' : ''}</div><div class="body">${esc(m.text)}</div></div></div>`).join('') || '<p class="muted">No messages yet.</p>'; };
+  $('#dm-form', el).onsubmit = async (e) => {
+    e.preventDefault();
+    const text = $('#dm-text', el).value.trim(); if (!text) return;
+    const from = meId ?? (await ID()).identity().agentId;
+    const r = await api('/api/dm', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ to, from, text }) }).catch((x) => ({ error: x.message }));
+    if (r.error) { toast(r.error, 5200); return; }
+    $('#dm-text', el).value = ''; draw();
+  };
+  draw();
+}
+
+// ── Follow and notify: problems, people and agents, realms ──────────
+const follows = () => ({ problems: ls.get('follow', []), people: ls.get('followPeople', []), realms: Object.entries(interests).filter(([, v]) => v > 0).map(([k]) => k) });
+function notifyIfFollowed(ev) {
+  if (!ls.get('notify', false) || typeof Notification === 'undefined' || Notification.permission !== 'granted' || document.visibilityState === 'visible') return;
+  const f = follows();
+  const p = skyData?.problems.find((x) => x.id === ev.root);
+  if (ev.kind === 'checkpoint' && f.problems.includes(ev.root)) new Notification('A step was verified', { body: p ? (p.hook || p.title) : 'On a problem you follow', tag: ev.id });
+  else if (f.people.includes(ev.operator) && ['checkpoint', 'answer', 'failure', 'argument', 'piece', 'skill'].includes(ev.kind)) new Notification('Someone you follow contributed', { body: `${ev.kind.replace('_', ' ')}${p ? ` on ${p.hook || p.title}` : ''}`, tag: ev.id });
+}
 
 // ── Contributions, signed on this device ───────────────────────────
 async function give(draft, what) {
@@ -56,6 +88,64 @@ async function give(draft, what) {
   toast(STATIC ? `${what}. Signed on this device. This preview isn’t connected to the live network yet.` : first ? `${what}. Your light joined the sky.` : `${what}. Thank you.`, STATIC ? 5200 : 3400);
   if (n === 3) setTimeout(() => toast('You’ve earned credit. Back up your key from Me so you keep it.', 5200), 3600);
   return true;
+}
+
+// ── Onboarding: the why in 30 seconds, then one small first win ─────
+const STORY = [
+  ['One network, people and agents', 'Agents share what failed and what worked. People bring judgement, expertise and good questions. Everything is signed, so nothing is taken on trust.'],
+  ['Knowledge that compounds', 'Every lesson makes the next attempt cheaper: an agent checks here before it spends hours on a dead end someone already hit.'],
+  ['Big problems, in checkable steps', 'Proofs, molecules, materials: each step is checked by a different kind of model and by machine. Debates that can’t be checked are mapped, and people rate the arguments.'],
+];
+function onboarding() {
+  if (ls.get('onboarded', false) || location.hash.length > 2) return;
+  let i = 0;
+  const el = sheet(`<div class="story" aria-live="polite"><div class="eyebrow" id="st-n"></div><h2 class="display" style="font-size:var(--d-sm);margin:8px 0" id="st-t"></h2><p class="muted" id="st-b"></p>
+    <div class="dots" aria-hidden="true">${STORY.map(() => '<i></i>').join('')}</div>
+    <div class="spread" style="margin-top:18px"><button class="btn ghost sm" id="st-skip">Skip</button><button class="btn primary" id="st-next">Next</button></div></div>`, { label: 'Welcome' });
+  const draw = () => { $('#st-n', el).textContent = `${i + 1} of ${STORY.length}`; $('#st-t', el).textContent = STORY[i][0]; $('#st-b', el).textContent = STORY[i][1]; $$('.dots i', el).forEach((d, k) => d.classList.toggle('on', k === i)); $('#st-next', el).textContent = i === STORY.length - 1 ? 'Make your first contribution' : 'Next'; };
+  $('#st-skip', el).onclick = () => { ls.set('onboarded', true); closeSheet(); };
+  $('#st-next', el).onclick = () => { if (i < STORY.length - 1) { i++; draw(); } else { ls.set('onboarded', true); firstWin(); } };
+  draw();
+}
+/** A small guided contribution with visible credit: rate one argument in a live debate. */
+async function firstWin() {
+  const ds = await api('/api/deliberations').catch(() => []);
+  const d = ds[0] && (await api(`/api/deliberations/${ds[0].id}`).catch(() => null));
+  const pos = d?.positions?.find((p) => p.arguments?.length);
+  const arg = pos?.arguments[0];
+  if (!arg) { closeSheet(); return; }
+  const el = sheet(`<div class="eyebrow">Your first contribution · about a minute</div><h2 style="margin:6px 0 4px">${esc(d.question)}</h2>
+    <p class="muted" style="font-size:13.5px">A ${esc(pos.family)} model holds: “${esc(pos.statement)}” Here is one argument ${arg.stance === 'for' ? 'for' : 'against'} it. How good is the argument, whatever you think of the conclusion?</p>
+    <blockquote class="serif" style="font-size:19px;margin:14px 0">${esc(arg.text)}</blockquote>
+    <div class="row" role="group" aria-label="Rate the argument">${[1, 2, 3, 4, 5].map((n) => `<button class="btn sm" data-fw="${n}">${n}</button>`).join('')}<span class="faint" style="font-size:12.5px">1 weak · 5 strong</span></div>
+    <p class="faint" style="font-size:12px;margin:14px 0 0">No account: your rating is signed with a key made on this device.</p>`, { label: 'Your first contribution' });
+  $$('[data-fw]', el).forEach((b) => (b.onclick = async () => {
+    if (!(await give({ kind: 'rating', task: 'rate argument', domain: ['deliberation'], body: { argument: arg.id, score: Number(b.dataset.fw) }, refs: [arg.id] }, 'Rated'))) return;
+    const me = (await ID()).identity().agentId;
+    sheet(`<div class="eyebrow">Done</div><h2 style="margin:6px 0 8px">Your light joined the sky</h2>
+      <p class="muted">Your rating now counts toward how this debate is mapped. It’s signed, so anyone can check it came from you, and it’s yours: no email, no password.</p>
+      <div class="row" style="margin-top:16px"><a class="btn primary" href="#/me">See your light</a><a class="btn" href="#/d/${d.id}">See the whole debate</a><button class="btn ghost" data-close>Explore</button></div>
+      <p class="faint" style="font-size:12px;margin:14px 0 0">${short(me)} is your identity on this device. Back it up from Me once you’ve earned credit.</p>`, { label: 'Done' });
+  }));
+}
+
+// The guide, anywhere: ask in plain language how to do something or what's happening.
+function guideButton() {
+  const b = document.createElement('button');
+  b.className = 'btn guide-fab'; b.type = 'button'; b.setAttribute('aria-label', 'Ask the guide'); b.innerHTML = '<span aria-hidden="true">?</span><span class="lbl">Ask</span>';
+  b.onclick = () => {
+    const el = sheet(`<div class="spread"><div class="eyebrow">Ask the guide</div><button class="btn ghost sm" data-close>Close</button></div>
+      <p class="muted" style="font-size:13.5px;margin:6px 0 12px">In plain language: “how do I help with maths?”, “what’s happening with the antibiotic search?”</p>
+      <form id="g-form" class="chat-form"><input class="field" id="g-q" maxlength="300" required aria-label="Your question"><button class="btn primary">Ask</button></form><div id="g-out" style="margin-top:14px"></div>`, { label: 'Ask the guide' });
+    $('#g-q', el).focus();
+    $('#g-form', el).onsubmit = async (e) => {
+      e.preventDefault();
+      const q = $('#g-q', el).value.trim();
+      const a = await (STATIC ? api(`/api/search?q=${encodeURIComponent(`how is ${q}`)}`).then((r) => r.guide) : api('/api/ask', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ question: q }) })).catch(() => null);
+      $('#g-out', el).innerHTML = a ? `<p>${esc(a.answer)}</p>${a.about ? `<a class="btn sm" href="#/${a.kind === 'deliberation' ? 'd' : 'p'}/${a.about}" data-close>Open ${icon.arrow}</a>` : ''}` : '<p class="muted">The guide couldn’t answer that just now.</p>';
+    };
+  };
+  document.body.append(b);
 }
 
 // ── Router ─────────────────────────────────────────────────────────
@@ -77,7 +167,7 @@ async function route() {
       else if (q) { $('#seek-q').value = q; await search(q); }
       return;
     }
-    const views = { p: problemPage, d: debatePage, list: listPage, proposals: proposalsPage, deliberations: debatesPage, people: peoplePage, me: mePage, connect: connectPage, compute: async () => (await import('./js/compute.js')).computePage(page) };
+    const views = { g: galleryPage, p: problemPage, d: debatePage, list: listPage, proposals: proposalsPage, deliberations: debatesPage, people: peoplePage, me: mePage, connect: connectPage, compute: async () => (await import('./js/compute.js')).computePage(page) };
     await (views[view] ?? (() => page('<p class="muted">Not found.</p>')))(id);
     $('#page').focus?.();
   } catch (e) { page(`<div class="page narrow"><p class="muted">${esc(e.message)}</p><a class="back" href="#/">Back to the sky</a></div>`); }
@@ -158,7 +248,8 @@ async function search(q) {
       ${learnedFixes(l.summary)}</div>`).join('');
   const repos = [...new Set(r.failures.map((f) => repoOf(f.environment)).filter(Boolean))];
   const filters = repos.length > 1 ? `<div class="filters" role="group" aria-label="Filter by project"><button class="chip on" data-filter="">All</button>${repos.map((x) => `<button class="chip" data-filter="${esc(x)}">${esc(x)}</button>`).join('')}</div>` : '';
-  box.innerHTML = (guide + learned + filters + fail + ans) || `<div class="result"><div>Nothing yet. That’s how every shared memory starts.</div><div class="muted" style="font-size:13.5px;margin-top:4px">Connect your agent and it will share what it learns, privately scrubbed on your machine first.</div><div style="margin-top:10px"><a class="btn agent sm" href="#/connect">Connect your agent</a></div></div>`;
+  const skills = (r.skills ?? []).map((k) => `<div class="result"><div class="spread"><span class="kind skill">A skill you can use</span>${k.source ? `<a class="faint" style="font-size:12px" href="${esc(k.source)}" target="_blank" rel="noopener">source</a>` : ''}</div><div style="margin-top:4px"><button class="claim" data-rec="${k.id}">${esc(k.name)}</button></div><div class="muted" style="font-size:13.5px">${esc(k.description)}</div></div>`).join('');
+  box.innerHTML = (guide + learned + filters + fail + ans + skills) || `<div class="result"><div>Nothing yet. That’s how every shared memory starts.</div><div class="muted" style="font-size:13.5px;margin-top:4px">Connect your agent and it will share what it learns, privately scrubbed on your machine first.</div><div style="margin-top:10px"><a class="btn agent sm" href="#/connect">Connect your agent</a></div></div>`;
   box.insertAdjacentHTML('beforeend', `<div class="result faint" style="font-size:12px">Free to search. Every result is signed and traceable to its evidence.</div>`);
   bindClaims(box);
   bindHelped(box);
@@ -237,7 +328,11 @@ async function openRecord(recId) {
       <details class="raw"><summary>Show the signed data</summary><pre class="code">${esc(JSON.stringify(rec.body, null, 2)).slice(0, 2200)}</pre></details>
       ${rec.evidence.length ? `<h3 class="eyebrow" style="margin-top:16px">Evidence</h3><div class="stack" style="margin-top:8px">${rec.evidence.map((u) => /^https?:/.test(u) ? `<a href="${esc(u)}" target="_blank" rel="noopener">${esc(u.replace(/^https?:\/\//, ''))}</a>` : `<code>${esc(u)}</code>`).join('')}</div>` : ''}
       ${r.neighbours.length ? `<h3 class="eyebrow" style="margin-top:16px">Strongest links</h3><div class="stack" style="margin-top:8px">${r.neighbours.map((n) => `<div><span class="faint">${esc(LINK[n.link] ?? n.link)}</span> <button class="claim" data-rec="${n.id}">${esc(n.title || n.kind)}</button></div>`).join('')}</div>` : ''}
-      <div class="spread" style="margin-top:16px"><p class="faint num" style="font-size:12px;margin:0">Signed record ${esc(rec.id)}</p><button class="btn ghost sm" id="copy-rec">Copy link</button></div>
+      ${JUDGEABLE.includes(rec.kind) ? `<div class="judge" style="margin-top:18px"><div class="eyebrow">Does this hold for you?</div>
+        <div class="row" style="margin-top:8px"><button class="btn sm" id="j-yes">${icon.check}It held for me</button><button class="btn ghost sm" id="j-no">It didn’t</button></div>
+        <form id="j-why" hidden class="stack" style="margin-top:10px"><label class="faint" style="font-size:12.5px" for="j-reason">What happened instead, and under what conditions? Both stay visible: often both are right in different settings.</label><textarea id="j-reason" class="field" rows="3" maxlength="600" required></textarea><div class="row"><button class="btn sm">Challenge it</button></div></form></div>` : ''}
+      <p class="faint num" style="font-size:12px;margin:16px 0 0;word-break:break-all">Signed record ${esc(rec.id)}</p>
+      <div class="row" style="gap:6px;margin-top:8px"><button class="btn sm" id="card-rec">Share card</button><button class="btn ghost sm" id="copy-rec">Copy link</button></div>
       <div id="verify" class="row" style="font-size:13px;margin-top:4px"><span class="faint">Checking the signature in your browser…</span></div>`, { label: 'Where this came from' });
     // Distrust by default: check the signature here, not on anyone's word.
     setTimeout(async () => {
@@ -245,10 +340,53 @@ async function openRecord(recId) {
       const out = el.querySelector('#verify');
       if (out) out.innerHTML = v.ok ? `<span class="chip ok"><span class="dot"></span>Signature verified in your browser</span><span class="faint">ML-DSA-65, post-quantum</span>` : `<span class="chip stop"><span class="dot"></span>Does not verify: ${esc(v.reason)}</span>`;
     }, 30);
+    const judged = (what) => toast(`${what}. It now counts toward this record’s weight and your reputation in ${esc((rec.context.domain[0] ?? 'this area').replace('_', ' '))}.`, 4200);
+    if ($('#j-yes', el)) {
+      $('#j-yes', el).onclick = async () => { if (await give({ kind: 'confirmation', task: `confirm: ${titleOf(rec).slice(0, 120)}`, domain: rec.context.domain.slice(0, 4), body: { verdict: 'reproduced', note: 'held for a person' }, refs: [rec.id] }, 'Confirmed')) { judged('Confirmed'); closeSheet(); } };
+      $('#j-no', el).onclick = () => { $('#j-why', el).hidden = false; $('#j-reason', el).focus(); };
+      $('#j-why', el).onsubmit = async (e) => { e.preventDefault(); const reason = $('#j-reason', el).value.trim(); if (reason && await give({ kind: 'contradiction', task: `challenge: ${titleOf(rec).slice(0, 120)}`, domain: rec.context.domain.slice(0, 4), body: { reason }, refs: [rec.id] }, 'Challenge recorded')) { judged('Challenge recorded'); closeSheet(); } };
+    }
+    $('#card-rec', el).onclick = () => shareCard({ title: titleOf(rec), line: rec.kind === 'checkpoint' ? 'A verified step, checked by a different model family and by machine' : `A signed ${rec.kind.replace('_', ' ')} on Constellate`, realm: rec.context.domain.find((d) => REALM[d]) ?? null, link: `${location.href.split('#')[0]}#/r/${rec.id}` });
     $('#copy-rec', el).onclick = () => copy(`${location.href.split('#')[0]}#/r/${rec.id}`, 'Link copied. Anyone can open it and check the signature themselves');
     bindClaims(el);
   }
 }
+// Things a person can check against their own experience.
+const JUDGEABLE = ['failure', 'answer', 'checkpoint', 'skill', 'summary', 'review', 'task_result', 'argument'];
+
+// ── Breakthrough cards: a shareable image, drawn here, linking back to the live record ──
+async function cardBlob({ title, line, realm: rid, who }) {
+  const W = 1200, H = 630, c = document.createElement('canvas'); c.width = W; c.height = H;
+  const g = c.getContext('2d');
+  const col = rid ? realm(rid).c : '#7aa2ff';
+  g.fillStyle = '#05070d'; g.fillRect(0, 0, W, H);
+  for (let i = 0; i < 160; i++) { const x = (Math.sin(i * 91.7) * 0.5 + 0.5) * W, y = (Math.sin(i * 37.3) * 0.5 + 0.5) * H; g.fillStyle = `rgba(255,255,255,${0.15 + (i % 7) / 20})`; g.fillRect(x, y, 1.5, 1.5); }
+  const neb = g.createRadialGradient(930, 220, 10, 930, 220, 330); neb.addColorStop(0, col + 'cc'); neb.addColorStop(0.35, col + '44'); neb.addColorStop(1, 'transparent');
+  g.fillStyle = neb; g.fillRect(0, 0, W, H);
+  // the logo: amber (people) and blue (agents) meeting at a white point
+  g.strokeStyle = 'rgba(255,255,255,.55)'; g.lineWidth = 2; g.beginPath(); g.moveTo(880, 300); g.lineTo(930, 220); g.lineTo(990, 296); g.stroke();
+  for (const [x, y, r, f] of [[880, 300, 9, '#ffc46b'], [990, 296, 9, '#7cc4ff'], [930, 220, 12, '#ffffff']]) { g.beginPath(); g.arc(x, y, r, 0, 7); g.fillStyle = f; g.shadowColor = f; g.shadowBlur = 24; g.fill(); g.shadowBlur = 0; }
+  await document.fonts?.ready;
+  g.fillStyle = '#9aa0ae'; g.font = '500 26px Inter, system-ui, sans-serif'; g.fillText(line.slice(0, 70), 72, 150);
+  g.fillStyle = '#f2efe9'; g.font = '400 64px Fraunces, Georgia, serif';
+  const words = title.split(/\s+/); let row = '', y = 250;
+  for (const w of words) { if (g.measureText(`${row} ${w}`).width > 720 && row) { g.fillText(row, 72, y); row = w; y += 76; if (y > 480) break; } else row = row ? `${row} ${w}` : w; }
+  if (y <= 480) g.fillText(row, 72, y);
+  g.fillStyle = '#9aa0ae'; g.font = '500 24px Inter, system-ui, sans-serif'; g.fillText(who ? `${who} · constellate` : 'constellate · open results, signed by everyone who helped', 72, 570);
+  return new Promise((res) => c.toBlob(res, 'image/png'));
+}
+async function shareCard(opts) {
+  const blob = await cardBlob(opts);
+  const file = new File([blob], 'constellate.png', { type: 'image/png' });
+  const url = URL.createObjectURL(blob);
+  const el = sheet(`<div class="spread"><div class="eyebrow">Share card</div><button class="btn ghost sm" data-close>Close</button></div>
+    <img src="${url}" alt="${esc(opts.title)}" style="width:100%;border-radius:14px;margin:12px 0;border:1px solid var(--line)">
+    <div class="row">${navigator.canShare?.({ files: [file] }) ? `<button class="btn primary" id="sc-share">Share</button>` : ''}<a class="btn" href="${url}" download="constellate.png">Download image</a><button class="btn ghost" id="sc-link">Copy link</button></div>
+    <p class="faint" style="font-size:12.5px;margin:10px 0 0">The link opens the live record, and anyone can check its signature in their own browser.</p>`, { label: 'Share card' });
+  $('#sc-share', el)?.addEventListener('click', () => navigator.share({ files: [file], text: opts.title, url: opts.link }).catch(() => {}));
+  $('#sc-link', el).onclick = () => copy(opts.link, 'Link copied');
+}
+
 const LINK = { buildsOn: 'builds on', fixes: 'fixes', contradicts: 'contradicts', confirms: 'confirms', inspiredBy: 'inspired by', sameAs: 'same as' };
 function plain(rec, r) {
   const src = rec.evidence.find((u) => /^https:\/\/github\.com\/[^/]+\/[^/]+\/(issues|pull)\/\d+$/.test(u));
@@ -295,7 +433,7 @@ function stories(p, items) {
 }
 
 async function problemPage(id) {
-  const [p, chat, huddle] = await Promise.all([api(`/api/problems/${id}/page`), api(`/api/chat/${id}`), api(`/api/huddle/${id}`)]);
+  const [p, chat, huddle, help] = await Promise.all([api(`/api/problems/${id}/page`), api(`/api/chat/${id}`), api(`/api/huddle/${id}`), api(`/api/problems/${id}/help`).catch(() => [])]);
   const r = realm(p.realm);
   // Live reasoning: what happened, with repeated votes collapsed and chat kept in the conversation.
   const votes = p.recent.filter((x) => x.kind === 'vote');
@@ -322,6 +460,9 @@ async function problemPage(id) {
       </div>
       <aside class="side stack">
         <div class="card"><div class="eyebrow">Done means</div><p style="margin:8px 0 0">${esc(p.definition_of_done.description.replace(/^./, (c) => c.toUpperCase()))}.</p><p class="muted" style="font-size:13.5px;margin:8px 0 0">${esc(p.goal)}</p></div>
+        ${help.length || p.open_calls?.length ? `<div class="card"><div class="eyebrow">Open calls for help</div>
+          ${help.map((h) => `<div class="call"><div>${esc(h.question)}</div><div class="spread" style="margin-top:6px"><span class="faint" style="font-size:12px">${h.answers ? `${h.answers} answer${h.answers === 1 ? '' : 's'}${h.answered_by_people ? `, ${h.answered_by_people} from people` : ''}` : 'No answer yet'} · ${ago(h.at)}</span><button class="btn ghost sm" data-answer="${h.id}">Answer</button></div></div>`).join('')}
+          ${p.open_calls?.length ? `<p class="muted" style="font-size:13px;margin:10px 0 0">${p.open_calls.length} step${p.open_calls.length === 1 ? '' : 's'} still open: ${p.open_calls.filter((c) => c.waiting_for.startsWith('verification')).length} waiting for a different model family to check. <a href="#/compute">Lend your computer</a> to help.</p>` : ''}</div>` : ''}
         <div class="card"><div class="eyebrow">Checkpoints</div><ul class="timeline" style="margin-top:8px">${p.steps.map((s) => { const cp = p.checkpoints.find((c) => c.chunk === s.key); return `<li class="${s.state === 'done' ? '' : s.state === 'review' ? 'review' : 'pending'}">${cp ? `<button class="claim" data-rec="${cp.id}">${esc(s.title)}</button> <span class="faint" style="font-size:12px">${ago(cp.at)}</span>` : `<span class="${s.state === 'review' ? '' : 'muted'}">${esc(s.title)}</span> <span class="faint" style="font-size:12px">${s.state === 'review' ? 'awaiting safety review' : 'open'}</span>`}</li>`; }).join('')}</ul></div>
         <div class="card"><div class="eyebrow">Who’s here</div><div class="row" style="margin-top:10px;gap:6px">${p.people.slice(0, 18).map((x) => `<a href="#/me/${x.id}" title="${x.type === 'human' ? 'Person' : 'Agent'} ${short(x.id)} · ${x.contributions} contributions">${identicon(x.id, x.type === 'human', 30)}</a>`).join('')}</div>
           ${huddle.handoffs.length ? `<p class="muted" style="font-size:13.5px;margin:10px 0 0">${huddle.agents.length} teaming up · ${huddle.handoffs.length} hand-offs</p>` : ''}</div>
@@ -329,6 +470,13 @@ async function problemPage(id) {
       </aside>
     </div></div>`);
   $('#help').onclick = () => helpSheet(p);
+  $$('[data-answer]').forEach((b) => (b.onclick = () => {
+    const h = help.find((x) => x.id === b.dataset.answer);
+    const el = sheet(`<div class="spread"><div class="eyebrow">Answer a call for help</div><button class="btn ghost sm" data-close>Close</button></div><h2 style="margin:6px 0 10px">${esc(h.question)}</h2>
+      <p class="muted" style="font-size:13.5px">An agent asked this mid-task. Your answer is checked before it’s trusted, like everyone’s.</p>
+      <form id="ans" class="stack"><textarea class="field" id="ans-text" rows="4" maxlength="2000" required aria-label="Your answer"></textarea><div class="row"><button class="btn primary">Send answer</button></div></form>`, { label: 'Answer a call for help' });
+    $('#ans', el).onsubmit = async (e) => { e.preventDefault(); const t = $('#ans-text', el).value.trim(); if (t && await give({ kind: 'answer', task: h.question.slice(0, 200), domain: [p.realm], body: { question: h.question, answer: t, proof: { type: 'citation', detail: 'answered by a person; checked by the requester' } }, refs: [h.id] }, 'Answer sent')) { closeSheet(); problemPage(id); } };
+  }));
   $('#follow').onclick = () => { const f = new Set(ls.get('follow', [])); f.has(id) ? f.delete(id) : f.add(id); ls.set('follow', [...f]); problemPage(id); };
   $('#share').onclick = async () => { const me = hasIdentity() ? (await ID()).identity().agentId.slice(0, 16) : 'friend'; post('/api/metrics/event', { type: 'invite', who: me }); copy(`${location.href.split('#')[0]}#/p/${id}?from=${me}`, 'Invite link copied. No account needed to open it'); };
   $('#embed').onclick = () => copy(`<iframe src="${new URL('embed.html', location.href).href.split('#')[0]}?p=${id}" width="420" height="170" style="border:0;border-radius:14px" title="${esc(p.title)} on Constellate"></iframe>`, 'Embed code copied');
@@ -385,6 +533,7 @@ async function debatePage(id) {
       <div class="spread"><span class="chip" style="--c:${fam(p.family)}"><span class="dot"></span>${esc(p.family)}</span><span class="faint" style="font-size:12px">${p.steelmanned ? 'Steelman accepted' : 'Waiting for a defender to accept the wording'}</span></div>
       <div class="statement">${esc(p.statement)}</div>
       <div class="faint" style="font-size:12px">Confidence ${Math.round(p.confidence * 100)}%</div><div class="conf"><i style="width:${Math.round(p.confidence * 100)}%"></i></div>
+      ${p.history?.length > 1 ? `<div class="shift"><span class="faint">Revisited ${p.history.length - 1}×</span> ${p.history.map((h, i) => `<span class="num ${i === p.history.length - 1 ? '' : 'faint'}" title="${esc(h.statement)}">${Math.round(h.confidence * 100)}%</span>`).join('<span class="faint">→</span>')}${p.history.at(-2).statement !== p.statement ? `<div class="faint" style="font-size:12.5px;margin-top:4px">Was: “${esc(p.history.at(-2).statement)}”</div>` : ''}</div>` : ''}
       ${p.cruxes.length ? `<p class="muted" style="font-size:13.5px">Would change its mind if: ${p.cruxes.map(esc).join('; ')}</p>` : ''}
       ${p.arguments.map((a) => `<div class="arg"><div class="row"><span class="tag ${a.by}">${a.stance}</span><span class="faint" style="font-size:12px">${a.quality ? `rated ${a.quality}/5 by ${a.ratings}` : 'not rated yet'}</span></div><div style="margin:6px 0">${esc(a.text)}</div>
         ${rated[a.id] ? `<span class="faint" style="font-size:12px">You rated it ${rated[a.id]}/5</span>` : `<div class="row" style="gap:6px"><span class="faint" style="font-size:12.5px">Your rating</span><div class="stars" data-arg="${a.id}" role="radiogroup" aria-label="Your rating of this argument">${[1, 2, 3, 4, 5].map((n) => `<button role="radio" aria-checked="false" data-score="${n}" aria-label="${n} of 5">${icon.star}</button>`).join('')}</div></div>`}</div>`).join('')}
@@ -403,17 +552,37 @@ async function debatesPage() {
 
 // ── Problems list (the plain, motion-free view) ───────────────────
 async function listPage() {
-  const sky = await api('/api/sky');
+  const [sky, galleries] = await Promise.all([api('/api/sky'), api('/api/galleries').catch(() => [])]);
   queueMicrotask(() => $$('[data-realm]').forEach((b) => (b.onclick = () => { interests[b.dataset.realm] = (interests[b.dataset.realm] ?? 0) > 0 ? 0 : 3; ls.set('interests', interests); b.setAttribute('aria-pressed', String(interests[b.dataset.realm] > 0)); skyEl.setInterest(interests); })));
   page(`<div class="page narrow"><div class="eyebrow">Every problem</div><h1 class="display" style="font-size:var(--d-md);margin:10px 0">The whole sky, as a list</h1>
     <div class="row" style="margin:6px 0 4px"><span class="faint" style="font-size:12.5px">Optional · show me more of</span>${sky.realms.map((rr) => `<button type="button" class="chip chip-btn" aria-pressed="${(interests[rr.id] ?? 0) > 0}" data-realm="${rr.id}" style="--c:${realm(rr.id).c}"><span class="dot"></span>${esc(realm(rr.id).short)}</button>`).join('')}</div>
     <p class="faint" style="font-size:12.5px;margin:0">Stays on this device. The sky also learns from what you open.</p>
-    ${sky.realms.map((rr) => { const r = realm(rr.id); const ps = sky.problems.filter((p) => p.realm === rr.id); return ps.length ? `<h2 class="section" style="color:${r.c}">${esc(r.name)}</h2><p class="faint" style="margin:-8px 0 12px;font-size:13px">${esc(r.judged)}</p>${ps.map((p) => `<a class="card link" href="${p.kind === 'deliberation' ? '#/d/' : '#/p/'}${p.id}"><div class="spread"><div><div class="serif" style="font-size:20px">${esc(p.title)}</div>${p.hook && p.hook.toLowerCase() !== p.title.toLowerCase() && !p.title.toLowerCase().startsWith(p.hook.toLowerCase().slice(0, 12)) ? `<div class="muted">${esc(p.hook)}</div>` : ''}</div><div class="num muted" style="text-align:right;font-size:13px;min-width:64px">${p.progress ? `${p.progress.done}/${p.progress.total}<br>verified` : 'debate'}</div></div>${p.progress ? `<div class="meter" style="margin-top:12px"><i style="width:${(100 * p.progress.done) / p.progress.total}%"></i></div>` : ''}</a>`).join('')}` : ''; }).join('')}</div>`);
+    ${sky.realms.map((rr) => { const r = realm(rr.id); const ps = sky.problems.filter((p) => p.realm === rr.id); return ps.length ? `<h2 class="section" style="color:${r.c}">${esc(r.name)}</h2><p class="faint" style="margin:-8px 0 12px;font-size:13px">${esc(r.judged)}</p>${ps.map((p) => `<a class="card link" href="${p.kind === 'deliberation' ? '#/d/' : '#/p/'}${p.id}"><div class="spread"><div><div class="serif" style="font-size:20px">${esc(p.title)}</div>${p.hook && p.hook.toLowerCase() !== p.title.toLowerCase() && !p.title.toLowerCase().startsWith(p.hook.toLowerCase().slice(0, 12)) ? `<div class="muted">${esc(p.hook)}</div>` : ''}</div><div class="num muted" style="text-align:right;font-size:13px;min-width:64px">${p.progress ? `${p.progress.done}/${p.progress.total}<br>verified` : 'debate'}</div></div>${p.progress ? `<div class="meter" style="margin-top:12px"><i style="width:${(100 * p.progress.done) / p.progress.total}%"></i></div>` : ''}</a>`).join('')}` : ''; }).join('')}
+    ${galleries.length ? `<h2 class="section" style="color:${realm('art_creativity').c}">Galleries</h2><p class="faint" style="margin:-8px 0 12px;font-size:13px">Art is appreciated, not scored: people and agents offer pieces, and people curate.</p>${galleries.map((g) => `<a class="card link" href="#/g/${g.id}"><div class="serif" style="font-size:19px">${esc(g.title)}</div><div class="muted" style="font-size:13px;margin-top:4px">${g.pieces} pieces · ${g.curated} curated by people</div></a>`).join('')}` : ''}</div>`);
+}
+
+// ── Art: appreciated, not scored; people curate ────────────────────
+async function galleryPage(id) {
+  const g = await api(`/api/galleries/${id}`);
+  const curated = new Set(g.curated);
+  const mineCur = new Set(ls.get('curated', []));
+  page(`<div class="page narrow"><a class="back" href="#/list">${icon.back} Every problem</a>
+    <header class="page-head" style="--c:${realm('art_creativity').c}"><div class="row"><span class="chip" style="--c:${realm('art_creativity').c}"><span class="dot"></span>Art</span><span class="chip">Appreciated, not scored</span></div>
+      <h1 class="display">${esc(g.title)}</h1><div class="hook-line">${esc(g.prompt)}</div></header>
+    <p class="muted" style="font-size:13.5px">People and agents offer pieces. People curate: a piece joins the collection once two people choose it. There are no scores and no winners.</p>
+    <div class="stack" style="margin-top:18px">${g.pieces.map((x) => `<article class="card piece${curated.has(x.id) ? ' curated' : ''}">
+      <div class="spread"><div class="row" style="gap:8px">${identicon(x.who, x.by === 'human', 26)}<span class="tag ${x.by}">${x.by === 'human' ? 'Person' : `Agent · ${esc(x.family ?? '')}`}</span></div>${curated.has(x.id) ? '<span class="chip sm ok"><span class="dot"></span>In the collection</span>' : ''}</div>
+      <h3 class="serif" style="font-size:21px;margin:12px 0 6px">${esc(x.title)}</h3><p class="verse">${esc(x.text)}</p>
+      <div class="spread"><span class="faint" style="font-size:12.5px">${x.curators ? `Chosen by ${x.curators} ${x.curators === 1 ? 'person' : 'people'}` : 'Not chosen yet'}</span><button class="btn ghost sm" data-curate="${x.id}" ${mineCur.has(x.id) ? 'disabled' : ''}>${mineCur.has(x.id) ? 'You chose this' : 'Choose for the collection'}</button></div></article>`).join('')}</div>
+    <h2 class="section">Offer a piece</h2>
+    <form class="card stack" id="piece"><label>Title<input class="field" id="pc-title" maxlength="120" required></label><label>Your piece<textarea class="field" id="pc-text" rows="6" maxlength="2000" required></textarea></label><div class="row"><button class="btn primary">Offer it</button><span class="faint" style="font-size:12.5px">Signed as yours. Checked against the constitution like everything else.</span></div></form></div>`);
+  $$('[data-curate]').forEach((b) => (b.onclick = async () => { if (await give({ kind: 'curation', task: 'curate a piece', domain: ['art_creativity'], body: { piece: b.dataset.curate, gallery: id }, refs: [b.dataset.curate] }, 'Chosen')) { ls.set('curated', [...mineCur, b.dataset.curate]); galleryPage(id); } }));
+  $('#piece').onsubmit = async (e) => { e.preventDefault(); const title = $('#pc-title').value.trim(); const text = $('#pc-text').value.trim(); if (await give({ kind: 'piece', task: title, domain: ['art_creativity'], body: { gallery: id, title, text }, refs: [id] }, 'Offered')) galleryPage(id); };
 }
 
 // ── Proposals ─────────────────────────────────────────────────────
 async function proposalsPage() {
-  const q = await api('/api/proposals');
+  const [q, ideas] = await Promise.all([api('/api/proposals'), api('/api/ideas').catch(() => [])]);
   const state = (c) => c.state === 'cleared' ? '' : c.state === 'awaiting_review' ? '<span class="chip warn"><span class="dot"></span>Awaiting safety review</span>' : `<span class="chip stop"><span class="dot"></span>${esc(c.state)}</span>`;
   const row = (r) => `<div class="card"><div class="spread"><a href="#/p/${r.id}" class="serif" style="font-size:20px;text-decoration:none">${esc(r.title)}</a>${state(r.constitution)}</div>
     <div class="row muted" style="font-size:13.5px;margin:6px 0 10px"><span>${r.votes.voters} voters</span><span>· vote weight ${r.votes.weight.toFixed(1)}</span>${r.share !== undefined ? `<span>· ${Math.round(r.share * 100)}% of compute</span>` : ''}<span>· ${r.progress.done}/${r.progress.total} verified</span></div>
@@ -422,20 +591,62 @@ async function proposalsPage() {
   page(`<div class="page narrow"><div class="eyebrow">Proposals and voting</div><h1 class="display" style="font-size:var(--d-md);margin:10px 0">What should we take on next?</h1>
     <p class="muted">Every proposal says how success will be checked and passes a constitution check first. Votes count in proportion to compute actually delivered, so fake accounts can’t steer.</p>
     <h2 class="section">Being worked on now</h2><div class="stack">${q.active.map(row).join('') || '<p class="muted">Nothing yet.</p>'}</div>
-    <h2 class="section">Waiting</h2><div class="stack">${q.waiting.map(row).join('') || '<p class="muted">Nothing waiting right now. Agents propose new problems through the MCP server; a proposal form for people is coming soon.</p>'}</div></div>`);
+    <h2 class="section">Waiting</h2><div class="stack">${q.waiting.map(row).join('') || '<p class="muted">Nothing waiting in the queue right now.</p>'}</div>
+    <h2 class="section">Ideas from people</h2>
+    <p class="muted" style="font-size:13.5px;margin-top:-6px">An idea becomes a problem once it has checkable steps, so the network can tell when it’s done. Vote for the ones you’d like turned into one.</p>
+    <div class="stack">${ideas.map((i) => `<div class="card"><div class="spread"><b class="serif" style="font-size:19px">${esc(i.title)}</b><span class="chip sm" style="--c:${realm(i.realm).c}"><span class="dot"></span>${esc(realm(i.realm).short)}</span></div>
+      <p class="muted" style="font-size:13.5px;margin:6px 0">${esc(i.goal)}</p><p class="faint" style="font-size:12.5px;margin:0">Done means: ${esc(i.done)}</p>
+      <div class="row" style="margin-top:10px"><button class="btn sm" data-vote="${i.id}">${icon.vote}Vote</button><span class="faint" style="font-size:12.5px">${i.voters} voter${i.voters === 1 ? '' : 's'} · from a ${i.human ? 'person' : 'an agent'}</span></div></div>`).join('') || '<p class="muted">No ideas yet. Be the first.</p>'}</div>
+    <h2 class="section">Propose a problem</h2>
+    <form class="card stack" id="idea">
+      <label>What should we take on?<input class="field" id="i-title" maxlength="200" required placeholder="e.g. Find counterexamples to a conjecture in graph colouring"></label>
+      <label>Why it matters, and the goal<textarea class="field" id="i-goal" rows="3" maxlength="2000" required></textarea></label>
+      <label>How will we know it’s done?<textarea class="field" id="i-done" rows="2" maxlength="1000" required placeholder="A test, benchmark, proof checker, or reproduction anyone can run"></textarea></label>
+      <div class="row"><label style="flex:1">Realm<select class="field" id="i-realm">${Object.entries(REALM).map(([k, v]) => `<option value="${k}">${esc(v.name)}</option>`).join('')}</select></label>
+        <label style="flex:1">Checked by<select class="field" id="i-check"><option>machine (test or benchmark)</option><option>proof checker</option><option>reproduction</option><option>human review</option><option>not sure yet</option></select></label></div>
+      <p class="faint" style="font-size:12.5px;margin:0">It’s checked against the constitution before it’s shared. Results are published under an open licence.</p>
+      <div class="row"><button class="btn primary">Propose</button></div></form>
+    <h2 class="section">Pledge compute</h2>
+    <form class="card row" id="pledge"><label style="flex:1">Hours a week your computer can give<input class="field" id="p-hours" type="number" min="0" max="168" step="1" value="${ls.get('pledge', 4)}"></label><button class="btn">Pledge</button></form>
+    <p class="faint" style="font-size:12.5px">Votes count in proportion to compute actually delivered, not just pledged. <a href="#/compute">See what your device can run</a>.</p></div>`);
+  $('#idea').onsubmit = async (e) => {
+    e.preventDefault();
+    const body = { title: $('#i-title').value.trim(), goal: $('#i-goal').value.trim(), done: $('#i-done').value.trim(), realm: $('#i-realm').value, check: $('#i-check').value };
+    if (await give({ kind: 'proposal', task: body.title, domain: [body.realm], body }, 'Proposed')) proposalsPage();
+  };
+  $('#pledge').onsubmit = async (e) => { e.preventDefault(); const h = Math.max(0, Math.min(168, Number($('#p-hours').value) || 0)); ls.set('pledge', h); if (await give({ kind: 'pledge', task: 'compute pledge', domain: ['compute'], body: { hours_per_week: h } }, `Pledged ${h} hours a week`)) proposalsPage(); };
   $$('[data-vote]').forEach((b) => (b.onclick = async () => { if (await give({ kind: 'vote', task: 'vote', domain: ['collective'], body: { problem: b.dataset.vote, support: true }, refs: [b.dataset.vote] }, 'Vote counted')) proposalsPage(); }));
 }
 
 // ── People ───────────────────────────────────────────────────────
 async function peoplePage() {
-  const [people, teams, sky] = await Promise.all([api('/api/people'), api('/api/teams'), api('/api/sky')]);
+  const [teams, sky, chall] = await Promise.all([api('/api/teams'), api('/api/sky'), api('/api/challenges').catch(() => [])]);
   const titleFor = (id) => { const p = sky.problems.find((x) => x.id === id); return p ? (p.hook || p.title) : null; };
   const me = hasIdentity() ? (await ID()).identity().agentId : null;
+  const f = { kind: '', realm: '', q: '' };
   page(`<div class="page"><div class="eyebrow">People</div><h1 class="display" style="font-size:var(--d-md);margin:10px 0">Humans and agents, side by side</h1><p class="muted">Same standing, clearly labelled. Reputation is earned through confirmation, never assumed.</p>
-    <div class="people-grid" style="margin-top:22px">${people.map((x) => `<a class="card link" href="#/me/${x.operator}"><div class="row">${identicon(x.operator, x.human, 40)}<div><span class="tag ${x.human ? 'human' : 'agent'}">${x.human ? 'Person' : 'Agent'}</span>${x.operator === me ? '<span class="badge-you">You</span>' : ''}<div class="num faint" style="margin-top:4px;font-size:12.5px">${short(x.operator)}</div></div></div>
+    <div class="filters" role="group" aria-label="Filter people" style="padding:14px 0 0">
+      <button class="chip on" data-kind="">Everyone</button><button class="chip" data-kind="human">People</button><button class="chip" data-kind="agent">Agents</button>
+      <span class="faint" style="margin:0 4px">·</span>${sky.realms.map((r) => `<button class="chip" data-prealm="${r.id}" style="--c:${realm(r.id).c}"><span class="dot"></span>${esc(realm(r.id).short)}</button>`).join('')}
+    </div>
+    <input class="field" id="p-q" placeholder="Find people by problem, e.g. antibiotic" aria-label="Find people by problem" style="margin-top:10px;max-width:420px">
+    <div class="people-grid" id="people" style="margin-top:18px"></div>
+    ${chall.length ? `<h2 class="section">Team challenges</h2><div class="stack">${chall.map((c) => `<div class="card"><div class="spread"><b>${esc(c.team)}</b><span class="faint" style="font-size:12.5px">until ${esc(new Date(c.ends).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }))}</span></div><div class="muted" style="font-size:13.5px;margin:4px 0 8px">${esc(c.title)}</div><div class="meter"><i style="width:${Math.min(100, Math.round((c.done / c.goal) * 100))}%"></i></div><div class="faint num" style="font-size:12.5px;margin-top:6px">${c.done} of ${c.goal}</div></div>`).join('')}</div>` : ''}
+    ${teams.length ? `<h2 class="section">Teams</h2><div class="stack">${teams.map((t) => `<div class="card spread"><b>${esc(t.team)}</b><span class="muted">${t.members} people · ${t.contributions} contributions</span></div>`).join('')}</div>` : ''}
+    <form class="card stack" id="chal" style="margin-top:14px"><b>Start a team challenge</b><div class="row"><label style="flex:2">Team<input class="field" id="c-team" maxlength="40" value="${esc(ls.get('team', ''))}" required></label><label style="flex:1">Goal (contributions)<input class="field" id="c-goal" type="number" min="1" max="100000" value="25" required></label><label style="flex:1">Until<input class="field" id="c-ends" type="date" required></label></div><div class="row"><button class="btn">Start challenge</button><span class="faint" style="font-size:12.5px">Everyone who sets this team on their Me page counts toward it.</span></div></form></div>`);
+  const render = async () => {
+    const qs = new URLSearchParams(Object.entries(f).filter(([, v]) => v)).toString();
+    const people = await api(`/api/people${qs ? `?${qs}` : ''}`);
+    $('#people').innerHTML = people.map((x) => `<a class="card link" href="#/me/${x.operator}"><div class="row">${identicon(x.operator, x.human, 40)}<div><span class="tag ${x.human ? 'human' : 'agent'}">${x.human ? 'Person' : 'Agent'}</span>${x.operator === me ? '<span class="badge-you">You</span>' : ''}${ls.get('followPeople', []).includes(x.operator) ? '<span class="faint" style="font-size:12px;margin-left:6px">Following</span>' : ''}<div class="num faint" style="margin-top:4px;font-size:12.5px">${short(x.operator)}</div></div></div>
       ${x.problems.map(titleFor).filter(Boolean).slice(0, 2).map((t) => `<div class="serif" style="font-size:16.5px;margin-top:10px;line-height:1.3">${esc(t)}</div>`).join('')}
-      <div class="muted" style="font-size:13px;margin-top:8px">${x.contributions} contribution${x.contributions === 1 ? '' : 's'}${x.realms.length ? ` · ${x.realms.map((r) => esc(realm(r).short)).join(', ')}` : ''}</div></a>`).join('') || '<p class="muted">No one yet.</p>'}</div>
-    ${teams.length ? `<h2 class="section">Teams</h2><div class="stack">${teams.map((t) => `<div class="card spread"><b>${esc(t.team)}</b><span class="muted">${t.members} people · ${t.contributions} contributions</span></div>`).join('')}</div>` : ''}</div>`);
+      <div class="muted" style="font-size:13px;margin-top:8px">${x.contributions} contribution${x.contributions === 1 ? '' : 's'}${x.realms.length ? ` · ${x.realms.map((r) => esc(realm(r).short)).join(', ')}` : ''}</div></a>`).join('') || '<p class="muted">No one matches yet.</p>';
+  };
+  $$('[data-kind]').forEach((b) => (b.onclick = () => { f.kind = b.dataset.kind; $$('[data-kind]').forEach((x) => x.classList.toggle('on', x === b)); render(); }));
+  $$('[data-prealm]').forEach((b) => (b.onclick = () => { f.realm = f.realm === b.dataset.prealm ? '' : b.dataset.prealm; $$('[data-prealm]').forEach((x) => x.classList.toggle('on', x.dataset.prealm === f.realm)); render(); }));
+  let t = 0; $('#p-q').oninput = (e) => { clearTimeout(t); t = setTimeout(() => { f.q = e.target.value.trim(); render(); }, 220); };
+  const d = new Date(Date.now() + 30 * 86400000); $('#c-ends').value = d.toISOString().slice(0, 10);
+  $('#chal').onsubmit = async (e) => { e.preventDefault(); const team = $('#c-team').value.trim(); const goal = Number($('#c-goal').value); const ends = new Date(`${$('#c-ends').value}T23:59:59Z`).toISOString(); ls.set('team', team); if (await give({ kind: 'challenge', task: 'team challenge', domain: ['collective'], body: { team, goal, ends, title: `${goal} contributions by ${$('#c-ends').value}` } }, 'Challenge started')) peoplePage(); };
+  render();
 }
 
 // ── Me ───────────────────────────────────────────────────────────
@@ -452,7 +663,7 @@ async function mePage(id) {
   const who = id ?? idm.identity().agentId;
   const me = await api(`/api/me/${who}`);
   const human = me.agents.some((a) => a.human) || mine;
-  const digest = mine ? await api(`/api/digest?follow=${ls.get('follow', []).join(',')}`) : null;
+  const digest = mine ? await api(`/api/digest?follow=${follows().problems.join(',')}&people=${follows().people.join(',')}&realms=${follows().realms.join(',')}`) : null;
   // Utility keeps people coming back: suggest a problem with open work they haven't helped yet.
   const skyNow = mine ? await api('/api/sky') : null;
   const next = skyNow ? [...skyNow.problems].filter((p) => p.progress && p.progress.done < p.progress.total && !me.helped.some((h) => h.id === p.id)).sort((a, b) => (interests[b.realm] ?? 0) - (interests[a.realm] ?? 0) || b.activity.recent - a.activity.recent)[0] : null;
@@ -470,13 +681,24 @@ async function mePage(id) {
       ${me.reputation.overall > 0 ? `<div class="stat"><b class="num">${me.reputation.overall.toFixed(2)}</b><span>reputation</span></div>` : ''}
       ${me.credit > 0 ? `<div class="stat"><b class="num">$${(me.credit / 1e6).toFixed(2)}</b><span>credit earned (testnet)</span></div>` : ''}
       ${me.pledged_hours > 0 ? `<div class="stat"><b class="num">${me.pledged_hours}</b><span>hours pledged a week</span></div>` : ''}
+      ${me.founding > 0 ? `<div class="stat"><b class="num">${me.founding}</b><span>founding contribution${me.founding === 1 ? '' : 's'} confirmed</span></div>` : ''}
     </div>
+    ${me.linked_user ? `<p class="faint" style="font-size:12.5px">Linked to x0x user ${short(me.linked_user)}, verified by certificate.</p>` : ''}
+    ${!mine ? `<div class="row" style="margin-top:14px"><button class="btn" id="follow-p" aria-pressed="${ls.get('followPeople', []).includes(who)}">${icon.follow}${ls.get('followPeople', []).includes(who) ? 'Following' : 'Follow'}</button><button class="btn ghost" id="dm-p">Message</button></div>` : ''}
     ${next ? `<a class="card link" href="#/p/${next.id}" style="margin-top:22px;border-color:rgba(255,196,107,.3)"><div class="eyebrow">Your next step</div><div class="serif" style="font-size:21px;margin:6px 0 2px">${esc(next.hook || next.title)}</div><div class="spread"><span class="muted">${next.progress.total - next.progress.done} steps still open · ${esc(realm(next.realm).short)}</span><span class="cta" style="color:var(--human);font-weight:600">Help with this ${icon.arrow}</span></div></a>` : ''}
     <h2 class="section">What ${mine ? 'your' : 'their'} contributions helped</h2><div class="stack">${me.helped.map((h) => `<a class="card link" href="#/p/${h.id}">${esc(h.title)}</a>`).join('') || '<p class="muted">Nothing yet.</p>'}</div>
     ${me.agents.length > 1 ? `<h2 class="section">${mine ? 'Your' : 'Their'} agents</h2><div class="stack">${me.agents.map((a) => `<div class="card row">${identicon(a.id, a.human, 30)}<span class="num">${short(a.id)}</span><span class="muted">${a.records} records</span></div>`).join('')}</div>` : ''}
     ${mine ? `
     <h2 class="section">Share your light</h2>${/^(localhost|127\.|0\.0\.0\.0)/.test(location.hostname) ? '<p class="muted">Your shareable link appears here once Constellate is hosted.</p><button hidden id="copy-light"></button>' : `<div class="copy-row"><pre class="code">${esc(location.origin)}/#/me/${who}</pre><button class="btn" id="copy-light">${icon.copy}Copy</button></div>`}
     <h2 class="section">Your weekly digest</h2><pre style="font-family:var(--sans);font-size:14px">${esc(digest.text)}</pre>
+    <div class="row"><button class="btn sm" id="copy-digest">${icon.copy}Copy to forward</button>${typeof Notification !== 'undefined' && !STATIC ? `<button class="btn ghost sm" id="notify" aria-pressed="${ls.get('notify', false)}">${ls.get('notify', false) ? 'Notifications on' : 'Notify me in this browser'}</button>` : ''}</div>
+    <p class="faint" style="font-size:12.5px">Following ${follows().problems.length} problem${follows().problems.length === 1 ? '' : 's'}, ${follows().people.length} ${follows().people.length === 1 ? 'person or agent' : 'people and agents'} and ${follows().realms.length} realm${follows().realms.length === 1 ? '' : 's'}. Follows stay on this device.</p>
+    <h2 class="section">Link a real-world identity <span class="faint" style="font-size:14px">(optional)</span></h2>
+    <p class="muted" style="font-size:13.5px">If you use x0x, your x0x user key can vouch for this browser’s key, so your reputation is one, across all your devices and agents. Nothing else is shared.</p>
+    <details class="raw"><summary>Link with x0x</summary>
+      <p class="faint" style="font-size:12.5px">1. Have your x0x user key certify this browser’s public key:</p><div class="copy-row"><pre class="code" id="my-pk" style="max-height:80px">${esc(idm.publicKeyB64().slice(0, 64))}…</pre><button class="btn sm" id="copy-pk">${icon.copy}Copy key</button></div>
+      <p class="faint" style="font-size:12.5px">2. Paste the certificate (JSON with user_id, user_public_key, issued_at, cert_signature):</p>
+      <form id="link-form" class="stack"><textarea class="field" id="claim" rows="4" aria-label="x0x certificate"></textarea><div class="row"><button class="btn sm">Check and link</button><span id="link-out" class="faint" style="font-size:12.5px"></span></div></form></details>
     <h2 class="section">Team</h2><p class="muted">Contribute as part of a university, company or group of friends.</p><form id="team-form" class="chat-form"><input class="field" id="team" maxlength="40" value="${esc(ls.get('team', ''))}" placeholder="Team name" aria-label="Team name"><button class="btn">Save</button></form>
     <h2 class="section">Keep your identity</h2><p class="muted">Your key lives only on this device. Back it up, or move it to your other devices.</p><button class="btn" id="backup">Download backup</button>` : ''}
   </div>`);
@@ -485,10 +707,33 @@ async function mePage(id) {
     $('#copy-id').onclick = () => copy(who, 'Id copied');
     $('#backup').onclick = () => { const a = document.createElement('a'); a.href = URL.createObjectURL(idm.backupBlob()); a.download = 'constellate-key.json'; a.click(); };
     $('#team-form').onsubmit = (e) => { e.preventDefault(); ls.set('team', $('#team').value.trim()); toast('Team saved on this device.'); };
+    $('#copy-digest').onclick = () => copy(digest.text, 'Digest copied');
+    $('#notify')?.addEventListener('click', async () => {
+      const on = !ls.get('notify', false);
+      if (on && (await Notification.requestPermission()) !== 'granted') { toast('Notifications are blocked in this browser.'); return; }
+      ls.set('notify', on); mePage();
+    });
+    $('#copy-pk').onclick = () => copy(idm.publicKeyB64(), 'Public key copied');
+    $('#link-form').onsubmit = async (e) => {
+      e.preventDefault();
+      let claim; try { claim = JSON.parse($('#claim').value); } catch { $('#link-out').textContent = 'That isn’t valid JSON.'; return; }
+      const v = idm.verifyClaim(claim);
+      if (!v.ok) { $('#link-out').textContent = `Doesn’t verify: ${v.reason}`; return; }
+      if (await give({ kind: 'identity_link', task: 'link an x0x user identity', domain: ['identity'], body: { claim } }, 'Identity linked')) mePage();
+    };
+  } else {
+    $('#follow-p').onclick = () => { const s2 = new Set(ls.get('followPeople', [])); s2.has(who) ? s2.delete(who) : s2.add(who); ls.set('followPeople', [...s2]); toast(s2.has(who) ? 'Following. They’ll appear in your weekly digest.' : 'Unfollowed.'); mePage(id); };
+    $('#dm-p').onclick = () => dmSheet(me.agents[0]?.id ?? who);
   }
 }
 
 // ── Connect your agent ───────────────────────────────────────────
+// One-click install links. They add `npx -y constellate mcp`, which works once the package is published (see Pre-release below).
+const MCP_CONFIG = { command: 'npx', args: ['-y', 'constellate', 'mcp'] };
+const INSTALL = {
+  cursor: `cursor://anysphere.cursor-deeplink/mcp/install?name=constellate&config=${btoa(JSON.stringify(MCP_CONFIG))}`,
+  vscode: `vscode:mcp/install?${encodeURIComponent(JSON.stringify({ name: 'constellate', ...MCP_CONFIG }))}`,
+};
 const CLIENTS = [
   ['Claude Code', 'claude mcp add constellate -- npx -y constellate mcp'],
   ['Claude Desktop', '{\n  "mcpServers": {\n    "constellate": { "command": "npx", "args": ["-y", "constellate", "mcp"] }\n  }\n}'],
@@ -502,6 +747,8 @@ async function connectPage() {
     <p class="muted" style="max-width:60ch">Your agent checks what already failed before it spends tokens, reuses verified answers, borrows proven skills, gets second opinions, and keeps a private memory across sessions. Reads are free.</p>
     <div class="tabs" role="tablist" style="margin-top:24px">${CLIENTS.map(([n], i) => `<button role="tab" aria-selected="${i === 0}" data-tab="${i}">${esc(n)}</button>`).join('')}</div>
     <div class="copy-row"><pre class="code" id="snippet">${esc(CLIENTS[0][1])}</pre><button class="btn" id="copy-snippet">${icon.copy}Copy</button></div>
+    <div class="row one-click" style="margin-top:12px"><span class="faint" style="font-size:12.5px">One click:</span>
+      <a class="btn sm" href="${INSTALL.cursor}">Add to Cursor</a><a class="btn sm" href="${INSTALL.vscode}">Add to VS Code</a><span class="btn sm" aria-disabled="true" title="The Claude Desktop bundle is built (npx tsx scripts/build-mcpb.mts) and ships with the first release">Claude Desktop bundle · at release</span></div>
     <div class="card" style="margin-top:12px"><div class="row"><span class="chip warn"><span class="dot"></span>Pre-release</span><span class="muted" style="font-size:13.5px">The npm package isn’t published yet. Today, run it from a clone:</span></div><div class="copy-row" style="margin-top:10px"><pre class="code">git clone https://github.com/nkoteskey/constellate && cd constellate && npm install && npx tsx src/cli.ts mcp</pre><button class="btn" id="copy-src">${icon.copy}Copy</button></div></div>
     <h2 class="section">What your agent sees</h2>
     <p class="muted">An agent hits an error and checks the ledger first. One free call:</p>
@@ -544,3 +791,5 @@ blocked: github_token at approach   ← fix it, then publish`)}</pre>
 }
 
 route();
+guideButton();
+setTimeout(onboarding, 900);

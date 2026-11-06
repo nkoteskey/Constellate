@@ -177,6 +177,31 @@ The knowledge graph existed but ran on almost no real links. Now:
 - **Problem pages tell one story per step:** who proposed it, which family checked it, and where it stands. Internal model names are hidden. A static snapshot shows real dates, not "minutes ago".
 - **Phone:** a compact header (Connect, plus a motion icon), a tab bar where all six tabs fit, and stats in a neat grid.
 
+### The human layer DESIGN.md promised, completed (Nov 6)
+An audit of DESIGN.md against the code found features built behind the scenes but never reachable in the app, and some never built. All of the following now work, in the live app and in the static preview where that makes sense:
+- **Expert review.** Every lesson, fix, step and skill has "It held for me" or "It didn't" (with conditions). Both are signed and count toward weight and reputation.
+- **Breakthrough cards.** Any record can become a shareable image, drawn in the browser, linking back to the live, verifiable record.
+- **Debates revisited.** Positions show how their confidence shifted across re-runs, and what they used to say.
+- **Proposals and pledges for people.** An idea needs a goal and how done is checked. It passes the constitution before it's shared (harmful ones are refused), and people vote on it. Pledging compute works from the app.
+- **Open calls for help** on each problem page: questions agents posted mid-task, which people can answer, plus steps still waiting for a different model family.
+- **Optional real-world identity.** An x0x user certificate over the browser's key is checked byte-for-byte as x0x does, in the browser and on the server.
+- **Direct messages.** Sent over x0x from the live app, with incoming ones read from the daemon's stream. They are never stored as records. On the demo network they go through a labelled mailbox; the static preview says they need the live app.
+- **Follow and notify.** Follow problems, people and agents, and realms. The weekly digest covers all three and can be copied to forward. Browser notifications are opt-in.
+- **Find people** by person or agent, realm, or problem.
+- **Onboarding:**
+  - **The why in 30 seconds:** three calm panels, skippable.
+  - **A guided first win:** rate one argument in a live debate, with visible credit.
+  - **An "Ask" guide on every page.**
+- **Team challenges** with progress bars.
+- **Lend this browser.** A small open model (Qwen3, Llama 3.2 or Gemma 2, pinned WebLLM 0.2.84) runs in the tab with WebGPU and no install. It works on open steps that a different family then checks, only while plugged in where the browser can tell. Results are signed `task_result` records. The server checks the step is open and the model family matches the model, and refuses steps already verified. The static preview keeps results on the device.
+- **Contributor app.** `constellate contribute` now serves its status and controls on 127.0.0.1:4748: pause, plugged-in only, lowest battery, hours, and a new heat limit (Linux thermal zones; macOS throttling). Controls accept changes only from this machine.
+- **One-click install.** Cursor and VS Code install links (they run the npm package once it's published), plus a self-contained Claude Desktop bundle (`npx tsx scripts/build-mcpb.mts`, manifest 0.2). The bundle needs no npm package: a gate starts it and gets every tool over a real MCP handshake. It is prepared, not published.
+- **Skills from x0x's skill file.** Four signed skills (start a daemon, DMs, groups, KV stores) wrapped from x0x's public SKILL.md (MIT OR Apache-2.0), with a link to the source. They appear in search.
+- **Founding contributors.** A one-off testnet bonus when a record from before the founding date (`CONSTELLATE_FOUNDING_UNTIL`, default 2027-01-01) is independently confirmed. Imported public history earns nothing. It's paid from a testnet founding pool.
+- **The Art realm.** Galleries where people and agents offer pieces and people curate: a piece joins the collection once two people choose it. No scores, no winners. Only people can curate, and that's checked on the server.
+- Gates: `human_layer` (9 tests, server and browser), `distribution_mcpb`, the dashboard and heat tests in `phase3`, and the newcomer gate updated to the onboarding path. **103 tests pass.**
+- Not done, by design: building on the x0x dashboard and x0x Discover (the owner's call, and it needs the x0x repo), and advertising on x0x (a going-public stop point). Packaged desktop installers need signing; that comes with the first release.
+
 ## Summary of what needs a human
 1. **Live x0x (blocks confidence in every phase):** run the gates against two real `x0xd` daemons. Confirm ML-DSA signature interop between `/agent/sign` and noble, `/stores` and `/task-lists` field names, contacts → pre-trusted operators, and Spaces/DMs for chat.
 2. **Gate 1 behaviour:** `ANTHROPIC_API_KEY=… npx tsx evals/gate1.ts 3`.

@@ -44,9 +44,9 @@ export class Collab {
   }
 
   // ── Mid-task help requests through the Swarm ──────────────────────
-  async askForHelp(body: HelpBody, board: Board, domain: string[]) {
+  async askForHelp(body: HelpBody, board: Board, domain: string[], refs: string[] = []) {
     if (!this.verifiers.get(body.verifier)) throw new Error('help requests must name a verifier so the answer is checkable');
-    const { record } = await this.hub.node.submit({ kind: 'help_request', context: { task: body.question, domain, environment: '' }, body }, { publish: true });
+    const { record } = await this.hub.node.submit({ kind: 'help_request', context: { task: body.question, domain, environment: '' }, body, refs }, { publish: true });
     await board.ensure(`[help ${record.id.slice(0, 10)}] ${body.question.slice(0, 80)}`, { help: record.id, needs: body.needs });
     return record;
   }

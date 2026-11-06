@@ -16,6 +16,11 @@ export const TESTNET_PRICING = {
   skillParentShareBps: 2_000,
   /** Default sponsor payout per verified checkpoint ($0.10), split by lineage: 70% compute, 30% verifier. */
   perCheckpoint: 100_000,
+  /** Extra credit for founding contributors: a record from before the founding date, once independently confirmed ($0.02). */
+  foundingBonus: 20_000,
 } as const;
+
+/** Records created before this date count as founding contributions. */
+export const FOUNDING_UNTIL = process.env.CONSTELLATE_FOUNDING_UNTIL ?? '2027-01-01T00:00:00Z';
 
 export const MAINNET_PRICING_APPROVED = false;

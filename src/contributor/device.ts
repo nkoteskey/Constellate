@@ -34,7 +34,7 @@ export function pickLocalModel(d: Device): ModelChoice {
   return { runtime: s.runtime, model: s.primary.run.model, family: s.primary.family, size: s.primary.params >= 20 ? 'large' : 'small', reason: `${s.where}: ${s.primary.name} fits` };
 }
 
-export interface Power { onAC: boolean | null; batteryPct: number | null }
+export interface Power { onAC: boolean | null; batteryPct: number | null; tempC?: number | null }
 
 /** Best-effort power read: macOS pmset, Linux /sys. Unknown counts as plugged in on desktops. */
 export function readPower(): Power {
@@ -55,6 +55,25 @@ export function readPower(): Power {
   return { onAC: null, batteryPct: null };
 }
 
+/** Best-effort CPU temperature in °C: Linux thermal zones; macOS reports a throttle level instead, mapped to a rough temperature. */
+export function readTemp(): number | null {
+  try {
+    if (platform() === 'linux' && existsSync('/sys/class/thermal')) {
+      const temps = readdirSync('/sys/class/thermal').filter((d) => d.startsWith('thermal_zone')).map((d) => { try { return Number(readFileSync(`/sys/class/thermal/${d}/temp`, 'utf8')) / 1000; } catch { return NaN; } }).filter((t) => t > 0 && t < 150);
+      return temps.length ? Math.max(...temps) : null;
+    }
+    if (platform() === 'darwin') {
+      const out = execFileSync('pmset', ['-g', 'therm'], { encoding: 'utf8', timeout: 2000 });
+      const lim = out.match(/CPU_Speed_Limit\s*=\s*(\d+)/);
+      if (lim) return Number(lim[1]) < 100 ? 95 : 60; // the OS is throttling: treat as hot
+    }
+  } catch { /* fall through */ }
+  return null;
+}
+
+/** Power plus temperature, for the polite policy. */
+export const readConditions = (): Power => ({ ...readPower(), tempC: readTemp() });
+
 export interface Policy {
   /** Only work when plugged in (default true). */
   requireAC: boolean;
@@ -64,10 +83,12 @@ export interface Policy {
   maxLoadPerCore: number;
   /** Allowed local hours, e.g. [22, 7] = 10pm to 7am. Null = any time. */
   hours: [number, number] | null;
+  /** Pause when the machine is hotter than this, in °C. Null = no limit. */
+  maxTempC: number | null;
   paused: boolean;
 }
 
-export const POLITE: Policy = { requireAC: true, minBattery: 50, maxLoadPerCore: 0.5, hours: null, paused: false };
+export const POLITE: Policy = { requireAC: true, minBattery: 50, maxLoadPerCore: 0.5, hours: null, maxTempC: 85, paused: false };
 
 export type Status = { state: 'contributing' | 'paused' | 'waiting'; message: string };
 
@@ -81,6 +102,7 @@ export function decide(p: Policy, power: Power, load = loadavg()[0] / Math.max(1
     const inWindow = a <= b ? hour >= a && hour < b : hour >= a || hour < b;
     if (!inWindow) return { state: 'waiting', message: `Waiting: contributing between ${a}:00 and ${b}:00.` };
   }
+  if (p.maxTempC !== null && power.tempC != null && power.tempC > p.maxTempC) return { state: 'paused', message: `Paused: running warm (${Math.round(power.tempC)}°C). Resumes when it cools.` };
   if (load > p.maxLoadPerCore) return { state: 'waiting', message: 'Waiting: your computer is busy.' };
   return { state: 'contributing', message: 'Contributing.' };
 }

@@ -52,9 +52,9 @@ function strip(v) {
   return v;
 }
 
-export function signRecord({ kind, task, domain, body, refs = [] }) {
+export function signRecord({ kind, task, domain, body, refs = [], environment = 'human (browser)' }) {
   const id = identity();
-  const core = strip({ v: 1, kind, author: b64(id.publicKey), agent_id: id.agentId, created: new Date().toISOString(), context: { task, domain, environment: 'human (browser)' }, body, evidence: [], refs });
+  const core = strip({ v: 1, kind, author: b64(id.publicKey), agent_id: id.agentId, created: new Date().toISOString(), context: { task, domain, environment }, body, evidence: [], refs });
   const recId = hex(sha256(encode(core, rfc8949EncodeOptions)));
   const ctx = te.encode('constellate.record.v1');
   const dst = concat(new Uint8Array([0xf0]), te.encode('x0x.external-agent-sign.v1'), u32be(ctx.length), ctx, unhex(recId));
@@ -77,6 +77,26 @@ export function verifyInBrowser(rec) {
     const dst = concat(new Uint8Array([0xf0]), te.encode('x0x.external-agent-sign.v1'), u32be(ctx.length), ctx, unhex(id));
     const sig = Uint8Array.from(atob(signature), (c) => c.charCodeAt(0));
     return ml_dsa65.verify(sig, dst, pk) ? { ok: true } : { ok: false, reason: 'signature does not verify' };
+  } catch (e) { return { ok: false, reason: String(e.message ?? e) }; }
+}
+
+/**
+ * Optional real-world identity: an x0x user certificate over this browser's key
+ * ("x0x-agent-cert-v1" || user_pk || agent_pk || issued_at:u64 LE; v2 adds not_after),
+ * byte-identical to x0x. Checked here before it is ever shared.
+ */
+const u64le = (n) => { const b = new Uint8Array(8); let x = BigInt(n); for (let i = 0; i < 8; i++) { b[i] = Number(x & 255n); x >>= 8n; } return b; };
+export function publicKeyB64() { return b64(identity().publicKey); }
+export function verifyClaim(c) {
+  try {
+    const upk = Uint8Array.from(atob(c.user_public_key), (x) => x.charCodeAt(0));
+    if (hex(sha256(concat(te.encode('AUTONOMI_PEER_ID_V2:'), upk))) !== c.user_id) return { ok: false, reason: 'user id does not match its key' };
+    if (c.not_after !== undefined && Date.now() / 1000 > c.not_after) return { ok: false, reason: 'certificate expired' };
+    const msg = c.not_after === undefined
+      ? concat(te.encode('x0x-agent-cert-v1'), upk, identity().publicKey, u64le(c.issued_at))
+      : concat(te.encode('x0x-agent-cert-v2'), upk, identity().publicKey, u64le(c.issued_at), u64le(c.not_after));
+    const sig = Uint8Array.from(atob(c.cert_signature), (x) => x.charCodeAt(0));
+    return ml_dsa65.verify(sig, msg, upk) ? { ok: true } : { ok: false, reason: 'the signature does not match this browser’s key' };
   } catch (e) { return { ok: false, reason: String(e.message ?? e) }; }
 }
 

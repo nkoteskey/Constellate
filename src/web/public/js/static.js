@@ -27,7 +27,8 @@ async function ledger() {
   for (const d of docs) for (const w of new Set(d.t)) df.set(w, (df.get(w) ?? 0) + 1);
   const avg = docs.reduce((n, d) => n + d.t.length, 0) / Math.max(1, docs.length);
   const learned = (l.learned ?? []).map((x) => ({ x, t: toks(`${x.title} ${x.summary} ${(x.domain ?? []).join(' ')}`) }));
-  index = { docs, df, avg, learned, byId: new Map(l.records.map((r) => [r.id, r])) };
+  const skills = (l.skills ?? []).map((x) => ({ x, t: toks(`${x.name} ${x.description} ${(x.capabilities ?? []).join(' ')}`) }));
+  index = { docs, df, avg, learned, skills, byId: new Map(l.records.map((r) => [r.id, r])) };
   return index;
 }
 function score(q, d, ix) {
@@ -48,7 +49,8 @@ async function search(q) {
   const learned = ix.learned.map((d) => [d, score(qt, { t: d.t, r: {} }, { ...ix, avg: lavg })]).filter(([, s]) => s > 0).sort((a, b) => b[1] - a[1]).slice(0, 2).map(([d]) => d.x);
   let guide = null;
   if (/happening|progress|status|how('s| is)|going|what about/i.test(q) || !(failures.length || answers.length)) guide = await ask(q);
-  return { q, failures, answers, learned, guide };
+  const skills = ix.skills.map((d) => [d, d.t.filter((w) => qt.includes(w)).length]).filter(([, n]) => n >= Math.min(2, qt.length)).sort((a, b) => b[1] - a[1]).slice(0, 2).map(([d]) => d.x);
+  return { q, failures, answers, learned, skills, guide };
 }
 async function ask(q) {
   const sky = await file('api/sky.json');
@@ -69,6 +71,14 @@ export async function staticApi(path, init = {}) {
     throw new Error('This preview is read-only');
   }
   if (p === '/api/search') return search(url.searchParams.get('q') ?? '');
+  if (p === '/api/people' && url.search) {
+    const [people, sky] = await Promise.all([file('api/people.json'), file('api/sky.json')]);
+    const kind = url.searchParams.get('kind'), rl = url.searchParams.get('realm'), q = (url.searchParams.get('q') ?? '').toLowerCase();
+    const title = (id) => { const x = sky.problems.find((y) => y.id === id); return x ? `${x.title} ${x.hook}`.toLowerCase() : ''; };
+    return people.filter((x) => (!kind || (kind === 'human') === x.human) && (!rl || x.realms.includes(rl)) && (!q || x.realms.some((r) => r.includes(q)) || x.problems.some((id) => title(id).includes(q))));
+  }
+  if (p.startsWith('/api/dm')) throw new Error('Direct messages need the live app: they travel over x0x.');
+  if (p === '/api/contributor') throw new Error('Not running here');
   if (p === '/api/digest') {
     const sky = await file('api/sky.json');
     const follow = (url.searchParams.get('follow') ?? '').split(',').filter(Boolean);

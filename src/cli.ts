@@ -7,7 +7,8 @@ import { WebServer } from './web/server.js';
 import { registerAppRoutes } from './web/app.js';
 import { registerEconomyRoutes } from './economy/routes.js';
 import { TestnetLedger } from './economy/rail.js';
-import { detectDevice, suggestFor, readPower, POLITE } from './contributor/device.js';
+import { detectDevice, suggestFor, readConditions, POLITE } from './contributor/device.js';
+import { registerContributorRoutes } from './contributor/dashboard.js';
 import { runnerFromSpec, providerTable, commands, CATALOG_UPDATED } from './contributor/catalog.js';
 import { Budget, ModelRunner } from './contributor/models.js';
 import { Worker } from './work/worker.js';
@@ -25,7 +26,8 @@ const USAGE = `Constellate — where humans and agents gather into something gre
   constellate demo       The human app on a simulated demo network (no x0x needed)
   constellate models     What this machine can run: free open-weight models that fit, and every provider
   constellate contribute Donate idle compute: detect hardware, pick a model, work politely
-      [--model PROVIDER/MODEL] [--verifier PROVIDER/MODEL] [--cap-cents N] [--endpoint URL]
+      [--model PROVIDER/MODEL] [--verifier PROVIDER/MODEL] [--cap-cents N] [--endpoint URL] [--no-ui] [--port N]
+      Opens status and controls (pause, plugged-in only, battery, hours, heat) at http://127.0.0.1:4748
       Any model works: ollama/qwen3:14b, lmstudio/…, groq/llama-3.3-70b-versatile,
       openrouter/<any>, huggingface/…, gemini/…, openai/…, anthropic/claude-opus-5-5,
       custom/NAME --endpoint URL. Keys come from the provider's variable (e.g. GROQ_API_KEY).
@@ -57,6 +59,7 @@ OpenClaw / other MCP clients: command "npx -y constellate mcp" over stdio`);
     registerEconomyRoutes(web, economy);
     await web.listen(Number(process.env.PORT ?? 4747));
     new Consolidator(hub).schedule(); // "sleep" every 6 hours: distil related lessons into summaries
+    hub.x0x?.directEvents((m) => hub.people.receive(m.sender, m.payload)); // incoming direct messages, for the app's inbox
     console.log(`Constellate is open at ${web.url}`);
     return;
   }
@@ -134,7 +137,16 @@ async function contribute(args: string[]) {
   console.log(`Device: ${device.cpu}, ${device.memGB} GB${device.gpu ? `, ${device.gpu}` : ''}. Models: ${runners.map((r) => `${r.id} (${r.family})`).join(', ')}.`);
   const board = hub.x0x ? new X0xBoard(hub.x0x, 'constellate/v1/board') : new MemoryBoard();
   const budget = new Budget(Number(flag(args, '--cap-cents') ?? 0) || (runners.some((r) => r.costPerCall) ? 100 : Infinity));
-  const workers = runners.map((r) => new Worker(hub, r, hub.problems, board, { policy: POLITE, power: readPower, budget }));
+  const policy = { ...POLITE };
+  const workers = runners.map((r) => new Worker(hub, r, hub.problems, board, { policy, power: readConditions, budget }));
+  // The contributor app: status and controls in the browser, on this machine only. --no-ui to skip.
+  if (!args.includes('--no-ui')) {
+    const web = new WebServer(hub);
+    registerAppRoutes(web);
+    registerContributorRoutes(web, { workers, budget, policy, device });
+    await web.listen(Number(flag(args, '--port') ?? 4748), '127.0.0.1');
+    console.log(`Status and controls: ${web.url}/#/compute`);
+  }
   let last = '';
   for (;;) {
     let didWork = false;

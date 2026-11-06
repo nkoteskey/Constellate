@@ -3,10 +3,10 @@ import { PaymentRail, signMandate, SignedMandate } from './rail.js';
 import { lineage, splitAmount } from './lineage.js';
 import { CheckpointBody } from '../work/problems.js';
 import { StoredRecord } from '../store/records.js';
-import { TESTNET_PRICING } from './pricing.js';
+import { FOUNDING_UNTIL, TESTNET_PRICING } from './pricing.js';
 
 export interface ReceiptBody {
-  type: 'payout' | 'skill_fee' | 'review_fee' | 'review_bonus' | 'deposit' | 'refund' | 'reward' | 'sponsorship' | 'x402';
+  type: 'payout' | 'skill_fee' | 'review_fee' | 'review_bonus' | 'deposit' | 'refund' | 'reward' | 'sponsorship' | 'x402' | 'founding';
   payer: string;
   payee: string;
   amount: number;
@@ -144,4 +144,25 @@ export class EscrowAgent {
     }
     return n;
   }
+}
+
+/**
+ * Founding contributors: anyone whose record from before FOUNDING_UNTIL is
+ * independently confirmed earns a one-off bonus per record (testnet credit).
+ * Imported history (seeded from public repos) is the network's own and earns nothing.
+ */
+export async function settleFounding(economy: Economy, until = FOUNDING_UNTIL, bonus: number = TESTNET_PRICING.foundingBonus): Promise<number> {
+  const hub = economy.hub;
+  const paid = new Set(economy.receipts({ type: 'founding' }).map(({ s }) => s.rec.refs[0]));
+  let n = 0;
+  for (const s of hub.node.store.all()) {
+    if (s.visibility !== 'public' || s.rec.created >= until || paid.has(s.rec.id)) continue;
+    if (!['failure', 'answer', 'skill', 'checkpoint', 'task_result', 'argument', 'piece'].includes(s.rec.kind)) continue;
+    if (s.operatorId === economy.me || s.rec.evidence.some((e) => /github\.com/.test(e))) continue;
+    const confirmed = hub.node.store.referencing(s.rec.id, 'confirmation').some((c: StoredRecord) => c.operatorId !== s.operatorId);
+    if (!confirmed) continue;
+    try { await economy.pay(s.rec.agent_id, bonus, 'founding', [s.rec.id]); } catch { break; } // the founding pool is empty: stop, pay the rest later
+    n++;
+  }
+  return n;
 }

@@ -34,10 +34,11 @@ const mirror = async (p: string) => write(`${p.replace(/^\//, '')}.json`, await 
 // ── Data ───────────────────────────────────────────────────────────
 const sky = await get('/api/sky');
 write('api/sky.json', sky);
-for (const p of ['/api/graph', '/api/proposals', '/api/deliberations', '/api/people', '/api/teams', '/api/metrics']) await mirror(p);
+for (const p of ['/api/graph', '/api/proposals', '/api/deliberations', '/api/people', '/api/teams', '/api/metrics', '/api/ideas', '/api/galleries', '/api/challenges', '/api/work/next']) await mirror(p);
+for (const g of await get('/api/galleries')) await mirror(`/api/galleries/${g.id}`);
 for (const p of sky.problems) {
   if (p.kind === 'deliberation') { await mirror(`/api/deliberations/${p.id}`); continue; }
-  for (const x of [`/api/problems/${p.id}/page`, `/api/problems/${p.id}`, `/api/chat/${p.id}`, `/api/huddle/${p.id}`]) await mirror(x);
+  for (const x of [`/api/problems/${p.id}/page`, `/api/problems/${p.id}`, `/api/chat/${p.id}`, `/api/huddle/${p.id}`, `/api/problems/${p.id}/help`]) await mirror(x);
 }
 for (const d of await get('/api/deliberations')) if (!existsSync(join(out, `api/deliberations/${d.id}.json`))) await mirror(`/api/deliberations/${d.id}`);
 for (const person of await get('/api/people')) await mirror(`/api/me/${person.operator}`);
@@ -69,7 +70,8 @@ const learned = [...latest.values()].map((s) => {
   const b = s.rec.body as { title: string; summary: string; members: string[]; realms: string[] };
   return { id: s.rec.id, title: b.title, summary: b.summary, sources: b.members.length, realms: b.realms, domain: s.rec.context.domain, members: b.members.slice(0, 5) };
 });
-write('api/ledger.json', { built: new Date().toISOString(), records: ledger, learned });
+const skills = store.ofKind('skill').map((s) => { const b = s.rec.body as { name: string; description: string; capabilities: string[] }; return { id: s.rec.id, name: b.name, description: b.description, capabilities: b.capabilities, source: s.rec.evidence[0] ?? null }; });
+write('api/ledger.json', { built: new Date().toISOString(), records: ledger, learned, skills });
 
 // ── App files ──────────────────────────────────────────────────────
 for (const f of ['app.js', 'identity.js', 'logo.svg', 'style.css', 'embed.html', 'js', 'fonts']) cpSync(join(pub, f), join(out, f), { recursive: true });

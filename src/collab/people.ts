@@ -11,6 +11,9 @@ import { toB64, utf8 } from '../util/bytes.js';
  * - Discovery: find people by realm, problem and interest, with what they contributed.
  */
 const isHuman = (s: StoredRecord) => /^human\b/.test(s.rec.context.environment);
+export interface Mail { from: string; to: string; text: string; at: string; via: 'x0x' | 'demo' }
+/** The demo network's shared mailbox: every demo hub lives in one process, so this stands in for x0x DMs. */
+const DEMO_MAIL: Mail[] = [];
 
 export class People {
   constructor(private readonly hub: Hub) {}
@@ -26,13 +29,35 @@ export class People {
   }
 
   /** Private DM over x0x. Not stored as a record and never gossiped. */
-  async dm(agentId: string, text: string) {
-    if (!this.hub.x0x) throw new Error('direct messages need a running x0x daemon (coming soon in the browser)');
-    return this.hub.x0x.directSend(agentId, toB64(utf8(JSON.stringify({ app: 'constellate', type: 'dm', text }))));
+  async dm(agentId: string, text: string, opts: { from?: string } = {}) {
+    const msg = { from: opts.from ?? this.hub.node.agentId, to: agentId, text: text.slice(0, 2000), at: new Date().toISOString() };
+    if (this.hub.x0x) {
+      await this.hub.x0x.directSend(agentId, toB64(utf8(JSON.stringify({ app: 'constellate', type: 'dm', text: msg.text }))));
+      this.mailbox.push({ ...msg, from: this.hub.node.agentId, via: 'x0x' }); // sent from this computer's x0x identity
+      return { ok: true, via: 'x0x' as const };
+    }
+    if (process.env.CONSTELLATE_DEMO === '1') { DEMO_MAIL.push({ ...msg, via: 'demo' }); return { ok: true, via: 'demo' as const }; }
+    throw new Error('direct messages need a running x0x daemon');
   }
 
+  /** Messages to and from this node, newest last. On the demo network, the shared demo mailbox. */
+  conversations(me: string) {
+    const all = [...this.mailbox, ...(process.env.CONSTELLATE_DEMO === '1' ? DEMO_MAIL : [])];
+    return all.filter((m) => m.from === me || m.to === me).sort((a, b) => a.at.localeCompare(b.at));
+  }
+
+  /** Incoming x0x DMs addressed to this app land in the mailbox (called from the daemon's direct-message stream). */
+  receive(from: string, payloadB64: string) {
+    try {
+      const j = JSON.parse(Buffer.from(payloadB64, 'base64').toString('utf8')) as { app?: string; type?: string; text?: string };
+      if (j.app === 'constellate' && j.type === 'dm' && typeof j.text === 'string') this.mailbox.push({ from, to: this.hub.node.agentId, text: j.text.slice(0, 2000), at: new Date().toISOString(), via: 'x0x' });
+    } catch { /* not ours */ }
+  }
+
+  private mailbox: Mail[] = [];
+
   /** Discover people by realm, problem and interest. */
-  discover(opts: { realm?: string; problem?: string; limit?: number } = {}) {
+  discover(opts: { realm?: string; problem?: string; kind?: 'human' | 'agent'; q?: string; limit?: number } = {}) {
     const byOp = new Map<string, { operator: string; human: boolean; contributions: number; realms: Set<string>; problems: Set<string>; last: string }>();
     const pool = opts.problem ? this.hub.node.store.referencing(opts.problem) : this.hub.node.store.all();
     for (const s of pool) {
@@ -48,7 +73,12 @@ export class People {
       if (s.rec.created > p.last) p.last = s.rec.created;
       byOp.set(s.operatorId, p);
     }
-    return [...byOp.values()].sort((a, b) => b.contributions - a.contributions).slice(0, opts.limit ?? 50)
+    const q = (opts.q ?? '').toLowerCase().trim();
+    const titleOf = (id: string) => { const b = this.hub.node.store.get(id)?.rec.body as { title?: string; question?: string } | undefined; return (b?.title ?? b?.question ?? '').toLowerCase(); };
+    return [...byOp.values()]
+      .filter((p) => !opts.kind || (opts.kind === 'human') === p.human)
+      .filter((p) => !q || [...p.realms].some((r) => r.includes(q)) || [...p.problems].some((id) => titleOf(id).includes(q)))
+      .sort((a, b) => b.contributions - a.contributions).slice(0, opts.limit ?? 50)
       .map((p) => ({ ...p, realms: [...p.realms], problems: [...p.problems], reputation: this.hub.reputation.reputation(p.operator) }));
   }
 }

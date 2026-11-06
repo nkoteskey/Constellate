@@ -86,6 +86,25 @@ export class X0xClient {
   updateTask(listId: string, taskId: string, action: 'claim' | 'complete') { return this.req('PATCH', `/task-lists/${listId}/tasks/${taskId}`, { action }); }
 
   /** Private direct message (durable by default in x0x ≥0.38). payload is base64. */
+  /** SSE stream of incoming direct messages (`GET /direct/events`). Returns a stop function. */
+  directEvents(onMessage: (m: { sender: string; payload: string }) => void): () => void {
+    const ctl = new AbortController();
+    (async () => {
+      const res = await fetch(this.baseUrl + '/direct/events', { headers: this.token ? { authorization: `Bearer ${this.token}` } : {}, signal: ctl.signal });
+      const reader = res.body!.getReader(); const dec = new TextDecoder(); let buf = '';
+      for (;;) {
+        const { value, done } = await reader.read(); if (done) break;
+        buf += dec.decode(value, { stream: true });
+        let i; while ((i = buf.indexOf('\n\n')) >= 0) {
+          const frame = buf.slice(0, i); buf = buf.slice(i + 2);
+          const data = frame.split('\n').filter((l) => l.startsWith('data:')).map((l) => l.slice(5).trim()).join('');
+          try { const j = JSON.parse(data); const sender = j.sender ?? j.agent_id ?? j.from; if (sender && j.payload) onMessage({ sender, payload: j.payload }); } catch { /* keep-alive */ }
+        }
+      }
+    })().catch(() => { /* daemon went away */ });
+    return () => ctl.abort();
+  }
+
   directSend(agentId: string, payloadB64: string) { return this.req<{ ok: true }>('POST', '/direct/send', { agent_id: agentId, payload: payloadB64 }); }
 
   constitution() { return this.req<Record<string, unknown>>('GET', '/constitution'); }

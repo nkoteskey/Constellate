@@ -97,6 +97,8 @@ describe('contributor app', () => {
     expect(decide(POLITE, { onAC: true, batteryPct: 90 }, 0.9).state).toBe('waiting');
     expect(decide(POLITE, { onAC: true, batteryPct: 90 }, 0.1).state).toBe('contributing');
     expect(decide({ ...POLITE, hours: [22, 7] }, { onAC: true, batteryPct: null }, 0, 12).state).toBe('waiting');
+    expect(decide(POLITE, { onAC: true, batteryPct: null, tempC: 92 }, 0).message).toBe('Paused: running warm (92°C). Resumes when it cools.');
+    expect(decide(POLITE, { onAC: true, batteryPct: null, tempC: 60 }, 0).state).toBe('contributing');
   });
   it('picks a model that fits the machine', () => {
     expect(pickLocalModel({ platform: 'darwin', arch: 'arm64', cpu: 'Apple M3', cores: 8, memGB: 16, appleSilicon: true }).model).toBe('qwen3:14b');
@@ -116,5 +118,24 @@ describe('contributor app', () => {
     v.set('anthropic', 'sk-ant-api03-secret-value');
     expect(readFileSync(join(dir, 'keys.json'), 'utf8')).not.toContain('secret-value');
     expect(new KeyVault(join(dir, 'keys.json')).get('anthropic')).toBe('sk-ant-api03-secret-value');
+  });
+
+  it('the contributor app shows what this machine is doing and only this machine can change it', async () => {
+    const { WebServer } = await import('../../src/web/server.js');
+    const { registerContributorRoutes } = await import('../../src/contributor/dashboard.js');
+    const hub = new Hub({ signer: LocalSigner.generate(), preview: false });
+    const policy = { ...POLITE };
+    const worker = new Worker(hub, new MockRunner('ollama:qwen3:8b', 'qwen', 'small', () => 'ok'), hub.problems, new MemoryBoard(), { policy });
+    const web = new WebServer(hub);
+    registerContributorRoutes(web, { workers: [worker], budget: new Budget(100), policy, device: { platform: 'linux', arch: 'x64', cpu: 'x', cores: 8, memGB: 16, appleSilicon: false } });
+    await web.listen(0);
+    const c = await (await fetch(`${web.url}/api/contributor`)).json();
+    expect(c.models[0]).toMatchObject({ id: 'ollama:qwen3:8b', family: 'qwen', local: true });
+    expect(c.suggestion.primary.id).toBe('qwen3-8b');
+    const r = await fetch(`${web.url}/api/contributor/policy`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ paused: true, maxTempC: 80, hours: [22, 7] }) });
+    expect(r.status).toBe(200);
+    expect(policy).toMatchObject({ paused: true, maxTempC: 80, hours: [22, 7] });
+    expect(decide(policy, { onAC: true, batteryPct: null }, 0).message).toBe('Paused by you.');
+    await web.close();
   });
 });

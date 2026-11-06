@@ -370,3 +370,25 @@ details.raw pre { margin-top: 8px; }
   .hero #live-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 16px; }
 }
 @media (max-width: 360px) { nav.views a { font-size: 11px; } }
+
+/* Calls for help, debate shifts, forms */
+.call { padding: 10px 0; border-top: 1px solid var(--line); font-size: 14px; }
+.call:first-of-type { border-top: 0; }
+.shift { display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; font-size: 13px; margin: 8px 0; }
+form.card label, form .row label { display: grid; gap: 6px; font-size: 13px; color: var(--fg-2); }
+select.field { width: 100%; background: rgba(0,0,0,.28); color: var(--fg); border: 1px solid var(--line-2); border-radius: var(--r-md); padding: 12px 14px; font: inherit; font-size: 14px; }
+
+.filters .chip[data-prealm].on { color: var(--fg); border-color: var(--c); }
+
+/* Art */
+.piece .verse { white-space: pre-line; font-family: var(--serif, Fraunces, Georgia, serif); font-size: 17px; line-height: 1.6; color: var(--fg); margin: 0 0 12px; }
+.piece.curated { border-color: rgba(255, 159, 182, .35); }
+.result .kind.skill { color: var(--human); }
+/* Onboarding */
+.story .dots { display: flex; gap: 6px; margin-top: 16px; }
+.story .dots i { width: 22px; height: 3px; border-radius: 2px; background: var(--line-2); }
+.story .dots i.on { background: var(--fg); }
+/* The guide, anywhere */
+.guide-fab { position: fixed; right: 18px; bottom: 18px; z-index: 30; border-radius: var(--r-pill); padding: 10px 16px; background: rgba(12,15,26,.9); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); }
+.guide-fab > span[aria-hidden] { font-weight: 700; }
+@media (max-width: 720px) { .guide-fab { bottom: 76px; right: 12px; padding: 10px 12px; } .guide-fab .lbl { display: none; } }

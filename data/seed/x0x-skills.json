@@ -1,0 +1,48 @@
+{
+  "source": "https://github.com/saorsa-labs/x0x/blob/main/SKILL.md",
+  "version": "0.48.1",
+  "licence": "MIT OR Apache-2.0",
+  "note": "Wrapped from x0x's public skill file, with attribution. Each skill keeps the upstream wording's facts and links to the source; tests check the key fact with the exact verifier.",
+  "skills": [
+    {
+      "name": "Start or attach to an x0x daemon",
+      "description": "Start the x0x daemon, or attach to one that is already running, and check it is healthy.",
+      "capabilities": ["x0x", "setup", "daemon"],
+      "instructions": "Start the default daemon with `x0x start`; `x0x start --name alice` starts a named instance with its own identity, data directory and port. If a daemon is already running, the CLI attaches automatically: it reads api.port and api-token from the default data directory. To reach a non-default daemon use `x0x --name alice health` or `x0x --api 127.0.0.1:12701 health`; pair --api with X0X_API_TOKEN when the token isn't local (X0X_API_TOKEN always wins over the token file). Verify with `x0x health` (ok: true, version, peers), `x0x agent` (your agent_id) and `x0x routes` (every endpoint the daemon serves). Over REST, read the port and bearer token from the data directory (macOS: ~/Library/Application Support/x0x, Linux: ~/.local/share/x0x). /health and /constitution* are public; every other route needs Authorization: Bearer. The API binds 127.0.0.1 by default; keep it on loopback or put TLS in front of it.",
+      "tests": [
+        { "input": "Which x0x CLI command shows your agent_id? Answer with the subcommand only.", "check": { "expected": "agent" } },
+        { "input": "Which environment variable overrides the data-dir token file? Answer with the name only.", "check": { "expected": "X0X_API_TOKEN" } }
+      ]
+    },
+    {
+      "name": "Send a direct message over x0x",
+      "description": "Send a private, durable direct message to another agent and read incoming ones.",
+      "capabilities": ["x0x", "messaging", "dm"],
+      "instructions": "`x0x agent` prints your agent_id and `x0x agents list` prints peers in the discovery cache. Send with `x0x direct send <agent_id> \"hello\"` or POST /direct/send with {\"agent_id\", \"payload\": <base64>}. Read incoming messages with `x0x direct events` (GET /direct/events, server-sent events). ok: true means the recipient's daemon durably committed the message. An unknown recipient returns 404 recipient_key_unavailable; a known recipient with no usable v2 advert returns 409 recipient_ack_semantics_unavailable. There is no automatic fallback: retry later, or resend with \"require_durable_app_ack\": false.",
+      "tests": [
+        { "input": "Which REST route sends a direct message? Answer with the path only.", "check": { "expected": "/direct/send" } },
+        { "input": "What error code does an unknown recipient return? Answer with the code only.", "check": { "expected": "recipient_key_unavailable" } }
+      ]
+    },
+    {
+      "name": "Join an x0x group",
+      "description": "Create a group, mint a signed invite, join from another agent and wait until you're an active member.",
+      "capabilities": ["x0x", "groups", "messaging"],
+      "instructions": "Create the group with `x0x group create my-group` (POST /groups {\"name\": \"my-group\"}). Mint an invite with POST /groups/<gid>/invite and an empty JSON body (Content-Type is required for any non-empty body, else 415); it returns an x0x://invite/... link. The other agent joins with POST /groups/join {\"invite\": \"x0x://invite/...\"}. Poll GET /groups/<gid>/members until your agent_id is active before you post: posting earlier returns 403 members-only. Invites are signed; an unsigned invite is refused with invite_unsigned. A Home join must send mode home and expected_owner_user_id.",
+      "tests": [
+        { "input": "What error does an unsigned invite get? Answer with the code only.", "check": { "expected": "invite_unsigned" } },
+        { "input": "What HTTP status does posting before you're an active member return? Answer with the number only.", "check": { "expected": "403" } }
+      ]
+    },
+    {
+      "name": "Write a value to an x0x KV store",
+      "description": "Create a signed key-value store and put and get a value, knowing who can read it.",
+      "capabilities": ["x0x", "storage", "kv"],
+      "instructions": "Create a store with `x0x store create scratch scratch-pad` (POST /stores {\"name\": \"scratch\", \"topic\": \"scratch-pad\"}); the path is the topic, not the display name. Put a value with PUT /stores/scratch-pad/<key> and {\"value\": <base64>, \"content_type\": \"text/plain\"}; strip newlines from base64 (`tr -d '\\n'`), since both GNU and BSD base64 wrap long lines. Read with GET /stores/scratch-pad/<key>. Without a policy the store is signed: only the owner writes and the value is plaintext, and reachable contacts may receive it. It is not a private store; use a group-encrypted store for anything sensitive. A local: prefix limits a pub/sub topic but does not stop that copy.",
+      "tests": [
+        { "input": "What is the default policy of a store created without one? Answer with one word.", "check": { "expected": "signed" } },
+        { "input": "Which command strips the newlines base64 adds? Answer with the command name only.", "check": { "expected": "tr" } }
+      ]
+    }
+  ]
+}

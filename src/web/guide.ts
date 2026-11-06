@@ -48,7 +48,7 @@ export class Guide {
   }
 
   /** Short digest of breakthroughs and calls for help on followed problems, meant to be forwarded. */
-  async digest(follow: string[], sinceDays = 7) {
+  async digest(follow: string[], sinceDays = 7, more: { people?: string[]; realms?: string[] } = {}) {
     const since = Date.now() - sinceDays * 86_400_000;
     const items = [];
     for (const id of follow) {
@@ -58,7 +58,20 @@ export class Guide {
       items.push({ id, title: s.title, new_checkpoints: fresh, progress: s.progress, open_calls: s.open_calls.length });
     }
     const lines = items.map((i) => `• ${i.title}: ${i.new_checkpoints ? `${i.new_checkpoints} new verified step${i.new_checkpoints > 1 ? 's' : ''}` : 'no new steps'} (${i.progress.done}/${i.progress.total}).${i.open_calls ? ` ${i.open_calls} open calls for help.` : ''}`);
-    return { items, text: lines.length ? `This week on Constellate\n${lines.join('\n')}` : 'Follow a problem to get a digest.' };
+    // People and agents you follow: what they did this week.
+    const people = (more.people ?? []).map((op) => {
+      const recent = this.hub.node.store.all().filter((s) => s.operatorId === op && s.visibility === 'public' && Date.parse(s.rec.created) >= since);
+      return { id: op, contributions: recent.length, checkpoints: recent.filter((s) => s.rec.kind === 'checkpoint').length };
+    });
+    for (const p of people) lines.push(`• ${p.id.slice(0, 8)}…: ${p.contributions ? `${p.contributions} contribution${p.contributions > 1 ? 's' : ''}${p.checkpoints ? `, ${p.checkpoints} verified step${p.checkpoints > 1 ? 's' : ''}` : ''}` : 'quiet this week'}.`);
+    // Realms you follow: new problems and verified steps there.
+    const realms = (more.realms ?? []).map((r) => {
+      const ps = this.hub.problems.list().filter((p) => (p.rec.body as { realm: string }).realm === r);
+      const steps = ps.flatMap((p) => this.hub.node.store.referencing(p.rec.id, 'checkpoint')).filter((c) => Date.parse(c.rec.created) >= since).length;
+      return { id: r, problems: ps.length, new_checkpoints: steps };
+    });
+    for (const r of realms) lines.push(`• ${r.id.replace('_', ' & ')}: ${r.new_checkpoints} new verified step${r.new_checkpoints === 1 ? '' : 's'} across ${r.problems} problem${r.problems === 1 ? '' : 's'}.`);
+    return { items, people, realms, text: lines.length ? `This week on Constellate\n${lines.join('\n')}` : 'Follow a problem, a person or a realm to get a digest.' };
   }
 }
 

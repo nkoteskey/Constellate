@@ -7,11 +7,15 @@ import { Deliberation } from '../collective/deliberation.js';
 import { verifyRecord, SignedRecord, RecordKind } from '../core/record.js';
 import { scrub } from '../privacy/scrub.js';
 import { StoredRecord } from '../store/records.js';
-import { REALMS } from '../work/problems.js';
+import { REALMS, ProblemBody } from '../work/problems.js';
+import { verifyOperatorClaim, OperatorClaim } from '../core/operator.js';
+import { fromB64 } from '../util/bytes.js';
+import { familyOf } from './public/js/models.js';
 import { ModelRunner } from '../contributor/models.js';
 
-/** Kinds a person can sign in the browser. */
-const HUMAN_KINDS: RecordKind[] = ['rating', 'confirmation', 'contradiction', 'vote', 'argument', 'position', 'pledge', 'message', 'use'];
+/** Kinds a person can sign in the browser. Each one with more than a simple shape gets its own check below. */
+const HUMAN_KINDS: RecordKind[] = ['rating', 'confirmation', 'contradiction', 'vote', 'argument', 'position', 'pledge', 'message', 'use',
+  'proposal', 'answer', 'task_result', 'challenge', 'piece', 'curation', 'identity_link'];
 
 export const REALM_INFO: Record<string, { name: string; colour: string; judged: string }> = {
   maths_physics: { name: 'Mathematics and physics', colour: '#7aa2ff', judged: 'Machine-checked' },
@@ -111,7 +115,7 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
     if (hub.x0x) { try { base = (await (await fetch(`${hub.x0x.baseUrl}/.well-known/agent-card.json`)).json()) as Record<string, unknown>; } catch { /* daemon card unavailable */ } }
     return agentCard(hub, base, { url: web.url });
   });
-  web.route('GET', /^\/api\/people$/, (_r, _m, url) => hub.people.discover({ realm: url.searchParams.get('realm') ?? undefined, problem: url.searchParams.get('problem') ?? undefined }));
+  web.route('GET', /^\/api\/people$/, (_r, _m, url) => hub.people.discover({ kind: (url.searchParams.get('kind') as 'human' | 'agent' | null) ?? undefined, q: url.searchParams.get('q') ?? undefined, realm: url.searchParams.get('realm') ?? undefined, problem: url.searchParams.get('problem') ?? undefined }));
   web.route('GET', /^\/api\/chat\/([0-9a-f]{64})$/, (_r, m) => hub.people.chat(m[1]));
   web.route('GET', /^\/api\/graph$/, () => {
     // Threads between nebulae: real links between records in different problems, strongest first.
@@ -136,6 +140,12 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
     else if (b.type === 'share' || b.type === 'invite') hub.metrics.event(b.type, String(b.who ?? 'anon').slice(0, 64));
     return { ok: true };
   });
+  const challenges = () => hub.node.store.ofKind('challenge').map((c) => {
+    const b = c.rec.body as { team: string; goal: number; ends: string; title?: string };
+    const since = c.rec.created;
+    const done = hub.node.store.all().filter((s) => (s.rec.body as { team?: string }).team === b.team && /^human\b/.test(s.rec.context.environment) && s.rec.created >= since && s.rec.created <= b.ends).length;
+    return { id: c.rec.id, team: b.team, title: b.title ?? `${b.goal} contributions`, goal: b.goal, ends: b.ends, done, by: c.rec.agent_id };
+  }).sort((a, b) => a.ends.localeCompare(b.ends));
   web.route('GET', /^\/api\/teams$/, () => {
     const teams = new Map<string, { team: string; members: Set<string>; contributions: number }>();
     for (const s of hub.node.store.all()) {
@@ -180,6 +190,8 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
       helped: [...helped].map((id) => { const b = hub.node.store.get(id)!.rec.body as { title?: string; question?: string }; return { id, title: b.title ?? b.question }; }),
       reputation: hub.reputation.profile(m[1]), credit: receipts.reduce((n, r) => n + r.b.amount, 0),
       pledged_hours: hub.collective.pledged(m[1]),
+      linked_user: (() => { const l = mine.filter((s) => s.rec.kind === 'identity_link').sort((a, b) => b.rec.created.localeCompare(a.rec.created))[0]; return l ? (l.rec.body as { claim: OperatorClaim }).claim.user_id : null; })(),
+      founding: receipts.filter((r) => r.b.type === 'founding').length,
       agents: [...new Set(mine.map((s) => s.rec.agent_id))].map((a) => ({ id: a, human: mine.some((s) => s.rec.agent_id === a && /^human\b/.test(s.rec.context.environment)), records: mine.filter((s) => s.rec.agent_id === a).length })),
     };
   });
@@ -192,25 +204,123 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
     const p = scrub({ context: rec.context, body: rec.body }, hub.node.privacy);
     if (!p.ok) return new HttpReply(400, { error: 'blocked by privacy check', findings: p.findings });
     if (!rec.refs.every((r) => hub.node.store.get(r))) return new HttpReply(400, { error: 'refers to unknown records' });
+    const problem = await checkHumanRecord(rec);
+    if (problem) return new HttpReply(400, problem);
     await hub.node.relay(rec);
     return { accepted: rec.id, credit: 'Your light joined the sky.' };
   });
 
+  /** Kind-specific checks for what people (and browsers lending compute) can submit. Null means fine. */
+  async function checkHumanRecord(rec: SignedRecord): Promise<{ error: string; findings?: unknown } | null> {
+    const b = rec.body as Record<string, any>;
+    const ref = rec.refs[0] ? hub.node.store.get(rec.refs[0]) : undefined;
+    switch (rec.kind) {
+      case 'proposal': {
+        if (!b.title || !b.goal || !b.done || !REALMS.includes(b.realm)) return { error: 'a proposal needs a title, a goal, how success is checked, and a realm' };
+        const check = await hub.collective.constitution.checkText(`${b.title}\n${b.goal}\n${b.done}`, b.realm);
+        if (!check.ok) return { error: 'the constitution check stopped this proposal', findings: check.findings };
+        return null;
+      }
+      case 'answer': return ref?.rec.kind === 'help_request' ? null : { error: 'people answer calls for help; other answers come from agents' };
+      case 'task_result': {
+        if (ref?.rec.kind !== 'problem' || b.problem !== ref.rec.id) return { error: 'a result must point at its problem' };
+        const st = await hub.problems.state(ref.rec.id);
+        const c = st.chunks.find((x) => x.key === b.chunk);
+        if (!c) return { error: 'unknown step' };
+        if (c.checkpoint) return { error: 'that step is already verified' };
+        if (typeof b.output !== 'string' || !b.output.trim()) return { error: 'empty result' };
+        if (familyOf(String(b.model)) !== b.family) return { error: 'the model family must match the model' };
+        return null;
+      }
+      case 'challenge': return b.team && Number(b.goal) > 0 && Date.parse(b.ends) > Date.now() ? null : { error: 'a challenge needs a team, a goal and an end date in the future' };
+      case 'piece': {
+        if (ref?.rec.kind !== 'gallery') return { error: 'a piece belongs to a gallery' };
+        const check = await hub.collective.constitution.checkText(`${b.title}\n${b.text}`, 'art_creativity');
+        return check.ok ? null : { error: 'the constitution check stopped this piece', findings: check.findings };
+      }
+      case 'curation': return ref?.rec.kind === 'piece' && /^human\b/.test(rec.context.environment) ? null : { error: 'only people curate, and only pieces' };
+      case 'identity_link': {
+        const v = verifyOperatorClaim(b.claim as OperatorClaim, fromB64(rec.author));
+        return v.ok ? null : { error: `identity link does not verify: ${v.reason}` };
+      }
+      default: return null;
+    }
+  }
+
+  // Direct messages: private, never records. Over x0x when a daemon is running; a labelled mailbox on the demo network.
+  web.route('GET', /^\/api\/dm\/([0-9a-f]{64})$/, (_r, m) => ({ messages: hub.people.conversations(m[1]), via: hub.x0x ? 'x0x' : process.env.CONSTELLATE_DEMO === '1' ? 'demo' : 'none' }));
+  web.route('POST', /^\/api\/dm$/, async (_r, _m, _u, body) => {
+    const j = await body() as { to?: string; from?: string; text?: string };
+    if (!/^[0-9a-f]{64}$/.test(j.to ?? '') || !j.text?.trim()) return new HttpReply(400, { error: 'say who it is for and what to say' });
+    const p = scrub({ context: { task: 'dm', domain: [], environment: '' }, body: { text: j.text } }, hub.node.privacy);
+    if (!p.ok) return new HttpReply(400, { error: 'blocked by privacy check', findings: p.findings });
+    try { return await hub.people.dm(j.to!, j.text, { from: /^[0-9a-f]{64}$/.test(j.from ?? '') ? j.from : undefined }); }
+    catch (e) { return new HttpReply(503, { error: (e as Error).message }); }
+  });
+
+  // Calls for help on a problem: steps still waiting, and questions agents posted mid-task.
+  web.route('GET', /^\/api\/problems\/([0-9a-f]{64})\/help$/, (_r, m) => hub.node.store.referencing(m[1], 'help_request').map((h) => {
+    const b = h.rec.body as { question: string; needs?: string; verifier?: string };
+    const answers = hub.node.store.referencing(h.rec.id, 'answer');
+    return { id: h.rec.id, question: b.question, needs: b.needs ?? 'any', at: h.rec.created, who: h.rec.agent_id, answers: answers.length, answered_by_people: answers.filter(isHuman).length };
+  }));
+
+  // Ideas from people: not yet a problem (that needs checkable steps), but voted on and visible.
+  web.route('GET', /^\/api\/ideas$/, () => hub.node.store.ofKind('proposal').filter((s) => { const b = s.rec.body as { title?: string; done?: string }; return !!(b.title && b.done); }).map((s) => {
+    const b = s.rec.body as { title: string; goal: string; done: string; check: string; realm: string };
+    const voters = new Set(hub.node.store.referencing(s.rec.id, 'vote').map((v) => v.operatorId));
+    return { id: s.rec.id, ...b, at: s.rec.created, by: s.rec.agent_id, human: isHuman(s), voters: voters.size };
+  }).sort((a, b) => b.voters - a.voters || b.at.localeCompare(a.at)));
+
+  // Art: appreciated, not scored. Galleries of pieces by people and agents; people curate.
+  const galleryView = (id: string) => {
+    const g = hub.node.store.get(id);
+    if (!g || g.rec.kind !== 'gallery') throw Object.assign(new Error('not found'), { status: 404 });
+    const pieces = hub.node.store.referencing(id, 'piece').map((p) => {
+      const b = p.rec.body as { title: string; text: string; family?: string };
+      const curators = new Set(hub.node.store.referencing(p.rec.id, 'curation').filter(isHuman).map((c) => c.operatorId));
+      return { id: p.rec.id, title: b.title, text: b.text, by: isHuman(p) ? 'human' : 'agent', family: b.family ?? null, who: p.rec.agent_id, at: p.rec.created, curators: curators.size };
+    });
+    return { id, ...(g.rec.body as object), pieces: pieces.sort((a, b) => b.curators - a.curators || a.at.localeCompare(b.at)), curated: pieces.filter((p) => p.curators >= 2).map((p) => p.id) };
+  };
+  web.route('GET', /^\/api\/galleries$/, () => hub.node.store.ofKind('gallery').map((g) => { const v = galleryView(g.rec.id); return { id: v.id, ...(g.rec.body as object), pieces: v.pieces.length, curated: v.curated.length }; }));
+  web.route('GET', /^\/api\/galleries\/([0-9a-f]{64})$/, (_r, m) => galleryView(m[1]));
+
+  // Lend this browser: the next open step a small model can try. The result is checked by a different family before it counts.
+  web.route('GET', /^\/api\/work\/next$/, async (_r, _m, url) => {
+    const family = String(url.searchParams.get('family') ?? '');
+    for (const p of hub.problems.list()) {
+      const body = p.rec.body as unknown as ProblemBody;
+      if (hub.collective.constitution.status(p.rec.id).state !== 'cleared') continue;
+      const st = await hub.problems.state(p.rec.id);
+      for (const c of st.chunks) {
+        if (c.checkpoint) continue;
+        const spec = body.chunks.find((x) => x.key === c.key)!;
+        if (spec.needs.size === 'large') continue;
+        if (c.pending.some((r) => (r.rec.body as { family?: string }).family === family)) continue;
+        return { problem: p.rec.id, title: body.title, realm: body.realm, chunk: c.key, step: spec.title, prompt: spec.prompt, verifier: body.definition_of_done.verifier };
+      }
+    }
+    return { problem: null };
+  });
+  web.route('GET', /^\/api\/challenges$/, () => challenges());
+
   // The utility hook: paste an error or a question, get what failed, what fixed it, and a plain answer.
   web.route('GET', /^\/api\/search$/, async (_r, _m, url) => {
     const q = String(url.searchParams.get('q') ?? '').slice(0, 500).trim();
-    if (!q) return { q, failures: [], answers: [], learned: [], guide: null };
+    if (!q) return { q, failures: [], answers: [], learned: [], skills: [], guide: null };
     const failures = hub.ledger.searchFailures(q, { limit: 6 }).map((f) => ({ ...f, fixes: f.fixed_by.map((id) => { const a = hub.node.store.get(id); const b = a?.rec.body as { answer: string; headline?: string; proof?: { type: string; detail: string } } | undefined;
       return a && b ? { id, answer: b.answer, headline: b.headline, proof: b.proof, confirmations: hub.trust.explain(a).confirmations, domain: a.rec.context.domain } : null; }).filter(Boolean) }));
     const answers = hub.ledger.lookupAnswers(q, { limit: 3 });
     const asksAboutWork = /happening|progress|status|how('s| is)|going|what about/i.test(q);
     const guide = asksAboutWork || !(failures.length || answers.length) ? await guide_.ask(q).catch(() => null) : null;
     const learned = hub.ledger.learned(q, { limit: 2 });
-    return { q, failures, answers, learned, guide };
+    const skills = hub.skills.find(q, 2).map((k) => ({ id: k.id, name: k.name, description: k.description, source: hub.node.store.get(k.id)?.rec.evidence[0] ?? null }));
+    return { q, failures, answers, learned, skills, guide };
   });
 
   web.route('POST', /^\/api\/ask$/, async (_r, _m, _u, body) => guide.ask(String((await body()).question ?? '').slice(0, 500)));
-  web.route('GET', /^\/api\/digest$/, (_r, _m, url) => guide.digest((url.searchParams.get('follow') ?? '').split(',').filter(Boolean)));
+  web.route('GET', /^\/api\/digest$/, (_r, _m, url) => guide.digest((url.searchParams.get('follow') ?? '').split(',').filter(Boolean), 7, { people: (url.searchParams.get('people') ?? '').split(',').filter(Boolean), realms: (url.searchParams.get('realms') ?? '').split(',').filter(Boolean) }));
 
   web.route('GET', /^\/api\/card\/([0-9a-f]{64})\.svg$/, async (_r, m) => {
     const s = hub.node.store.get(m[1]);
@@ -229,7 +339,7 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
       let root: StoredRecord | undefined = s;
       for (let i = 0; i < 6 && root && !['problem', 'proposal'].includes(root.rec.kind); i++) root = root.rec.refs[0] ? hub.node.store.get(root.rec.refs[0]) : undefined;
       const newOperator = root ? hub.node.store.referencing(root.rec.id).filter((r) => r.operatorId === s.operatorId).length <= 1 : false;
-      res.write(`data: ${JSON.stringify({ id: s.rec.id, kind: s.rec.kind, by: isHuman(s) ? 'human' : 'agent', root: root?.rec.id ?? null, newOperator, at: s.rec.created })}\n\n`);
+      res.write(`data: ${JSON.stringify({ id: s.rec.id, kind: s.rec.kind, by: isHuman(s) ? 'human' : 'agent', operator: s.operatorId, root: root?.rec.id ?? null, newOperator, at: s.rec.created })}\n\n`);
     });
     const offB = hub.graph.onBridge((b) => res.write(`data: ${JSON.stringify({ kind: 'bridge', ...b })}\n\n`));
     req.on('close', () => { off(); offB(); });

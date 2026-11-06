@@ -4,3 +4,6 @@ dist/
 *.log
 coverage/
 site/
+
+# built by scripts/build-mcpb.mts; shipped only with an approved release
+distribution/mcpb/

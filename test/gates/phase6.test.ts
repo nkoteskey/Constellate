@@ -42,12 +42,15 @@ describe('GATE 6 — human experience', () => {
     const featured = await page.$$eval('#featured a', (as) => as.map((a) => a.textContent));
     expect(featured.length).toBe(3);
 
-    // Click the debate hook, rate an argument: one tap.
-    await page.click('#featured a:has-text("fairness")');
-    await page.waitForSelector('.stars button');
-    await page.click('.stars button[data-score="4"]');
+    // The why in 30 seconds, then a guided first win: rate one argument.
+    await page.waitForSelector('#st-next');
+    for (let i = 0; i < 3; i++) await page.click('#st-next');
+    await page.waitForSelector('[data-fw]');
+    expect(await page.textContent('#sheet')).toMatch(/How good is the argument/);
+    await page.click('[data-fw="4"]');
     await page.waitForSelector('#toast:not([hidden])');
     expect(await page.textContent('#toast')).toMatch(/Your light joined the sky/);
+    await page.waitForFunction(() => document.querySelector('#sheet')?.textContent?.includes('Your light joined the sky'));
     const seconds = (Date.now() - t0) / 1000;
     expect(seconds).toBeLessThan(300);
 
