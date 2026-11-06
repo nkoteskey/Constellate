@@ -14,6 +14,9 @@ import { MemoryBoard, X0xBoard } from './work/board.js';
 const USAGE = `constellate — the x0x agent hub
 
   constellate mcp        Run the MCP server on stdio (add to any MCP client)
+  constellate mcp --private      Closed projects: search a local snapshot, never publish
+  constellate snapshot pull URL  Download a snapshot of the public ledger (e.g. http://hub/api/snapshot)
+  constellate seed [repo…]       Seed the ledger from allow-listed public repos' CI history
   constellate status     Show identity, x0x connection and record counts
   constellate setup      Print one-line setup snippets for MCP clients
   constellate serve      Open the human app on http://127.0.0.1:4747
@@ -27,7 +30,7 @@ CONSTELLATE_PREVIEW=off, CONSTELLATE_PRIVACY=standard|strict, CONSTELLATE_DENY_T
 async function main(argv: string[]) {
   const cmd = argv[0];
   if (cmd === 'mcp') {
-    const hub = await Hub.fromEnv();
+    const hub = argv.includes('--private') ? await Hub.privateMode() : await Hub.fromEnv();
     const server = createMcpServer(hub);
     await server.connect(new StdioServerTransport());
     return;
@@ -62,6 +65,23 @@ OpenClaw / other MCP clients: command "npx -y constellate mcp" over stdio`);
     return;
   }
   if (cmd === 'contribute') return contribute(argv.slice(1));
+  if (cmd === 'seed') {
+    const { Seeder, SEED_ALLOW_LIST } = await import('./seed/seeder.js');
+    const { GitHubRest } = await import('./seed/github.js');
+    const hub = await Hub.fromEnv({ ...process.env, CONSTELLATE_PREVIEW: 'off' });
+    const repos = argv.slice(1).length ? argv.slice(1) : [...SEED_ALLOW_LIST];
+    for (const r of repos) console.log(JSON.stringify(await new Seeder(hub, new GitHubRest()).seed(r), null, 2));
+    await hub.close();
+    return;
+  }
+  if (cmd === 'snapshot' && argv[1] === 'pull') {
+    const { pullSnapshot } = await import('./seed/snapshot.js');
+    const { join } = await import('node:path');
+    const { homedir } = await import('node:os');
+    const file = argv[3] ?? join(process.env.CONSTELLATE_HOME ?? join(homedir(), '.constellate'), 'snapshot.cbor');
+    console.log(`Saved ${await pullSnapshot(argv[2], file)} bytes to ${file}. Run: constellate mcp --private`);
+    return;
+  }
   console.log(USAGE);
 }
 

@@ -77,6 +77,8 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
     return { line: 'Thousands of minds, working on humanity\'s hardest problems, right now.', realms: REALMS.map((r) => ({ id: r, ...REALM_INFO[r] })), problems, featured };
   });
 
+  web.route('GET', /^\/api\/snapshot$/, async () => { const { exportSnapshot } = await import('../seed/snapshot.js'); return new RawReply(Buffer.from(exportSnapshot(hub.node.store)), 'application/cbor'); });
+
   web.route('GET', /^\/api\/deliberations$/, () => delib.questions().map((q) => ({ id: q.rec.id, ...(q.rec.body as object) })));
   web.route('GET', /^\/api\/deliberations\/([0-9a-f]{64})$/, (_r, m) => delib.map(m[1]));
 

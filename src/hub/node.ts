@@ -18,6 +18,8 @@ export interface HubNodeOptions {
   privacy?: ScrubOptions;
   /** Preview mode (default on): records are signed and held locally until the operator/agent publishes them. */
   preview?: boolean;
+  /** Closed-project mode: this identity reads but can never sign or publish anything. */
+  readOnly?: boolean;
 }
 
 export interface Preview {
@@ -39,6 +41,7 @@ export class HubNode {
   readonly operator?: OperatorClaim;
   readonly privacy: ScrubOptions;
   preview: boolean;
+  readonly readOnly: boolean;
   private pending = new Map<string, string>(); // preview_id -> record id
   readonly rejected: { reason: string; sender: string }[] = [];
 
@@ -50,6 +53,7 @@ export class HubNode {
     this.operator = o.operator;
     this.privacy = o.privacy ?? { level: 'standard' };
     this.preview = o.preview ?? true;
+    this.readOnly = o.readOnly ?? false;
     this.bus?.onRecord((rec, sender) => this.ingest(rec, sender));
   }
 
@@ -64,6 +68,7 @@ export class HubNode {
 
   /** Scrub and sign. Throws PrivacyBlockedError if anything private is found: blocked, not trimmed. */
   async sign<B>(draft: Draft<B>): Promise<SignedRecord<B>> {
+    if (this.readOnly) throw new ClosedIdentityError();
     const check = scrub({ context: draft.context, body: draft.body, evidence: draft.evidence ?? [], refs: draft.refs ?? [] }, this.privacy);
     if (!check.ok) throw new PrivacyBlockedError(check.findings);
     return signRecord(draft, this.signer, this.operator);
@@ -88,6 +93,7 @@ export class HubNode {
   }
 
   async publish(previewOrRecordId: string): Promise<SignedRecord> {
+    if (this.readOnly) throw new ClosedIdentityError();
     const id = this.pending.get(previewOrRecordId) ?? previewOrRecordId;
     const s = this.store.get(id);
     if (!s) throw new Error(`unknown preview or record: ${previewOrRecordId}`);
@@ -99,6 +105,7 @@ export class HubNode {
 
   /** Verify a record signed elsewhere (e.g. by a person's browser key) and broadcast it. */
   async relay(rec: SignedRecord) {
+    if (this.readOnly) throw new ClosedIdentityError();
     const v = verifyRecord(rec);
     if (!v.ok) throw new Error(`rejected: ${v.reason}`);
     await this.broadcast(rec);
@@ -117,6 +124,7 @@ export class HubNode {
   }
 
   private async broadcast(rec: SignedRecord) {
+    if (this.readOnly) throw new ClosedIdentityError();
     this.store.add(rec, 'public');
     this.store.setVisibility(rec.id, 'public');
     if (this.archive) await this.archive.put(canonicalBytes(rec));
@@ -124,4 +132,8 @@ export class HubNode {
   }
 
   async close() { await this.bus?.close(); }
+}
+
+export class ClosedIdentityError extends Error {
+  constructor() { super('refused: this is a closed-project identity in private read mode; it can read the ledger but never publish'); }
 }

@@ -36,6 +36,7 @@ export interface HubOptions {
   /** Key for the private encrypted scratchpad. Generated per hub if not given. */
   memoryKey?: MemoryKey;
   now?: () => number;
+  readOnly?: boolean;
 }
 
 /** Everything one agent's local hub offers, composed over one HubNode. */
@@ -64,7 +65,7 @@ export class Hub {
   constructor(o: HubOptions) {
     this.archive = o.archive ?? new LocalArchive();
     this.x0x = o.x0x;
-    this.node = new HubNode({ signer: o.signer, store: o.store, bus: o.bus, archive: this.archive, operator: o.operator, privacy: o.privacy, preview: o.preview });
+    this.node = new HubNode({ signer: o.signer, store: o.store, bus: o.bus, archive: this.archive, operator: o.operator, privacy: o.privacy, preview: o.preview, readOnly: o.readOnly });
     this.trusted = new Set(o.trusted ?? []);
     this.reputation = new Reputation(this.node.store, { preTrusted: () => [this.node.operatorId, ...this.trusted], now: o.now });
     this.trust = this.reputation;
@@ -120,6 +121,20 @@ export class Hub {
   }
 
   async close() { await this.node.close(); }
+
+  /**
+   * Private read mode for closed projects: a local snapshot of the public ledger,
+   * a separate closed identity, no gossip, no daemon, no network. Searches never leave the machine.
+   */
+  static async privateMode(env = process.env): Promise<Hub> {
+    const { closedIdentity, importSnapshot } = await import('../seed/snapshot.js');
+    const { readFileSync, existsSync } = await import('node:fs');
+    const home = env.CONSTELLATE_HOME ?? join(homedir(), '.constellate');
+    const store = new RecordStore();
+    const snap = env.CONSTELLATE_SNAPSHOT ?? join(home, 'snapshot.cbor');
+    if (existsSync(snap)) importSnapshot(new Uint8Array(readFileSync(snap)), store);
+    return new Hub({ signer: closedIdentity(home), store, archive: new LocalArchive(join(home, 'private-archive')), memoryKey: MemoryKey.loadOrCreate(join(home, 'closed-memory.key')), readOnly: true, preview: true });
+  }
 
   /** Production wiring: use the local x0x daemon if it answers, else run offline with a local key. */
   static async fromEnv(env = process.env): Promise<Hub> {
