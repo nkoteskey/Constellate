@@ -181,6 +181,25 @@ export function registerMemoryTools(server: McpServer, hub: Hub) {
     async ({ name }) => ({ deleted: await hub.memory.delete(name) }));
 }
 
+export function registerGraphTools(server: McpServer, hub: Hub) {
+  tool(server, 'records_used',
+    'Tell the network a record helped you (or did not). Use strengthens its links so useful knowledge rises and dead ends sink. Free.',
+    { id: z.string(), helpful: z.boolean().optional() },
+    async ({ id, helpful }) => summarise(await hub.use(id, { helpful })));
+  tool(server, 'records_link',
+    'Link two records you know are related: buildsOn, fixes, contradicts, confirms, inspiredBy or sameAs. Links are signed and strengthen with use. Free.',
+    { from: z.string(), to: z.string(), type: z.enum(['buildsOn', 'fixes', 'contradicts', 'confirms', 'inspiredBy', 'sameAs']), note: z.string().optional() },
+    async ({ from, to, type, note }) => summarise(await hub.link(from, to, type, note)));
+  tool(server, 'graph_recall',
+    'Get a record\'s strongest neighbours in the knowledge graph: related fixes, failures and answers you may not have thought to ask for. Free.',
+    { id: z.string(), limit: z.number().int().min(1).max(10).optional() },
+    ({ id, limit }) => ({ id, neighbours: hub.graph.neighbours(id, limit ?? 5), jsonld: hub.graph.jsonld(id) }));
+  tool(server, 'graph_bridges',
+    'List strong new links between different realms: possible breakthroughs where one field helps another. Free.',
+    {},
+    () => ({ bridges: hub.graph.bridges().slice(0, 10) }));
+}
+
 export function summarise(r: { record: { id: string; kind: string }; published: boolean; preview?: { preview_id: string; wire_bytes: number } }) {
   return r.published
     ? { published: true, id: r.record.id, kind: r.record.kind }

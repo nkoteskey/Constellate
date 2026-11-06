@@ -25,6 +25,8 @@ export const RECORD_KINDS = [
   'skill', 'skill_run', 'review_request', 'review', 'receipt',
   // phase 7: private memory (body is ciphertext)
   'memory',
+  // amendment 1: knowledge graph, hand-offs, help, court, conversation
+  'link', 'use', 'summary', 'handoff', 'help_request', 'ruling', 'message',
 ] as const;
 export type RecordKind = (typeof RECORD_KINDS)[number];
 

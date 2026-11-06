@@ -16,6 +16,7 @@ import { Collective } from '../collective/collective.js';
 import { Skills } from '../economy/skills.js';
 import { Deliberation } from '../collective/deliberation.js';
 import { PrivateMemory, MemoryKey } from '../services/memory.js';
+import { KnowledgeGraph } from '../graph/graph.js';
 import { Economy } from '../economy/economy.js';
 import { PaymentRail } from '../economy/rail.js';
 import { ScrubOptions } from '../privacy/scrub.js';
@@ -49,6 +50,7 @@ export class Hub {
   readonly ledger: Ledger;
   readonly problems: Problems;
   readonly memory: PrivateMemory;
+  readonly graph: KnowledgeGraph;
   private _collective?: Collective;
   economy?: Economy;
   private _skills?: Skills;
@@ -66,13 +68,14 @@ export class Hub {
     this.trusted = new Set(o.trusted ?? []);
     this.reputation = new Reputation(this.node.store, { preTrusted: () => [this.node.operatorId, ...this.trusted], now: o.now });
     this.trust = this.reputation;
-    this.ledger = new Ledger(this.node, this.trust);
+    this.graph = new KnowledgeGraph(this.node.store, this.trust, { now: o.now });
+    this.ledger = new Ledger(this.node, this.trust, this.graph);
     this.live = new LiveState(this.node, this.archive, this.x0x);
     this.problems = new Problems(this);
     this.memory = new PrivateMemory(this.archive, o.memoryKey ?? MemoryKey.generate());
   }
 
-  setTrust(t: TrustModel) { this.trust = t; this.ledger.setTrust(t); }
+  setTrust(t: TrustModel) { this.trust = t; this.ledger.setTrust(t); this.graph.setTrust(t); }
 
   /** Sign a confirmation: you hit the same failure, or verified the same answer. Confirmations, not votes. */
   async confirm(id: string, ctx: Partial<CtxInput> & { note?: string } = {}, opts: { publish?: boolean } = {}) {
@@ -87,6 +90,20 @@ export class Hub {
     const target = this.node.store.get(id);
     if (!target) throw new Error(`unknown record ${id}`);
     return this.node.submit({ kind: 'contradiction', refs: [id], context: toContext({ task: ctx.task ?? target.rec.context.task, domain: ctx.domain ?? target.rec.context.domain, environment: ctx.environment ?? target.rec.context.environment, inputs_text: ctx.inputs_text }), body: { reason } }, opts);
+  }
+
+  /** Record that a record (or a specific link) helped: use strengthens links. */
+  async use(target: string, opts: { helpful?: boolean; edge?: string; publish?: boolean } = {}) {
+    const t = this.node.store.get(target);
+    if (!t) throw new Error(`unknown record ${target}`);
+    return this.node.submit({ kind: 'use', context: { task: 'used a record', domain: t.rec.context.domain, environment: '' }, body: { target, helpful: opts.helpful ?? true, ...(opts.edge ? { edge: opts.edge } : {}) }, refs: [target] }, { publish: opts.publish ?? true });
+  }
+
+  /** Assert a typed link between two records (buildsOn, fixes, contradicts, confirms, inspiredBy, sameAs). */
+  async link(from: string, to: string, type: import('../graph/graph.js').LinkType, note = '', opts: { publish?: boolean } = {}) {
+    const a = this.node.store.get(from), b = this.node.store.get(to);
+    if (!a || !b) throw new Error('both records must exist');
+    return this.node.submit({ kind: 'link', context: { task: `${type} link`, domain: [...new Set([...a.rec.context.domain, ...b.rec.context.domain])].slice(0, 12), environment: '' }, body: { from, to, type, note }, refs: [from, to] }, { publish: opts.publish ?? true });
   }
 
   status() {

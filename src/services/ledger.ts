@@ -5,6 +5,7 @@ import { bm25, envSimilarity } from './search.js';
 import { TrustModel } from './trust.js';
 import { hashInputs } from '../privacy/scrub.js';
 import { RecordContext } from '../core/record.js';
+import type { KnowledgeGraph } from '../graph/graph.js';
 
 export const FailureBody = z.object({
   approach: z.string().max(600),
@@ -34,7 +35,7 @@ const ageDays = (s: StoredRecord) => Math.max(0, (Date.now() - Date.parse(s.rec.
  * what didn't work and what did. Reads are free and local.
  */
 export class Ledger {
-  constructor(private readonly node: HubNode, private trust: TrustModel) {}
+  constructor(private readonly node: HubNode, private trust: TrustModel, private readonly graph?: KnowledgeGraph) {}
   setTrust(t: TrustModel) { this.trust = t; }
 
   async reportFailure(ctx: CtxInput, body: z.input<typeof FailureBody>, opts: { publish?: boolean; refs?: string[]; evidence?: string[] } = {}) {
@@ -55,7 +56,7 @@ export class Ledger {
     const scored = recs.filter((s) => rel.has(s.rec.id)).map((s) => {
       const t = this.trust.explain(s);
       const env = environment ? envSimilarity(environment, s.rec.context.environment) : 0;
-      const score = rel.get(s.rec.id)! * (0.25 + this.trust.weight(s)) * (1 + env);
+      const score = rel.get(s.rec.id)! * (0.25 + this.trust.weight(s)) * (1 + env) * (this.graph ? this.graph.nodeFactor(s.rec.id) : 1);
       return { s, t, env, score };
     });
     return scored.sort((a, b) => b.score - a.score).slice(0, limit);
@@ -69,6 +70,7 @@ export class Ledger {
         environment: s.rec.context.environment, env_match: round(env), confidence: b.confidence,
         weight: round(t.weight), confirmations: t.confirmations, contradictions: t.contradictions, age_days: Math.floor(ageDays(s)),
         fixed_by: this.node.store.referencing(s.rec.id, 'answer').map((a) => a.rec.id).slice(0, 3),
+        neighbours: this.graph?.neighbours(s.rec.id, 3) ?? [],
       };
     });
   }
@@ -79,6 +81,7 @@ export class Ledger {
       return {
         id: s.rec.id, question: b.question, answer: b.answer, proof: b.proof, environment: s.rec.context.environment, env_match: round(env),
         weight: round(t.weight), confirmations: t.confirmations, contradictions: t.contradictions, age_days: Math.floor(ageDays(s)), fixes: s.rec.refs,
+        neighbours: this.graph?.neighbours(s.rec.id, 3) ?? [],
       };
     });
   }
