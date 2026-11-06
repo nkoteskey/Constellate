@@ -17,6 +17,8 @@ import { Skills } from '../economy/skills.js';
 import { Deliberation } from '../collective/deliberation.js';
 import { PrivateMemory, MemoryKey } from '../services/memory.js';
 import { KnowledgeGraph } from '../graph/graph.js';
+import { Collab } from '../collab/collab.js';
+import { Board, MemoryBoard, X0xBoard } from '../work/board.js';
 import { Economy } from '../economy/economy.js';
 import { PaymentRail } from '../economy/rail.js';
 import { ScrubOptions } from '../privacy/scrub.js';
@@ -60,6 +62,10 @@ export class Hub {
   attachRail(rail: PaymentRail) { this.economy = new Economy(this, rail); this._skills = undefined; return this.economy; }
   private _deliberation?: Deliberation;
   get deliberation() { return (this._deliberation ??= new Deliberation(this)); }
+  private _collab?: Collab;
+  get collab() { return (this._collab ??= new Collab(this)); }
+  private _board?: Board;
+  get board() { return (this._board ??= this.x0x ? new X0xBoard(this.x0x, 'constellate/v1/board') : new MemoryBoard()); }
   get collective() { return (this._collective ??= new Collective(this)); }
 
   constructor(o: HubOptions) {

@@ -200,6 +200,29 @@ export function registerGraphTools(server: McpServer, hub: Hub) {
     () => ({ bridges: hub.graph.bridges().slice(0, 10) }));
 }
 
+export function registerCollabTools(server: McpServer, hub: Hub) {
+  tool(server, 'handoff_create',
+    'Pass work to the next agent as a signed note: what you tried, where it stands, what to do next, with the records that prove it. Free.',
+    { task: z.string(), tried: z.array(z.string()), state: z.string(), next: z.string(), proof: z.array(z.string()).describe('Ids of records that back this note.'), domain: z.array(z.string()), to: z.string().optional() },
+    async ({ proof, domain, ...note }) => summarise(await hub.collab.handoff(note, proof, domain)));
+  tool(server, 'handoff_check',
+    'Check a hand-off note before trusting it: signature, every proof present and valid, checkpoints re-verified. Free.',
+    { id: z.string() },
+    ({ id }) => hub.collab.checkHandoff(id));
+  tool(server, 'help_request',
+    'Stuck on something outside your strengths? Post a help request to the Swarm with a check for the answer; a specialist claims it and returns something you can verify.',
+    { question: z.string(), needs: z.enum(['small', 'large', 'any']).optional(), verifier: z.string(), check: z.record(z.unknown()), bounty: z.number().int().min(0).optional(), domain: z.array(z.string()) },
+    async ({ question, needs, verifier, check, bounty, domain }) => ({ request: (await hub.collab.askForHelp({ question, needs: needs ?? 'any', verifier, check, bounty: bounty ?? 0 }, hub.board, domain)).id }));
+  tool(server, 'help_accept',
+    'Check the answers to your help request and accept the first that passes your check. Free.',
+    { request: z.string() },
+    ({ request }) => hub.collab.acceptHelp(request, hub.board));
+  tool(server, 'huddle_get',
+    'See which agents are teaming up on a problem, who handed off what, and each signed step. Free.',
+    { problem: z.string() },
+    ({ problem }) => hub.collab.huddle(problem));
+}
+
 export function summarise(r: { record: { id: string; kind: string }; published: boolean; preview?: { preview_id: string; wire_bytes: number } }) {
   return r.published
     ? { published: true, id: r.record.id, kind: r.record.kind }

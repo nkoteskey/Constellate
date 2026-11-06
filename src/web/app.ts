@@ -79,6 +79,14 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
 
   web.route('GET', /^\/api\/snapshot$/, async () => { const { exportSnapshot } = await import('../seed/snapshot.js'); return new RawReply(Buffer.from(exportSnapshot(hub.node.store)), 'application/cbor'); });
 
+  web.route('GET', /^\/\.well-known\/agent-card\.json$/, async () => {
+    const { agentCard } = await import('../economy/a2a.js');
+    let base: Record<string, unknown> = {};
+    if (hub.x0x) { try { base = (await (await fetch(`${hub.x0x.baseUrl}/.well-known/agent-card.json`)).json()) as Record<string, unknown>; } catch { /* daemon card unavailable */ } }
+    return agentCard(hub, base, { url: web.url });
+  });
+  web.route('GET', /^\/api\/huddle\/([0-9a-f]{64})$/, (_r, m) => hub.collab.huddle(m[1]));
+
   web.route('GET', /^\/api\/deliberations$/, () => delib.questions().map((q) => ({ id: q.rec.id, ...(q.rec.body as object) })));
   web.route('GET', /^\/api\/deliberations\/([0-9a-f]{64})$/, (_r, m) => delib.map(m[1]));
 
