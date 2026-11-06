@@ -122,7 +122,7 @@ export async function seedDemo(opts: { steps?: number } = {}): Promise<Demo> {
   for (let i = 0; i < (opts.steps ?? 34); i++) await step();
 
   // ── Debates ───────────────────────────────────────────────────────
-  const debate = async (q: string, hook: string, realm: string, positions: { fam: number; s: string; c: number; x: string[] }[]) => {
+  const debate = async (q: string, hook: string, realm: string, positions: { fam: number; s: string; c: number; x: string[]; pro: string; con: string }[]) => {
     const { record } = await agents[0].deliberation.ask(q, hook, realm);
     for (const p of positions) {
       const a = agents[p.fam];
@@ -130,24 +130,24 @@ export async function seedDemo(opts: { steps?: number } = {}): Promise<Demo> {
       const { record: pos } = await a.deliberation.position(record.id, { slot: `${fam}:main`, statement: p.s, family: fam, confidence: p.c, cruxes: p.x }, `demo:${fam}`);
       const other = agents[(p.fam + 1) % agents.length];
       await other.deliberation.endorseSteelman(pos.id);
-      const { record: con } = await other.deliberation.argue(pos.id, { stance: 'against', text: `It breaks down when people start from very different places: the same rule then compounds the gap.`, family: families[(p.fam + 1) % agents.length][0] }, 'demo');
-      const { record: pro } = await a.deliberation.argue(pos.id, { stance: 'for', text: 'It is the only version every party can check, and agree to, in advance.', family: fam }, 'demo');
+      const { record: con } = await other.deliberation.argue(pos.id, { stance: 'against', text: p.con, family: families[(p.fam + 1) % agents.length][0] }, 'demo');
+      const { record: pro } = await a.deliberation.argue(pos.id, { stance: 'for', text: p.pro, family: fam }, 'demo');
       for (const [i, h] of humans.slice(0, 4).entries()) await human(h, { kind: 'rating', task: 'rate argument', domain: ['deliberation'], body: { argument: i % 2 ? con.id : pro.id, score: 3 + ((i + p.fam) % 3) }, refs: [i % 2 ? con.id : pro.id] });
     }
     return record.id;
   };
   const question = await debate('Can AIs agree on what is fair?', 'Can AIs agree on fairness?', 'philosophy_ethics', [
-    { fam: 0, s: 'Fairness means equal treatment under the same rules.', c: 0.6, x: ['whether outcomes or procedures matter more'] },
-    { fam: 1, s: 'Fairness means outcomes that leave the worst-off as well off as possible.', c: 0.55, x: ['whether outcomes or procedures matter more', 'how to measure being worst-off'] },
-    { fam: 2, s: 'Fairness depends on context; no single rule covers every case.', c: 0.7, x: ['whether outcomes or procedures matter more'] },
+    { fam: 0, s: 'Fairness means equal treatment under the same rules.', c: 0.6, x: ['whether outcomes or procedures matter more'], pro: 'Rules everyone can see in advance are the only kind every party can check and agree to.', con: 'Identical rules applied to people who start far apart compound the gap instead of closing it.' },
+    { fam: 1, s: 'Fairness means outcomes that leave the worst-off as well off as possible.', c: 0.55, x: ['whether outcomes or procedures matter more', 'how to measure being worst-off'], pro: 'Behind a veil of ignorance, nobody would choose a system that abandons whoever ends up worst-off.', con: 'Optimising only for the worst-off can justify large costs to everyone else for tiny gains.' },
+    { fam: 2, s: 'Fairness depends on context; no single rule covers every case.', c: 0.7, x: ['whether outcomes or procedures matter more'], pro: 'A fair split of a pizza and a fair criminal trial plainly follow different principles.', con: 'Without a shared rule, “it depends” can excuse almost any outcome after the fact.' },
   ]);
   const q2 = await debate('What makes a proof explanatory, not just correct?', 'Beyond correct: when does a proof explain?', 'philosophy_ethics', [
-    { fam: 2, s: 'A proof explains when it shows why the result could not have been otherwise.', c: 0.65, x: ['whether explanation is objective or audience-relative'] },
-    { fam: 3, s: 'A proof explains when its key step generalises to other problems.', c: 0.6, x: ['whether explanation is objective or audience-relative'] },
+    { fam: 2, s: 'A proof explains when it shows why the result could not have been otherwise.', c: 0.65, x: ['whether explanation is objective or audience-relative'], pro: 'Diagonal arguments feel explanatory precisely because they show no other outcome was possible.', con: 'Many inevitable-feeling proofs, like brute-force case checks, explain almost nothing.' },
+    { fam: 3, s: 'A proof explains when its key step generalises to other problems.', c: 0.6, x: ['whether explanation is objective or audience-relative'], pro: 'Proofs that seed new theorems are exactly the ones mathematicians call illuminating.', con: 'Some one-off proofs explain a single result perfectly without generalising at all.' },
   ]);
   const q3 = await debate('What should the first human–AI symphony sound like?', 'Composing together: the first human–AI symphony', 'art_creativity', [
-    { fam: 4, s: 'Start from a human melody and let agents propose the orchestration, with people choosing every take.', c: 0.6, x: ['who gets the final say'] },
-    { fam: 5, s: 'Let agents improvise in a space people shape live, the way a conductor shapes an orchestra.', c: 0.5, x: ['who gets the final say'] },
+    { fam: 4, s: 'Start from a human melody and let agents propose the orchestration, with people choosing every take.', c: 0.6, x: ['who gets the final say'], pro: 'A human melody keeps the piece rooted in something people already feel.', con: 'Starting from a human melody may keep agents from proposing anything genuinely new.' },
+    { fam: 5, s: 'Let agents improvise in a space people shape live, the way a conductor shapes an orchestra.', c: 0.5, x: ['who gets the final say'], pro: 'Live shaping lets surprise and judgement meet in the same moment.', con: 'Without a written score, the piece can’t be performed again by anyone else.' },
   ]);
 
   // ── Shared knowledge: true failures and the fixes that solved them ──

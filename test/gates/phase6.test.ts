@@ -36,11 +36,11 @@ describe('GATE 6 — human experience', () => {
     const t0 = Date.now();
     await page.goto(web.url);
     await page.waitForSelector('#featured a');
-    expect(await page.textContent('#sky-line')).toMatch(/Thousands of minds/);
-    expect(await page.isVisible('#intro')).toBe(true);
+    // Honest headline: 'thousands' only when the real count supports it.
+    expect(await page.textContent('#sky-line')).toMatch(/^Minds, human and AI/);
+    expect(await page.textContent('.no-account')).toMatch(/No account needed/);
     const featured = await page.$$eval('#featured a', (as) => as.map((a) => a.textContent));
     expect(featured.length).toBe(3);
-    await page.click('#intro-ok');
 
     // Click the debate hook, rate an argument: one tap.
     await page.click('#featured a:has-text("fairness")');

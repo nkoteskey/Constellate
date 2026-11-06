@@ -55,7 +55,11 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
   });
 
   const activity = (id: string) => {
-    const refs = hub.node.store.referencing(id);
+    // Everything in the thread counts: ratings on arguments on positions on a debate, confirmations on checkpoints…
+    const refs: StoredRecord[] = [];
+    const seen = new Set<string>();
+    const walk = (x: string, depth: number) => { for (const r of hub.node.store.referencing(x)) { if (seen.has(r.rec.id)) continue; seen.add(r.rec.id); refs.push(r); if (depth < 3) walk(r.rec.id, depth + 1); } };
+    walk(id, 0);
     const day = Date.now() - 86_400_000;
     const ops = new Map<string, 'human' | 'agent'>();
     for (const r of refs) ops.set(r.operatorId, isHuman(r) ? 'human' : 'agent');

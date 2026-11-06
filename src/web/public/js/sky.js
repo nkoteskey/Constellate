@@ -20,7 +20,19 @@ export class Sky {
     canvas.addEventListener('mousemove', (e) => this.move(e.offsetX, e.offsetY));
     canvas.addEventListener('mouseleave', () => this.move(-1, -1));
     canvas.addEventListener('click', (e) => { const n = this.hit(e.offsetX, e.offsetY); if (n) this.open(n); });
-    canvas.addEventListener('keydown', (e) => { if (e.key === 'Enter' && this.hover) this.open(this.hover); });
+    canvas.addEventListener('keydown', (e) => {
+      // Keyboard: arrows move between problems, Enter opens one.
+      if (e.key === 'Enter' && this.hover) { this.open(this.hover); return; }
+      if (!['ArrowRight', 'ArrowLeft', 'ArrowDown', 'ArrowUp'].includes(e.key) || !this.nebulae.length) return;
+      e.preventDefault();
+      const order = [...this.nebulae].sort((a, b) => a.x - b.x || a.y - b.y);
+      const i = this.hover ? order.indexOf(this.hover) : -1;
+      const n = order[(i + (e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? order.length - 1 : 1)) % order.length];
+      this.hover = n; this.draw();
+      const rect = this.canvas.getBoundingClientRect();
+      this.onHover?.(n, n.x + n.r * 0.6 - rect.left * 0, n.y);
+    });
+    canvas.addEventListener('blur', () => { this.hover = null; this.draw(); this.onHover?.(null); });
     new ResizeObserver(() => this.resize()).observe(canvas);
   }
 
@@ -60,15 +72,15 @@ export class Sky {
       const d = (k === 0 ? 0 : 54 + k * 26) / pull;
       const total = p.activity.total;
       const r = Math.max(26, Math.min(86, 22 + Math.sqrt(total + 4) * 6.2));
-      const progress = p.progress ? p.progress.done / p.progress.total : 0.45;
-      return { ...p, x: anchor.x + Math.cos(a) * d, y: anchor.y + Math.sin(a) * d * 0.8, r, c: anchor.c, progress };
+      const lit = p.progress ? p.progress.done / p.progress.total : 0.45;
+      return { ...p, x: anchor.x + Math.cos(a) * d, y: anchor.y + Math.sin(a) * d * 0.8, r, c: anchor.c, lit };
     });
     const pos = new Map(this.nebulae.map((n) => [n.id, n]));
     this.threads = (this.data.threads ?? []).map((t) => ({ ...t, A: pos.get(t.a), B: pos.get(t.b) })).filter((t) => t.A && t.B);
   }
 
   sprite(n) {
-    const key = `${n.id}:${Math.round(n.r)}:${n.progress.toFixed(2)}`;
+    const key = `${n.id}:${Math.round(n.r)}:${n.lit.toFixed(2)}`;
     if (this.sprites.has(key)) return this.sprites.get(key);
     const dpr = this.dpr ?? 1, R = n.r * 1.9, S = Math.ceil(R * 2 * dpr);
     const c = document.createElement('canvas'); c.width = c.height = S;
@@ -79,13 +91,13 @@ export class Sky {
       const ox = (hash(n.id + 'ox' + i) - 0.5) * n.r * 0.9, oy = (hash(n.id + 'oy' + i) - 0.5) * n.r * 0.7;
       const rr = n.r * (0.55 + hash(n.id + 'r' + i) * 0.75);
       const grd = g.createRadialGradient(R + ox, R + oy, 0, R + ox, R + oy, rr);
-      const a = 0.10 + 0.16 * n.progress;
+      const a = 0.10 + 0.16 * n.lit;
       grd.addColorStop(0, `rgba(${rgb},${a})`); grd.addColorStop(0.55, `rgba(${rgb},${a * 0.45})`); grd.addColorStop(1, `rgba(${rgb},0)`);
       g.fillStyle = grd; g.beginPath(); g.arc(R + ox, R + oy, rr, 0, Math.PI * 2); g.fill();
     }
     // A bright core: brighter when more progress has been verified.
     const core = g.createRadialGradient(R, R, 0, R, R, n.r * 0.42);
-    core.addColorStop(0, `rgba(255,255,255,${0.18 + 0.5 * n.progress})`); core.addColorStop(0.4, `rgba(${rgb},${0.18 + 0.2 * n.progress})`); core.addColorStop(1, `rgba(${rgb},0)`);
+    core.addColorStop(0, `rgba(255,255,255,${0.18 + 0.5 * n.lit})`); core.addColorStop(0.4, `rgba(${rgb},${0.18 + 0.2 * n.lit})`); core.addColorStop(1, `rgba(${rgb},0)`);
     g.fillStyle = core; g.beginPath(); g.arc(R, R, n.r * 0.42, 0, Math.PI * 2); g.fill();
     // Embedded stars.
     for (let i = 0; i < 14; i++) {
@@ -118,9 +130,17 @@ export class Sky {
       grd.addColorStop(0, `rgba(${rgb},0.07)`); grd.addColorStop(1, `rgba(${rgb},0)`);
       g.fillStyle = grd; g.beginPath(); g.arc(r.x, r.y, 170, 0, Math.PI * 2); g.fill();
     }
-    g.font = '500 10.5px Inter, system-ui, sans-serif';
+    // Realm names sit with their own nebulae.
+    g.font = '500 11px Inter, system-ui, sans-serif';
     g.textAlign = 'center';
-    if (W > 720) for (const [, r] of this.realmPos) { g.fillStyle = `rgba(${hexRgb(r.c)},0.55)`; g.fillText(r.name.toUpperCase().split('').join(' '), r.x, r.y + 118); }
+    if (W > 720) for (const [id, r] of this.realmPos) {
+      const ns = this.nebulae.filter((n) => n.realm === id);
+      if (!ns.length) continue;
+      const x = ns.reduce((t, n) => t + n.x, 0) / ns.length;
+      const y = Math.max(...ns.map((n) => n.y + n.r * 0.95)) + 16;
+      g.fillStyle = `rgba(${hexRgb(r.c)},0.8)`;
+      g.fillText(r.name.toUpperCase().split('').join('\u200a'), x, Math.min(y, H - 12));
+    }
     // Threads: real links in the knowledge graph. Bridges between realms are bright.
     for (const t of this.threads) {
       const { A, B } = t;

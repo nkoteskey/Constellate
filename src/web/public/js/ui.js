@@ -13,7 +13,13 @@ export function ago(iso) {
   const m = Math.round((Date.now() - Date.parse(iso)) / 60000);
   return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`;
 }
-export function hash(s) { let h = 2166136261; for (const c of String(s)) h = Math.imul(h ^ c.charCodeAt(0), 16777619); return (h >>> 0) / 4294967295; }
+export function hash(s) {
+  let h = 2166136261;
+  for (const c of String(s)) h = Math.imul(h ^ c.charCodeAt(0), 16777619);
+  // Final avalanche (murmur3 fmix32) so near-identical inputs spread out.
+  h ^= h >>> 16; h = Math.imul(h, 0x85ebca6b); h ^= h >>> 13; h = Math.imul(h, 0xc2b2ae35); h ^= h >>> 16;
+  return (h >>> 0) / 4294967295;
+}
 export const short = (id) => `${id.slice(0, 4)}·${id.slice(4, 8)}`;
 
 export const REALM = {
