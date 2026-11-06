@@ -1,4 +1,5 @@
 import { Hub } from '../hub/hub.js';
+import { redactPersonal } from '../privacy/redact.js';
 import { PrivacyBlockedError } from '../privacy/scrub.js';
 
 /**
@@ -80,7 +81,7 @@ export class IssueSeeder {
       if (this.seen(i.url)) { report.skipped.push({ url: i.url, reason: 'already seeded' }); continue; }
       try {
         const env = `${i.repo}${i.closed_at ? `, closed ${i.closed_at.slice(0, 10)}` : ''}`;
-        const summary = firstParagraph(i.body) || i.title;
+        const summary = redactPersonal(firstParagraph(i.body) || i.title);
         const pi = this.plain[i.url];
         // Synapses: earlier issues this one mentions ("follow-up after #1766") become buildsOn links.
         const mentions = [...`${i.title}\n${i.body ?? ''}`.matchAll(/((?:[\w.-]+\/[\w.-]+)?)#(\d+)\b/g)]
@@ -88,8 +89,8 @@ export class IssueSeeder {
         const refs = [...new Set(mentions.map((k) => byIssue.get(k)).filter((x): x is string => !!x))].slice(0, 6);
         const { record } = await this.hub.node.submit({
           kind: 'failure',
-          context: { task: `${repoName(i.repo)}: ${i.title}`.slice(0, 500), domain: domainOf(i.repo, i.labels), environment: env },
-          body: { approach: (pi?.problem || i.title).slice(0, 600), ...(pi?.problem ? { original: i.title.slice(0, 600) } : {}), ...(pi?.applies_when ? { applies_when: pi.applies_when.slice(0, 300) } : {}), outcome: /wrong|incorrect|mismatch|stale/i.test(i.title) ? 'wrong_result' : /slow|time[sd]? ?out|hang/i.test(i.title) ? 'too_slow' : 'error', error_summary: (pi?.detail || summary).slice(0, 600), confidence: fix ? 0.9 : 0.7 },
+          context: { task: redactPersonal(`${repoName(i.repo)}: ${i.title}`).slice(0, 500), domain: domainOf(i.repo, i.labels), environment: env },
+          body: { approach: redactPersonal(pi?.problem || i.title).slice(0, 600), ...(pi?.problem ? { original: redactPersonal(i.title).slice(0, 600) } : {}), ...(pi?.applies_when ? { applies_when: pi.applies_when.slice(0, 300) } : {}), outcome: /wrong|incorrect|mismatch|stale/i.test(i.title) ? 'wrong_result' : /slow|time[sd]? ?out|hang/i.test(i.title) ? 'too_slow' : 'error', error_summary: (pi?.detail || summary).slice(0, 600), confidence: fix ? 0.9 : 0.7 },
           evidence: [i.url],
           refs,
         }, { publish: true });
@@ -97,7 +98,7 @@ export class IssueSeeder {
         report.failures++; n++;
         if (fix) {
           usedPulls.add(fix.url);
-          const why = firstParagraph(fix.body);
+          const why = redactPersonal(firstParagraph(fix.body));
           const pf = this.plain[fix.url];
           await this.hub.node.submit({
             kind: 'answer',
@@ -120,7 +121,7 @@ export class IssueSeeder {
       if (this.seen(p.url)) { report.skipped.push({ url: p.url, reason: 'already seeded' }); continue; }
       const what = p.title.replace(/^(fix|bugfix|hotfix)(\([^)]*\))?!?:\s*/i, '');
       try {
-        const why = firstParagraph(p.body);
+        const why = redactPersonal(firstParagraph(p.body));
         const pf = this.plain[p.url];
         await this.hub.node.submit({
           kind: 'answer',

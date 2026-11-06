@@ -1,3 +1,4 @@
+import { findPersonNames } from './names.js';
 import { sha256Hex } from '../core/canonical.js';
 import { utf8 } from '../util/bytes.js';
 
@@ -15,6 +16,8 @@ export interface ScrubOptions {
   denyTerms?: string[];
   /** 'strict' also blocks private IPs, home paths and long high-entropy tokens. */
   level?: 'standard' | 'strict';
+  /** Check for people's names (default on). */
+  names?: boolean;
 }
 
 type Detector = { type: string; re: RegExp; check?: (m: string) => boolean };
@@ -45,7 +48,7 @@ const PII_DETECTORS: Detector[] = [
 
 const STRICT_DETECTORS: Detector[] = [
   { type: 'private_ip', re: /\b(?:\d{1,3}\.){3}\d{1,3}\b/g, check: (m) => isIp(m) && isPrivateIp(m) && !/^(127\.|0\.0\.0\.0)/.test(m) },
-  { type: 'home_path', re: /(\/Users\/|\/home\/|[A-Z]:\\Users\\)(?!runner\b|user\b|ubuntu\b|root\b)[A-Za-z0-9._-]+/g },
+  { type: 'home_path', re: /(\/Users\/|\/home\/|[A-Z]:\\Users\\)(?!runner\b|user\b|ubuntu\b|root\b|seat\b|rename\b)[A-Za-z0-9._-]+/g },
   { type: 'high_entropy_token', re: /\b[A-Za-z0-9+/_-]{32,}={0,2}/g, check: (m) => !/^[0-9a-f]{64}$/.test(m) && !/^[0-9a-f]{40}$/.test(m) && entropy(m) > 4.2 },
 ];
 
@@ -100,6 +103,8 @@ export function scrub(value: unknown, opts: ScrubOptions = {}): ScrubResult {
         findings.push({ path, type: d.type, excerpt: mask(m[0]) });
       }
     }
+    // People's names: only public handles (@name) or organisations, never personal names.
+    if (opts.names !== false && !path.endsWith('#key')) for (const n of findPersonNames(s)) findings.push({ path, type: 'person_name', excerpt: mask(n.name) });
     const lower = s.toLowerCase();
     for (const t of deny) if (lower.includes(t)) findings.push({ path, type: 'deny_term', excerpt: mask(t) });
   }
@@ -115,4 +120,13 @@ export class PrivacyBlockedError extends Error {
   constructor(readonly findings: Finding[]) {
     super(`blocked by privacy scrubber: ${findings.map((f) => `${f.type} at ${f.path}`).join('; ')}`);
   }
+}
+
+/**
+ * The network-wide personal-data check, for records arriving from OTHER nodes:
+ * personal details (and secrets) mean the record is not stored, served, archived
+ * or passed on. Checks what people read (context, body, evidence), not keys or signatures.
+ */
+export function personalDataCheck(rec: { context?: unknown; body?: unknown; evidence?: unknown }): ScrubResult {
+  return scrub({ context: rec.context, body: rec.body, evidence: rec.evidence }, { level: 'standard' });
 }

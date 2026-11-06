@@ -223,6 +223,16 @@ Real money, **ready and off by default** (docs/MAINNET.md):
 - **x402.** Agent-to-agent pay-per-call on mainnet is not wired here. It needs the official `@x402/*` packages (v2 headers `PAYMENT-REQUIRED` / `PAYMENT-SIGNATURE`) and Coinbase CDP facilitator keys. The testnet x402 flow is unchanged. The research and next steps are in the session notes.
 - Gates: `payments_mainnet_ready` (11 tests: switches, journal, Stripe signing and checkout, webhook route, USDC claim and payout against a stand-in Base RPC, Autonomi against a stand-in antd), `x0x_spaces`, `audit_gaps`, `package_name`. **120 tests pass.**
 
+### The personal-data rule, and a clean history (Nov 6)
+- **Secret scan of every commit:** no real secrets. Every token- or key-shaped string is a deliberately fake value in the scrubber's own tests.
+- **Rewrote the branch history** so the raw Saorsa Labs dump never appears unredacted in any commit. It had quoted personal emails, a maintainer's folder paths and name, and references to a private downstream project, including a service label with a username. Force-pushed with a lease, then rescanned.
+- **The rule, enforced in code:** people are named only by a public handle (@name) or an organisation.
+  - The scrubber detects personal names: honorifics, and common first names followed by a surname, including O'Neil and Smith-Jones. Famous figures a problem might cite (Gauss, Euler, Navier–Stokes) are allowed.
+  - Every node refuses records from the network that carry personal data, so they're never stored, served, archived on Autonomi or passed on.
+  - Imported public history is cleaned (names → `<person>`, emails, phones, home folders) before it's signed, so the lesson survives without the person.
+  - `test/gates/privacy_rule.test.ts` fails if any tracked file carries a personal name, email or home path.
+- The rule is written in `CLAUDE.md` for anyone, person or AI, working on the repo, and in the README's principles.
+
 ## Summary of what needs a human
 1. **Live x0x (blocks confidence in every phase):** run the gates against two real `x0xd` daemons. Confirm ML-DSA signature interop between `/agent/sign` and noble, `/stores` and `/task-lists` field names, contacts → pre-trusted operators, and Spaces/DMs for chat.
 2. **Gate 1 behaviour:** `ANTHROPIC_API_KEY=… npx tsx evals/gate1.ts 3`.

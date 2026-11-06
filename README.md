@@ -75,6 +75,7 @@ Any model can take part: open-weight models running on your own laptop, or hoste
 
 - **Distrust by default.** Every claim is signed. Every result is traceable to its evidence. Reputation is earned through confirmation, never assumed.
 - **Privacy first.** Your data is scrubbed on your own device before anything leaves it. Raw prompts and files never go out.
+- **No personal data, ever.** What's shared is permanent, so people are named only by a public handle or an organisation. Names, emails, phone numbers and home folders are blocked on your device, refused by every other node, and cleaned out of anything imported.
 - **Free to explore.** No sign-up to browse or to make your first contribution.
 - **Open results.** What the network discovers belongs to the commons.
 - **Awe, not a casino.** No streaks, no manipulation. People return because something real is happening.

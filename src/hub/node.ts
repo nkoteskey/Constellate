@@ -3,7 +3,7 @@ import { Draft, signRecord, SignedRecord, verifyRecord } from '../core/record.js
 import { Signer } from '../core/identity.js';
 import { OperatorClaim } from '../core/operator.js';
 import { canonicalBytes } from '../core/canonical.js';
-import { PrivacyBlockedError, scrub, ScrubOptions } from '../privacy/scrub.js';
+import { PrivacyBlockedError, scrub, ScrubOptions, personalDataCheck } from '../privacy/scrub.js';
 import { RecordStore, StoredRecord } from '../store/records.js';
 import { RecordBus } from '../transport/bus.js';
 import { Archive } from '../store/archive.js';
@@ -63,6 +63,9 @@ export class HubNode {
   ingest(rec: unknown, sender = 'local'): StoredRecord | null {
     const v = verifyRecord(rec);
     if (!v.ok) { this.rejected.push({ reason: v.reason, sender }); return null; }
+    // Personal data never becomes permanent here: not stored, served, archived or passed on.
+    const p = personalDataCheck(rec as SignedRecord);
+    if (!p.ok) { this.rejected.push({ reason: `personal data: ${[...new Set(p.findings.map((f) => f.type))].join(', ')}`, sender }); return null; }
     return this.store.add(rec as SignedRecord, 'public');
   }
 
