@@ -243,3 +243,17 @@ Still stop points, deliberately not approved on the owner's behalf: publishing a
 - **Result on the full harvest:** 428 failures and 691 answers (1,119 lessons) in about 13 s. The privacy scrubber blocked 9 records, mostly server IP addresses and phone-like strings, as the second gate.
 - **Gate:** `phase1_seed_issues` covers the allow-list (outsiders denied), issue → pull-request pairing, markdown cleaning, valid signatures and source links on every record, no bot footers or emails, and a real failure found with its real fix.
 - The demo and static site carry all of it. Records imported this way say so in the UI and link their source.
+
+### GitHub Pages preview (owner-approved Nov 6)
+- `scripts/build-static.mts` freezes the demo network, including all of Saorsa Labs' public history, into plain files:
+  - Every page's data as JSON.
+  - A compact ledger index, so search runs in the browser.
+  - Each signed record as its own file, so signatures can be checked in the browser.
+  - The browser crypto libraries, served from the site itself (no CDN).
+  - Result: 7 problems and debates, 1,139 searchable lessons, 1,322 signed records, about 14 MB.
+- Static mode (`src/web/public/js/static.js`): the page reads "Preview · a snapshot of the demo network, real signed records". Contributions are signed on the device and kept there, with a plain note that the preview isn't connected to a live network. Every record sheet verifies its ML-DSA-65 signature in the browser, in both static and live modes.
+- `.github/workflows/pages.yml` builds and deploys with GitHub's official Pages actions on pushes to this branch and to main.
+- **Needs the owner:**
+  1. The repo is **private**. Pages on a private repo needs a paid GitHub plan, and the site itself is public either way.
+  2. In Settings → Pages, set the source to "GitHub Actions".
+  3. The `github-pages` environment may allow deploys only from the default branch. If so, add this branch under Settings → Environments → github-pages, or merge to main.

@@ -62,8 +62,27 @@ export function signRecord({ kind, task, domain, body, refs = [] }) {
   return { ...core, id: recId, signature: b64(sig) };
 }
 
+/**
+ * Check a record yourself, in this browser: the id is the hash of its content,
+ * the agent id matches the key, and the ML-DSA-65 signature is valid.
+ * Nothing is trusted because a server said so.
+ */
+export function verifyInBrowser(rec) {
+  try {
+    const { id, signature, ...core } = rec;
+    const pk = Uint8Array.from(atob(rec.author), (c) => c.charCodeAt(0));
+    if (hex(sha256(concat(te.encode('AUTONOMI_PEER_ID_V2:'), pk))) !== rec.agent_id) return { ok: false, reason: 'agent id does not match the key' };
+    if (hex(sha256(encode(strip(core), rfc8949EncodeOptions))) !== id) return { ok: false, reason: 'content does not match its id' };
+    const ctx = te.encode('constellate.record.v1');
+    const dst = concat(new Uint8Array([0xf0]), te.encode('x0x.external-agent-sign.v1'), u32be(ctx.length), ctx, unhex(id));
+    const sig = Uint8Array.from(atob(signature), (c) => c.charCodeAt(0));
+    return ml_dsa65.verify(sig, dst, pk) ? { ok: true } : { ok: false, reason: 'signature does not verify' };
+  } catch (e) { return { ok: false, reason: String(e.message ?? e) }; }
+}
+
 export async function contribute(draft) {
   const rec = signRecord(draft);
+  if (window.__CONSTELLATE_STATIC__) { const { contributeLocally } = await import('./js/static.js'); return contributeLocally(rec); }
   const r = await fetch('/api/records', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(rec) });
   const j = await r.json();
   if (!r.ok) throw new Error(j.error || 'rejected');

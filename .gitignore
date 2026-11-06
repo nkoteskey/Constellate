@@ -3,3 +3,4 @@ dist/
 .constellate/
 *.log
 coverage/
+site/

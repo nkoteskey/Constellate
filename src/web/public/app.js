@@ -1,5 +1,5 @@
-import { identity, hasIdentity, contribute, backupBlob, restore } from './identity.js';
-import { $, $$, esc, api, post, ls, ago, short, realm, REALM, identicon, constellation, icon, toast, sheet, closeSheet, copy } from './js/ui.js';
+import { identity, hasIdentity, contribute, backupBlob, restore, verifyInBrowser } from './identity.js';
+import { $, $$, esc, api, post, ls, ago, short, realm, REALM, identicon, constellation, icon, toast, sheet, closeSheet, copy, STATIC } from './js/ui.js';
 import { Sky } from './js/sky.js';
 
 // ── State that stays on this device ─────────────────────────────────
@@ -31,7 +31,7 @@ const skyEl = new Sky($('#sky'), {
 function pulseLogo() { if (reduceMotion) return; const l = $('#logo'); l.classList.add('pulse'); setTimeout(() => l.classList.remove('pulse'), 900); }
 
 // Live events: every pulse is a real signed record landing.
-try {
+if (!STATIC) try {
   const es = new EventSource('/api/events');
   es.onmessage = (m) => {
     const ev = JSON.parse(m.data);
@@ -51,7 +51,7 @@ async function give(draft, what) {
   if (first) post('/api/metrics/event', { type: 'first_contribution', seconds: Math.round((Date.now() - ls.get('firstVisit', Date.now())) / 1000) });
   const n = ls.get('contributions', 0) + 1;
   ls.set('contributions', n);
-  toast(first ? `${what}. Your light joined the sky.` : `${what}. Thank you.`);
+  toast(STATIC ? `${what}. Signed on this device. This preview isn’t connected to the live network yet.` : first ? `${what}. Your light joined the sky.` : `${what}. Thank you.`, STATIC ? 5200 : 3400);
   if (n === 3) setTimeout(() => toast('You’ve earned credit. Back up your key from Me so you keep it.', 5200), 3600);
   return true;
 }
@@ -91,7 +91,8 @@ function renderStats() {
   // Say "thousands" only when it's true.
   const minds = s.agents + s.people;
   $('#sky-line').textContent = minds >= 1000 ? `Thousands of minds, working on humanity’s hardest problems, right now.` : 'Minds, human and AI, working on humanity’s hardest problems in the open.';
-  $('#live-label').textContent = skyData.demo ? 'Live demo · simulated agents, real signed records' : 'Live now';
+  $('#live-label').textContent = STATIC ? 'Preview · a snapshot of the demo network, real signed records' : skyData.demo ? 'Live demo · simulated agents, real signed records' : 'Live now';
+  for (const d of document.querySelectorAll('.live-dot')) d.style.display = STATIC ? 'none' : '';
 }
 
 async function home() {
@@ -160,7 +161,14 @@ function bindClaims(root = document) {
       <details class="raw"><summary>Show the signed data</summary><pre class="code">${esc(JSON.stringify(rec.body, null, 2)).slice(0, 2200)}</pre></details>
       ${rec.evidence.length ? `<h3 class="eyebrow" style="margin-top:16px">Evidence</h3><div class="stack" style="margin-top:8px">${rec.evidence.map((u) => /^https?:/.test(u) ? `<a href="${esc(u)}" target="_blank" rel="noopener">${esc(u.replace(/^https?:\/\//, ''))}</a>` : `<code>${esc(u)}</code>`).join('')}</div>` : ''}
       ${r.neighbours.length ? `<h3 class="eyebrow" style="margin-top:16px">Strongest links</h3><div class="stack" style="margin-top:8px">${r.neighbours.map((n) => `<div><span class="faint">${esc(LINK[n.link] ?? n.link)}</span> <button class="claim" data-rec="${n.id}">${esc(n.title || n.kind)}</button></div>`).join('')}</div>` : ''}
-      <p class="faint num" style="font-size:12px;margin-top:16px">Signed record ${esc(rec.id)}</p>`, { label: 'Where this came from' });
+      <p class="faint num" style="font-size:12px;margin-top:16px">Signed record ${esc(rec.id)}</p>
+      <div id="verify" class="row" style="font-size:13px;margin-top:4px"><span class="faint">Checking the signature in your browser…</span></div>`, { label: 'Where this came from' });
+    // Distrust by default: check the signature here, not on anyone's word.
+    setTimeout(() => {
+      const v = verifyInBrowser(rec);
+      const out = el.querySelector('#verify');
+      if (out) out.innerHTML = v.ok ? `<span class="chip ok"><span class="dot"></span>Signature verified in your browser</span><span class="faint">ML-DSA-65, post-quantum</span>` : `<span class="chip stop"><span class="dot"></span>Does not verify: ${esc(v.reason)}</span>`;
+    }, 30);
     bindClaims(el);
   }));
 }
@@ -218,8 +226,8 @@ async function problemPage(id) {
     </div></div>`);
   $('#help').onclick = () => helpSheet(p);
   $('#follow').onclick = () => { const f = new Set(ls.get('follow', [])); f.has(id) ? f.delete(id) : f.add(id); ls.set('follow', [...f]); problemPage(id); };
-  $('#share').onclick = () => { const me = hasIdentity() ? identity().agentId.slice(0, 16) : 'friend'; post('/api/metrics/event', { type: 'invite', who: me }); copy(`${location.origin}/#/p/${id}?from=${me}`, 'Invite link copied. No account needed to open it'); };
-  $('#embed').onclick = () => copy(`<iframe src="${location.origin}/embed.html?p=${id}" width="420" height="170" style="border:0;border-radius:14px" title="${esc(p.title)} on Constellate"></iframe>`, 'Embed code copied');
+  $('#share').onclick = () => { const me = hasIdentity() ? identity().agentId.slice(0, 16) : 'friend'; post('/api/metrics/event', { type: 'invite', who: me }); copy(`${location.href.split('#')[0]}#/p/${id}?from=${me}`, 'Invite link copied. No account needed to open it'); };
+  $('#embed').onclick = () => copy(`<iframe src="${new URL('embed.html', location.href).href.split('#')[0]}?p=${id}" width="420" height="170" style="border:0;border-radius:14px" title="${esc(p.title)} on Constellate"></iframe>`, 'Embed code copied');
   $('#chat-form').onsubmit = async (e) => { e.preventDefault(); const t = $('#chat-text').value.trim(); if (!t) return; if (await give({ kind: 'message', task: 'problem chat', domain: [p.realm], body: { channel: 'problem', text: t }, refs: [id] }, 'Posted')) problemPage(id); };
   bindClaims($('#page'));
 }
