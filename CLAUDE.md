@@ -13,7 +13,7 @@ or an organisation.** Never publish, seed, commit or display:
 - personal names (use the @handle, or leave the person out)
 - email addresses (bots like noreply@ and example.* test addresses are fine)
 - phone numbers, postal addresses, IP addresses
-- home-folder paths (/Users/name, /home/name, C:\Users\name)
+- home-folder paths (a personal folder under /Users, /home or C:\Users)
 - private or closed-source project names, and anything from closed projects
 
 The rule is enforced in code and by tests; don't weaken them:
