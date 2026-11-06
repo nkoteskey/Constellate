@@ -11,7 +11,7 @@ import { REALMS } from '../work/problems.js';
 import { ModelRunner } from '../contributor/models.js';
 
 /** Kinds a person can sign in the browser. */
-const HUMAN_KINDS: RecordKind[] = ['rating', 'confirmation', 'contradiction', 'vote', 'argument', 'position', 'pledge'];
+const HUMAN_KINDS: RecordKind[] = ['rating', 'confirmation', 'contradiction', 'vote', 'argument', 'position', 'pledge', 'message', 'use'];
 
 export const REALM_INFO: Record<string, { name: string; colour: string; judged: string }> = {
   maths_physics: { name: 'Mathematics and physics', colour: '#7aa2ff', judged: 'Machine-checked' },
@@ -19,8 +19,6 @@ export const REALM_INFO: Record<string, { name: string; colour: string; judged: 
   planet_energy: { name: 'Planet and energy', colour: '#9ad66b', judged: 'Machine-scored' },
   philosophy_ethics: { name: 'Philosophy and ethics', colour: '#d9a6ff', judged: 'Deliberation maps, rated by humans' },
   art_creativity: { name: 'Art and creativity', colour: '#ff9fb2', judged: 'Appreciated, not scored; humans curate' },
-  software: { name: 'Software commons', colour: '#ffd27a', judged: 'Machine-checked' },
-  knowledge: { name: 'Knowledge', colour: '#8fd3e8', judged: 'Machine-checked replication' },
 };
 
 const isHuman = (s: StoredRecord) => /^human\b/.test(s.rec.context.environment);
@@ -73,7 +71,12 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
       const b = q.rec.body as { question: string; hook: string; realm: string };
       problems.push({ id: q.rec.id, title: b.question, hook: b.hook, realm: b.realm, kind: 'deliberation', progress: null, activity: activity(q.rec.id) });
     }
-    const featured = [...problems].sort((a, b) => b.activity.recent - a.activity.recent || b.activity.total - a.activity.total).filter((p) => p.hook).slice(0, 3).map((p) => p.id);
+    // Three highlighted problems, most active first, one per realm so the sky invites rather than overwhelms.
+    const featured: string[] = [];
+    const realmsUsed = new Set<string>();
+    for (const p of [...problems].filter((p) => p.hook).sort((a, b) => b.activity.recent - a.activity.recent || b.activity.total - a.activity.total)) {
+      if (featured.length < 3 && !realmsUsed.has(p.realm)) { featured.push(p.id); realmsUsed.add(p.realm); }
+    }
     return { line: 'Thousands of minds, working on humanity\'s hardest problems, right now.', realms: REALMS.map((r) => ({ id: r, ...REALM_INFO[r] })), problems, featured };
   });
 
@@ -84,6 +87,41 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
     let base: Record<string, unknown> = {};
     if (hub.x0x) { try { base = (await (await fetch(`${hub.x0x.baseUrl}/.well-known/agent-card.json`)).json()) as Record<string, unknown>; } catch { /* daemon card unavailable */ } }
     return agentCard(hub, base, { url: web.url });
+  });
+  web.route('GET', /^\/api\/people$/, (_r, _m, url) => hub.people.discover({ realm: url.searchParams.get('realm') ?? undefined, problem: url.searchParams.get('problem') ?? undefined }));
+  web.route('GET', /^\/api\/chat\/([0-9a-f]{64})$/, (_r, m) => hub.people.chat(m[1]));
+  web.route('GET', /^\/api\/graph$/, () => {
+    // Threads between nebulae: real links between records in different problems, strongest first.
+    const rootOf = (id: string) => { let s = hub.node.store.get(id); for (let i = 0; i < 6 && s && !['problem', 'proposal'].includes(s.rec.kind); i++) s = s.rec.refs[0] ? hub.node.store.get(s.rec.refs[0]) : undefined; return s && ['problem', 'proposal'].includes(s.rec.kind) ? s.rec.id : null; };
+    const threads = new Map<string, { a: string; b: string; weight: number; bridge: boolean }>();
+    const bridges = new Set(hub.graph.bridges().map((b) => b.edge));
+    for (const e of hub.graph.edges()) {
+      if (e.type === 'confirms' || e.type === 'contradicts') continue;
+      const a = rootOf(e.from), b = rootOf(e.to);
+      if (!a || !b || a === b) continue;
+      const k = [a, b].sort().join(':');
+      const t = threads.get(k) ?? { a, b, weight: 0, bridge: false };
+      t.weight += hub.graph.weight(e); t.bridge ||= bridges.has(e.key);
+      threads.set(k, t);
+    }
+    return { threads: [...threads.values()].sort((x, y) => y.weight - x.weight).slice(0, 60), bridges: hub.graph.bridges().slice(0, 10) };
+  });
+  web.route('GET', /^\/api\/metrics$/, () => hub.metrics.report());
+  web.route('POST', /^\/api\/metrics\/event$/, async (_r, _m, _u, body) => {
+    const b = await body();
+    if (b.type === 'first_contribution') hub.metrics.firstContributionSeconds(Number(b.seconds));
+    else if (b.type === 'share' || b.type === 'invite') hub.metrics.event(b.type, String(b.who ?? 'anon').slice(0, 64));
+    return { ok: true };
+  });
+  web.route('GET', /^\/api\/teams$/, () => {
+    const teams = new Map<string, { team: string; members: Set<string>; contributions: number }>();
+    for (const s of hub.node.store.all()) {
+      const t = (s.rec.body as { team?: string }).team;
+      if (!t || !/^human\b/.test(s.rec.context.environment)) continue;
+      const x = teams.get(t) ?? { team: t, members: new Set<string>(), contributions: 0 };
+      x.members.add(s.operatorId); x.contributions++; teams.set(t, x);
+    }
+    return [...teams.values()].map((t) => ({ team: t.team, members: t.members.size, contributions: t.contributions })).sort((a, b) => b.contributions - a.contributions);
   });
   web.route('GET', /^\/api\/huddle\/([0-9a-f]{64})$/, (_r, m) => hub.collab.huddle(m[1]));
 
@@ -151,7 +189,8 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
       const newOperator = root ? hub.node.store.referencing(root.rec.id).filter((r) => r.operatorId === s.operatorId).length <= 1 : false;
       res.write(`data: ${JSON.stringify({ id: s.rec.id, kind: s.rec.kind, by: isHuman(s) ? 'human' : 'agent', root: root?.rec.id ?? null, newOperator, at: s.rec.created })}\n\n`);
     });
-    req.on('close', () => off());
+    const offB = hub.graph.onBridge((b) => res.write(`data: ${JSON.stringify({ kind: 'bridge', ...b })}\n\n`));
+    req.on('close', () => { off(); offB(); });
   }));
 }
 

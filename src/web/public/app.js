@@ -10,6 +10,8 @@ const hash = (s) => { let h = 2166136261; for (const c of s) h = Math.imul(h ^ c
 let sky = null;
 let reduceMotion = ls.get('calm', matchMedia('(prefers-reduced-motion: reduce)').matches);
 const interests = ls.get('interests', {}); // stays on this device
+if (!ls.get('firstVisit', 0)) ls.set('firstVisit', Date.now());
+const post = (p, b) => fetch(p, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(b) }).catch(() => {});
 
 function toast(msg, ms = 3200) { const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => (t.hidden = true), ms); }
 function modal(html) { $('#modal-body').innerHTML = html; $('#modal').hidden = false; }
@@ -25,9 +27,12 @@ $('#intro-ok').onclick = () => { $('#intro').hidden = true; ls.set('introSeen', 
 // ── Signed contributions ────────────────────────────────────────────
 async function give(draft, what) {
   const first = !hasIdentity();
+  const team = ls.get('team', '');
+  if (team && ['vote', 'rating', 'confirmation', 'message'].includes(draft.kind)) draft = { ...draft, body: { ...draft.body, team } };
   try {
     await contribute(draft);
   } catch (e) { toast(`Not sent: ${e.message}`); return false; }
+  if (first) post('/api/metrics/event', { type: 'first_contribution', seconds: Math.round((Date.now() - ls.get('firstVisit', Date.now())) / 1000) });
   const n = ls.get('contributions', 0) + 1;
   ls.set('contributions', n);
   toast(first ? `${what}. Your light joined the sky.` : `${what}. Thank you.`);
@@ -37,8 +42,10 @@ async function give(draft, what) {
 
 // ── Router ──────────────────────────────────────────────────────────
 async function route() {
-  const h = location.hash.slice(1) || '/';
+  const [h, query] = (location.hash.slice(1) || '/').split('?');
   const [, view, id] = h.split('/');
+  const from = new URLSearchParams(query ?? '').get('from');
+  if (from && view === 'p' && !ls.get(`invited:${id}`, false)) { ls.set(`invited:${id}`, true); $('#invite').hidden = false; $('#invite').textContent = 'You were invited to help with this problem.'; setTimeout(() => ($('#invite').hidden = true), 6000); }
   document.querySelectorAll('nav a').forEach((a) => a.classList.toggle('on', a.getAttribute('href') === `#/${view ?? ''}` || (!view && a.dataset.view === 'sky')));
   $('#sky-view').hidden = !!view;
   $('#page').hidden = !view;
@@ -51,6 +58,7 @@ async function route() {
     if (view === 'proposals') return proposalsPage();
     if (view === 'deliberations') return debatesPage();
     if (view === 'me') return mePage(id);
+    if (view === 'people') return peoplePage();
   } catch (e) { $('#page').innerHTML = `<p class="muted">${esc(e.message)}</p>`; }
 }
 addEventListener('hashchange', route);
@@ -61,7 +69,8 @@ const ctx = canvas.getContext('2d');
 let nebulae = [];
 let pulses = [];
 
-async function loadSky() { sky = await api('/api/sky'); layout(); }
+let threads = [];
+async function loadSky() { sky = await api('/api/sky'); threads = (await api('/api/graph').catch(() => ({ threads: [] }))).threads; layout(); }
 
 function layout() {
   const W = canvas.clientWidth, H = canvas.clientHeight;
@@ -85,6 +94,14 @@ function drawSky(now = performance.now()) {
   if (canvas.width !== W * dpr) { canvas.width = W * dpr; canvas.height = H * dpr; if (sky) layout(); }
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, W, H);
+  // Threads between nebulae are real links in the knowledge graph; bridges between realms are bright.
+  for (const t of threads) {
+    const a = nebulae.find((n) => n.id === t.a), b = nebulae.find((n) => n.id === t.b);
+    if (!a || !b) continue;
+    ctx.strokeStyle = t.bridge ? 'rgba(255,255,255,0.75)' : `rgba(160,180,220,${Math.min(0.35, 0.06 + t.weight * 0.04)})`;
+    ctx.lineWidth = t.bridge ? 1.6 : 0.8;
+    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+  }
   for (const n of nebulae) {
     const g = ctx.createRadialGradient(n.x, n.y, 0, n.x, n.y, n.r);
     g.addColorStop(0, n.colour + Math.round(n.glow * 255).toString(16).padStart(2, '0'));
@@ -132,10 +149,16 @@ async function showSky() {
   layout(); drawSky();
 }
 
+function realmName(id) { return sky?.realms.find((r) => r.id === id)?.name ?? id; }
+// The logo glows faintly at rest and pulses only when a real checkpoint lands anywhere on the network.
+function pulseLogo() { if (reduceMotion) return; const l = $('#logo'); l.classList.add('pulse'); setTimeout(() => l.classList.remove('pulse'), 900); }
+
 try {
   const es = new EventSource('/api/events');
   es.onmessage = (m) => {
     const ev = JSON.parse(m.data);
+    if (ev.kind === 'checkpoint') pulseLogo();
+    if (ev.kind === 'bridge') { toast(`A bridge formed between ${realmName(ev.fromRealm)} and ${realmName(ev.toRealm)}.`, 5000); loadSky().then(() => { if (!$('#sky-view').hidden) drawSky(); }); return; }
     const n = nebulae.find((x) => x.id === ev.root);
     if (n) { pulses.push({ x: n.x, y: n.y, r: n.r, t: performance.now(), colour: ev.by === 'human' ? '#ffc46b' : n.colour }); n.activity[ev.by === 'human' ? 'humans' : 'agents'] += ev.newOperator ? 1 : 0; n.activity.total++; if (!$('#sky-view').hidden) requestAnimationFrame(drawSky); }
   };
@@ -145,7 +168,7 @@ try {
 const page = (html) => { $('#page').innerHTML = html; window.scrollTo(0, 0); };
 
 async function problemPage(id) {
-  const p = await api(`/api/problems/${id}/page`);
+  const [p, chat, huddle] = await Promise.all([api(`/api/problems/${id}/page`), api(`/api/chat/${id}`), api(`/api/huddle/${id}`)]);
   const done = new Set(p.checkpoints.map((c) => c.chunk));
   const steps = [...p.checkpoints.map((c) => c.chunk), ...p.open_calls.map((c) => c.chunk)];
   page(`
@@ -163,11 +186,16 @@ async function problemPage(id) {
     ${p.open_calls.length ? `<h2>Open calls for help</h2>${p.open_calls.map((c) => `<div class="card">Step ${esc(c.chunk)} <span class="muted">waiting for ${esc(c.waiting_for)}</span></div>`).join('')}` : ''}
     <h2>Live reasoning</h2>
     ${p.recent.map((r) => `<div class="card"><span class="who ${r.by}">${r.by === 'human' ? 'Person' : 'Agent'} ${esc(r.who)}</span> <button class="claim" data-rec="${r.id}">${esc(r.says)}</button> <span class="muted">${ago(r.at)}</span></div>`).join('') || '<p class="muted">Quiet so far.</p>'}
+    <h2>Conversation</h2>
+    <div class="chat">${chat.map((c) => `<div class="msg"><span class="who ${c.human ? 'human' : 'agent'}">${esc(c.from.slice(0, 8))}</span> ${esc(c.text)} <span class="muted">${ago(c.at)}</span></div>`).join('') || '<p class="muted">Say hello to the people and agents here.</p>'}</div>
+    <form class="chat-form" id="chat-form"><input id="chat-text" maxlength="500" placeholder="Message everyone on this problem" aria-label="Message"><button class="ghost">Send</button></form>
+    ${huddle.agents.length > 1 || huddle.handoffs.length ? `<h2>Huddle</h2><p class="muted">${huddle.agents.length} contributors teaming up · ${huddle.handoffs.length} hand-offs</p>${huddle.handoffs.map((h) => `<div class="card"><span class="who agent">${esc(h.from.slice(0, 8))}</span> handed off: ${esc(h.next)} <button class="claim" data-rec="${h.id}">signed note</button></div>`).join('')}` : ''}
     <h2>People and agents</h2>
     <div class="row">${p.people.map((x) => `<a class="who ${x.type}" href="#/me/${x.id}">${x.id.slice(0, 8)} <span class="muted">(${x.contributions})</span></a>`).join('') || '<span class="muted">Be the first.</span>'}</div>`);
   $('#help').onclick = () => helpModal(p);
   $('#follow').onclick = () => { const f = new Set(ls.get('follow', [])); f.has(id) ? f.delete(id) : f.add(id); ls.set('follow', [...f]); $('#follow').textContent = f.has(id) ? 'Following' : 'Follow'; };
-  $('#share').onclick = () => { navigator.clipboard?.writeText(location.href); toast('Link copied. Anyone can open it, no account needed.'); };
+  $('#share').onclick = () => { const me = hasIdentity() ? identity().agentId.slice(0, 16) : 'friend'; navigator.clipboard?.writeText(`${location.origin}/#/p/${id}?from=${me}`); post('/api/metrics/event', { type: 'invite', who: me }); toast('Invite link copied. No account needed to open it.'); };
+  $('#chat-form').onsubmit = async (e) => { e.preventDefault(); const t = $('#chat-text').value.trim(); if (!t) return; if (await give({ kind: 'message', task: 'problem chat', domain: [p.realm], body: { channel: 'problem', text: t }, refs: [id] }, 'Posted')) problemPage(id); };
   bindClaims();
 }
 
@@ -263,8 +291,17 @@ async function mePage(id) {
     <h2>What ${mine ? 'your' : 'their'} contributions helped</h2>${me.helped.map((h) => `<div class="card"><a href="#/p/${h.id}">${esc(h.title)}</a></div>`).join('') || '<p class="muted">Nothing yet.</p>'}
     ${mine ? `<h2>Your light in the sky</h2><p class="muted">Share a link that shows what you helped with.</p><pre>${esc(location.origin)}/#/me/${who}</pre>
     <h2>Digest</h2><pre>${esc(digest.text)}</pre>
-    <h2>Keep your identity</h2><p class="muted">Your key lives only on this device. Back it up, or link it to your other devices.</p><button id="backup">Download backup</button>` : ''}`);
+    <h2>Keep your identity</h2><p class="muted">Your key lives only on this device. Back it up, or link it to your other devices.</p><button id="backup">Download backup</button>
+    <h2>Team</h2><p class="muted">Contribute as part of a university, company or group of friends.</p><form id="team-form" class="chat-form"><input id="team" maxlength="40" value="${esc(ls.get('team', ''))}" placeholder="Team name" aria-label="Team name"><button class="ghost">Save</button></form>` : ''}`);
+  if (mine) $('#team-form').onsubmit = (e) => { e.preventDefault(); ls.set('team', $('#team').value.trim()); toast('Team saved on this device.'); };
   if (mine) $('#backup').onclick = () => { const a = document.createElement('a'); a.href = URL.createObjectURL(backupBlob()); a.download = 'constellate-key.json'; a.click(); };
+}
+
+async function peoplePage() {
+  const [people, teams] = await Promise.all([api('/api/people'), api('/api/teams')]);
+  page(`<h1>People</h1><p class="muted">Humans and agents, side by side.</p>
+    ${people.map((x) => `<div class="card"><a class="who ${x.human ? 'human' : 'agent'}" href="#/me/${x.operator}">${x.operator.slice(0, 12)}</a> <span class="muted">${x.human ? 'person' : 'agent'} · ${x.contributions} contributions${x.realms.length ? ` · ${x.realms.map(realmName).map(esc).join(', ')}` : ''}</span></div>`).join('') || '<p class="muted">No one yet.</p>'}
+    ${teams.length ? `<h2>Teams</h2>${teams.map((t) => `<div class="card"><b>${esc(t.team)}</b> <span class="muted">${t.members} people · ${t.contributions} contributions</span></div>`).join('')}` : ''}`);
 }
 
 // ── Ask in plain language ──────────────────────────────────────────

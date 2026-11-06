@@ -12,7 +12,8 @@ export const ChunkSpec = z.object({
 });
 export type ChunkSpec = z.infer<typeof ChunkSpec>;
 
-export const REALMS = ['maths_physics', 'life_sciences', 'planet_energy', 'philosophy_ethics', 'art_creativity', 'software', 'knowledge'] as const;
+/** The sky's five realms (Amendment 1 §7). Software and knowledge problems live in mathematics and physics. */
+export const REALMS = ['maths_physics', 'life_sciences', 'planet_energy', 'philosophy_ethics', 'art_creativity'] as const;
 
 export const ProblemBody = z.object({
   title: z.string().max(200),

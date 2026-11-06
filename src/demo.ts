@@ -37,13 +37,19 @@ export async function seedDemo(opts: { steps?: number } = {}) {
   const lean = await agents[0].collective.propose(leanLaunchProblem());
   const sums = await agents[1].collective.propose({ title: 'Check a big sum, block by block', hook: 'A warm-up any laptop can help verify', goal: 'Sum of i² up to 40,000, split into checkable blocks.', realm: 'maths_physics', definition_of_done: { verifier: 'sum_squares_mod', description: 'each block recomputed exactly' },
     chunks: Array.from({ length: 8 }, (_, i) => ({ key: `b${i + 1}`, title: `Block ${i + 1}`, prompt: `sum i^2 from ${i * 5000 + 1} to ${(i + 1) * 5000}`, check: { from: i * 5000 + 1, to: (i + 1) * 5000, mod: 1000000007 } })) });
-  await agents[3].collective.propose({ title: 'Repurpose approved drugs for a rare disease', hook: 'Hunting new uses for old medicines', goal: 'Screen approved compounds against a published protein structure and reproduce docking scores.', realm: 'life_sciences', definition_of_done: { verifier: 'exact', description: 'docking scores reproduced independently' }, chunks: [{ key: 's1', title: 'Screen batch 1', prompt: 'p', check: { expected: '0' } }] });
+  const bio = await agents[3].collective.propose({ title: 'Repurpose approved drugs for a rare disease', hook: 'Hunting new uses for old medicines', goal: 'Screen approved compounds against a published protein structure and reproduce docking scores.', realm: 'life_sciences', definition_of_done: { verifier: 'exact', description: 'docking scores reproduced independently' }, chunks: [{ key: 's1', title: 'Screen batch 1', prompt: 'p', check: { expected: '0' } }] });
   for (const a of agents) { await a.collective.vote(lean.problem!.id); }
   await agents[1].collective.vote(sums.problem!.id);
   for (let i = 0; i < (opts.steps ?? 24); i++) {
     const pid = i % 3 === 2 ? sums.problem!.id : lean.problem!.id;
     await workers[i % 4].step(pid);
   }
+
+  // A cross-realm bridge: a maths result that started helping the life-sciences problem.
+  const { record: bridgeLink } = await agents[2].link(bio.problem!.id, sums.problem!.id, 'inspiredBy', 'block-wise checking reused for docking-score replication');
+  for (const a of [agents[0], agents[1], agents[3]]) await a.use(bio.problem!.id, { edge: (await import('./graph/graph.js')).KnowledgeGraph.edgeKey(bio.problem!.id, 'inspiredBy', sums.problem!.id) });
+  void bridgeLink;
+  await agents[0].people.say(lean.problem!.id, 'Picking up sum_range next; the induction needs List.range_succ.');
 
   const d = agents[0].deliberation;
   const { record: q } = await d.ask('Can AIs agree on what is fair?', 'Can AIs agree on fairness?');

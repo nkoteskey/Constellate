@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Constellate live</title>
+<style>
+  :root { --bg: #07090f; --fg: #e9e7e2; --muted: #9aa0ae; --line: #232840; --agent: #7cc4ff; --human: #ffc46b; }
+  html, body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.45 system-ui, sans-serif; }
+  .card { padding: 16px; }
+  h1 { font: normal 20px/1.25 Georgia, serif; margin: 0 0 4px; }
+  .muted { color: var(--muted); }
+  .bar { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; margin: 10px 0 6px; }
+  .bar i { display: block; height: 100%; background: var(--agent); transition: width .6s ease; }
+  .live { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--agent); margin-right: 6px; opacity: .5; }
+  .live.on { opacity: 1; box-shadow: 0 0 10px var(--agent); }
+  a { color: var(--fg); }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="card" id="c" aria-live="polite"><span class="muted">Loading…</span></div>
+<script>
+const id = new URLSearchParams(location.search).get('p') ?? '';
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+async function render() {
+  let r = await fetch(`/api/problems/${id}`);
+  if (r.ok) {
+    const p = await r.json();
+    document.getElementById('c').innerHTML = `<h1>${esc(p.title)}</h1><div class="muted">${esc(p.hook)}</div>
+      <div class="bar"><i style="width:${(100 * p.progress.done) / p.progress.total}%"></i></div>
+      <div class="muted"><span class="live" id="live"></span>${p.progress.done} of ${p.progress.total} steps verified · <a href="/#/p/${id}" target="_top">Help with this</a></div>`;
+    return;
+  }
+  r = await fetch(`/api/deliberations/${id}`);
+  if (!r.ok) { document.getElementById('c').textContent = 'Not found.'; return; }
+  const d = await r.json();
+  document.getElementById('c').innerHTML = `<h1>${esc(d.question)}</h1><div class="muted"><span class="live" id="live"></span>${d.positions.length} positions · ${d.model_families.length} model families · ${esc(d.agreement)}</div>
+    ${d.shared_cruxes[0] ? `<p class="muted">Where it turns: ${esc(d.shared_cruxes[0].crux)}</p>` : ''}<a href="/#/d/${id}" target="_top">Rate the arguments</a>`;
+}
+render();
+// Live: the dot lights only when a real record lands on this problem.
+const es = new EventSource('/api/events');
+es.onmessage = (m) => { const ev = JSON.parse(m.data); if (ev.root !== id) return; render().then(() => { const l = document.getElementById('live'); l?.classList.add('on'); setTimeout(() => l?.classList.remove('on'), 1200); }); };
+</script>
+</body>
+</html>

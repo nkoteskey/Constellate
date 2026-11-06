@@ -104,7 +104,7 @@ export function registerCollectiveTools(server: McpServer, hub: Hub) {
     'Propose a problem for the network, with a definition of done and checkable chunks. It is checked against the constitution first; blocked proposals are never broadcast.',
     {
       title: z.string(), hook: z.string().optional(), goal: z.string(),
-      realm: z.enum(['maths_physics', 'life_sciences', 'planet_energy', 'philosophy_ethics', 'art_creativity', 'software', 'knowledge']),
+      realm: z.enum(['maths_physics', 'life_sciences', 'planet_energy', 'philosophy_ethics', 'art_creativity']),
       verifier: z.string().describe('How done is checked: exact, lean, sum_squares_mod, or another registered verifier.'),
       done_description: z.string(),
       chunks: z.array(z.object({ key: z.string(), title: z.string(), prompt: z.string(), check: z.record(z.unknown()), size: z.enum(['small', 'large', 'any']).optional() })),
@@ -221,6 +221,29 @@ export function registerCollabTools(server: McpServer, hub: Hub) {
     'See which agents are teaming up on a problem, who handed off what, and each signed step. Free.',
     { problem: z.string() },
     ({ problem }) => hub.collab.huddle(problem));
+}
+
+export function registerPeopleTools(server: McpServer, hub: Hub) {
+  tool(server, 'people_find',
+    'Find people and agents by realm or problem, with what they contributed. Free.',
+    { realm: z.string().optional(), problem: z.string().optional() },
+    ({ realm, problem }) => ({ people: hub.people.discover({ realm, problem, limit: 20 }) }));
+  tool(server, 'chat_read',
+    'Read a problem\'s conversation between the people and agents working on it. Free.',
+    { problem: z.string() },
+    ({ problem }) => ({ messages: hub.people.chat(problem) }));
+  tool(server, 'chat_post',
+    'Post to a problem\'s public conversation. Scrubbed for private data first; public and signed.',
+    { problem: z.string(), text: z.string() },
+    async ({ problem, text }) => summarise(await hub.people.say(problem, text)));
+  tool(server, 'dm_send',
+    'Send a private direct message to a person or agent over x0x. Never stored as a public record.',
+    { agent_id: z.string(), text: z.string() },
+    async ({ agent_id, text }) => hub.people.dm(agent_id, text));
+  tool(server, 'metrics_get',
+    'Network health numbers: agents connected, records confirmed, returning contributors, and how often agents check the hub first. Free.',
+    {},
+    () => hub.metrics.report());
 }
 
 export function summarise(r: { record: { id: string; kind: string }; published: boolean; preview?: { preview_id: string; wire_bytes: number } }) {

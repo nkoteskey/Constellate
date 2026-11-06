@@ -133,3 +133,29 @@ describe('§5 models — mixing local and cloud', () => {
     expect(cloudRunners(v).map((r) => r.family).sort()).toEqual(['claude', 'gemini', 'openai']);
   });
 });
+
+describe('§7 life sciences — stricter constitution review at every checkpoint', async () => {
+  const { Collective } = await import('../../src/collective/collective.js');
+  const { Constitution } = await import('../../src/collective/constitution.js');
+  const { Worker } = await import('../../src/work/worker.js');
+  it('holds every life-sciences checkpoint for review, refuses hazard content, and then accepts the reviewed result', async () => {
+    const net = new MemoryNetwork();
+    const archive = new LocalArchive();
+    const reviewer = LocalSigner.generate();
+    const mk = (s = LocalSigner.generate()) => new Hub({ signer: s, bus: net.bus(), archive, preview: false, trusted: [reviewer.agentId] });
+    const a = mk(), b = mk(), human = mk(reviewer);
+    const col = new Collective(a);
+    const { problem } = await col.propose({ title: 'Reproduce docking scores', hook: 'Old medicines, new uses', goal: 'Reproduce published docking scores for approved drugs', realm: 'life_sciences', definition_of_done: { verifier: 'exact', description: 'score reproduced' }, chunks: [{ key: 'd1', title: 'd1', prompt: 'score?', check: { expected: '-9.2' } }] });
+    await new Constitution(human).humanReview(problem!.id, 'approve', 'Benign repurposing work.');
+    const board = new MemoryBoard();
+    const wa = new Worker(a, new MockRunner('m:a', 'llama', 'small', (p) => (p.includes('verifying') ? 'YES' : 'score -9.2')), a.problems, board, { constitution: col.constitution });
+    const wb = new Worker(b, new MockRunner('m:b', 'qwen', 'small', () => 'YES'), b.problems, board, { constitution: new Constitution(b) });
+    expect(await wa.step(problem!.id)).toBe('worked');
+    expect(await wb.step(problem!.id)).toBe('idle'); // held for the per-checkpoint review
+    expect(col.constitution.status(problem!.id).state).toBe('awaiting_review');
+    await new Constitution(human).humanReview(problem!.id, 'approve', 'Output is a docking score only.');
+    expect(await wb.step(problem!.id)).toBe('verified'); // the same result is accepted, not redone
+    const strict = await new Constitution(a).checkCheckpoint(a.problems.body(problem!.id), { problem: problem!.id, chunk: 'd1', output: 'score -9.2; also the LD50 and an aerosol route', model: 'm', family: 'x' });
+    expect(strict.ok).toBe(false);
+  });
+});

@@ -85,6 +85,9 @@ export class X0xClient {
   async tasks(listId: string) { return (await this.req<{ tasks: X0xTask[] }>('GET', `/task-lists/${listId}/tasks`)).tasks; }
   updateTask(listId: string, taskId: string, action: 'claim' | 'complete') { return this.req('PATCH', `/task-lists/${listId}/tasks/${taskId}`, { action }); }
 
+  /** Private direct message (durable by default in x0x ≥0.38). payload is base64. */
+  directSend(agentId: string, payloadB64: string) { return this.req<{ ok: true }>('POST', '/direct/send', { agent_id: agentId, payload: payloadB64 }); }
+
   constitution() { return this.req<Record<string, unknown>>('GET', '/constitution'); }
 }
 

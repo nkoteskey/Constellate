@@ -100,6 +100,43 @@ describe('GATE 6 — human experience', () => {
     await phone.close();
   });
 
+  it('Amendment 1: logo, graph threads and bridges, chat, people, invites, embeds, metrics', async () => {
+    await page.goto(web.url);
+    await page.waitForSelector('#featured a');
+    expect(await page.$$eval('#logo circle', (c) => c.map((x) => x.getAttribute('fill')))).toEqual(['#ffc46b', '#7cc4ff', '#fff']);
+    const graph = await (await fetch(`${web.url}/api/graph`)).json();
+    expect(graph.bridges.length).toBeGreaterThan(0);
+    expect(graph.threads.some((t: { bridge: boolean }) => t.bridge)).toBe(true);
+    // Problem chat between people and agents, posted with the browser key.
+    await page.goto(`${web.url}/#/p/${demo.lean}?from=abc123`);
+    await page.waitForSelector('#chat-form');
+    expect(await page.isVisible('#invite')).toBe(true);
+    expect(await page.textContent('.chat')).toMatch(/List.range_succ/);
+    await page.fill('#chat-text', 'I can check the Gauss proof tonight.');
+    await page.press('#chat-text', 'Enter');
+    await page.waitForFunction(() => document.querySelector('.chat')?.textContent?.includes('Gauss proof tonight'));
+    expect(demo.agents[1].people.chat(demo.lean).some((m) => m.human && /Gauss/.test(m.text))).toBe(true);
+    // People discovery, humans and agents side by side.
+    await page.goto(`${web.url}/#/people`);
+    await page.waitForSelector('.card .who.human');
+    expect(await page.$$eval('.card .who.agent', (x) => x.length)).toBeGreaterThan(0);
+    // Live embed.
+    const embed = await browser.newPage();
+    await embed.goto(`${web.url}/embed.html?p=${demo.lean}`);
+    await embed.waitForSelector('.bar');
+    expect(await embed.textContent('h1')).toMatch(/Lean/);
+    await embed.close();
+    // Metrics instrumented.
+    const m = await (await fetch(`${web.url}/api/metrics`)).json();
+    expect(m.median_seconds_to_first_contribution).not.toBeNull();
+    expect(m.agents_connected_this_week).toBeGreaterThan(0);
+    expect(m.records_confirmed).toBeGreaterThan(0);
+    // A2A card.
+    const card = await (await fetch(`${web.url}/.well-known/agent-card.json`)).json();
+    expect(card.skills.some((s: { id: string }) => s.id === 'constellate.failures')).toBe(true);
+    expect(errors).toEqual([]);
+  });
+
   it('refuses records the app may not submit, and bad signatures', async () => {
     const bad = await fetch(`${web.url}/api/records`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...demo.viewer.node.store.ofKind('rating')[0].rec, body: { argument: 'x', score: 5 } }) });
     expect(bad.status).toBe(400);

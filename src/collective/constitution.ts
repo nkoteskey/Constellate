@@ -21,6 +21,11 @@ const BIO_HAZARD = [
   /(synthesi[sz]e|produce|weaponi[sz]e|aerosoli[sz]e)\w* (a |the )?(pathogen|toxin|nerve agent|bioweapon|virus)/i,
   /\bbioweapon/i, /\bnerve agent/i, /immune evasion of (a )?(pathogen|virus)/i, /select agent/i,
 ];
+// Life sciences gets a stricter review at every checkpoint: these broader signals are refused there.
+const BIO_STRICT = [
+  /\b(pathogen|toxin|virulence|transmissib\w*|lethal dose|ld50|aerosol\w*|weaponi[sz]\w*)\b/i,
+  /\b(synthesis route|culture protocol|growth medium for|serial passage|reverse genetics)\b/i,
+];
 const HARM = [/\b(surveil|track|dox+|deanonymi[sz]e)\w* (a |an )?(person|individual|journalist|activist)/i, /\bmalware\b|\bransomware\b|\bexploit (chain|kit)\b/i];
 const OPEN_LICENCES = ['CC0-1.0', 'CC-BY-4.0', 'CC-BY-SA-4.0', 'MIT', 'Apache-2.0', 'MIT OR Apache-2.0'];
 
@@ -57,6 +62,11 @@ export class Constitution {
 
   async checkCheckpoint(problem: ProblemBody, result: TaskResultBody): Promise<CheckResult> {
     const f = this.textRules(result.output, problem.realm).filter((x) => x.rule !== 'life_sciences_review');
+    if (problem.realm === 'life_sciences') {
+      // Stricter review at every life-sciences checkpoint: broader refusals, and a second reviewer always looks.
+      for (const re of BIO_STRICT) if (re.test(result.output)) f.push({ rule: 'life_sciences_safety', severity: 'block', detail: `checkpoint output matches ${re.source}` });
+      if (!this.reviewer) f.push({ rule: 'life_sciences_review', severity: 'review', detail: 'every life-sciences checkpoint needs a model or human safety review' });
+    }
     return this.result([...f, ...(await this.modelReview(result.output))]);
   }
 

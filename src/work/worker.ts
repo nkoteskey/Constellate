@@ -66,7 +66,12 @@ export class Worker {
         const ctx = { task: `verify ${st.problem.title} / ${c.key}`, domain: [st.problem.realm], environment: this.runner.id };
         if (agrees && cons) {
           const cc = await cons.checkCheckpoint(st.problem, rb);
-          if (!cc.ok || cc.needs_human) {
+          if (cc.ok && cc.needs_human) {
+            // Review-only (e.g. every life-sciences checkpoint): hold this exact result until a human clears it.
+            const asked = this.hub.node.store.referencing(r.rec.id, 'constitution_check').length > 0;
+            if (!asked) { await cons.record(r.rec.id, 'checkpoint', problemId, cc); return 'idle'; }
+            if (cons.status(problemId).state !== 'cleared') return 'idle';
+          } else if (!cc.ok) {
             await cons.record(r.rec.id, 'checkpoint', problemId, cc); // pauses the problem for human review
             // The flagged result itself is never accepted; after review the chunk is redone.
             await this.hub.node.submit({ kind: 'verification', context: { task: `verify ${st.problem.title} / ${c.key}`, domain: [st.problem.realm], environment: this.runner.id }, body: { problem: problemId, chunk: c.key, result: r.rec.id, ok: false, reason: `constitution: ${cc.findings.map((f) => f.rule).join(', ')}`, verifier_family: this.runner.family }, refs: [problemId, r.rec.id] }, { publish: true });
