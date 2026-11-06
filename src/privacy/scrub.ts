@@ -37,7 +37,7 @@ const SECRET_DETECTORS: Detector[] = [
 
 const PII_DETECTORS: Detector[] = [
   { type: 'email', re: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g },
-  { type: 'phone', re: /(?<![\w.])\+?\d[\d\s().-]{8,}\d(?![\w.])/g, check: (m) => { const d = m.replace(/\D/g, ''); return d.length >= 10 && d.length <= 15 && !/^\d{4}-\d{2}-\d{2}/.test(m); } },
+  { type: 'phone', re: /(?<![\w.])\+?\d[\d\s().-]{8,}\d(?![\w.])/g, check: (m) => { const d = m.replace(/\D/g, ''); return (m.startsWith('+') || /[\s().-]/.test(m)) && d.length >= 10 && d.length <= 15 && !/^\d{4}-\d{2}-\d{2}/.test(m); } },
   { type: 'credit_card', re: /\b(?:\d[ -]?){13,19}\b/g, check: (m) => luhn(m.replace(/\D/g, '')) },
   { type: 'us_ssn', re: /\b\d{3}-\d{2}-\d{4}\b/g },
   { type: 'public_ip', re: /\b(?:\d{1,3}\.){3}\d{1,3}\b/g, check: (m) => isIp(m) && !isPrivateIp(m) },

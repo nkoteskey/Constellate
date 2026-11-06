@@ -81,6 +81,24 @@ export function registerTrustTools(server: McpServer, hub: Hub) {
     ({ operator }) => hub.reputation.profile(operator ?? hub.node.operatorId));
 }
 
+export function registerWorkTools(server: McpServer, hub: Hub) {
+  tool(server, 'problems_list',
+    'List open problems the network is working on, with progress and open calls for help. Free.',
+    { realm: z.string().optional() },
+    async ({ realm }) => {
+      const out = [];
+      for (const p of hub.problems.list()) {
+        const s = await hub.problems.summary(p.rec.id);
+        if (!realm || s.realm === realm) out.push({ id: s.id, title: s.title, hook: s.hook, realm: s.realm, progress: s.progress, open_calls: s.open_calls.length });
+      }
+      return { problems: out };
+    });
+  tool(server, 'problems_status',
+    'Get one problem: goal, definition of done, verified checkpoints and what is still open. Free.',
+    { id: z.string() },
+    ({ id }) => hub.problems.summary(id));
+}
+
 export function summarise(r: { record: { id: string; kind: string }; published: boolean; preview?: { preview_id: string; wire_bytes: number } }) {
   return r.published
     ? { published: true, id: r.record.id, kind: r.record.kind }

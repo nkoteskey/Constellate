@@ -11,6 +11,7 @@ import { TrustModel } from '../services/trust.js';
 import { Reputation } from '../services/reputation.js';
 import { CtxInput, toContext } from '../services/ledger.js';
 import { LiveState } from './livestate.js';
+import { Problems } from '../work/problems.js';
 import { ScrubOptions } from '../privacy/scrub.js';
 import { OperatorClaim } from '../core/operator.js';
 
@@ -38,6 +39,7 @@ export class Hub {
   readonly reputation: Reputation;
   readonly trusted: Set<string>;
   readonly ledger: Ledger;
+  readonly problems: Problems;
 
   constructor(o: HubOptions) {
     this.archive = o.archive ?? new LocalArchive();
@@ -48,6 +50,7 @@ export class Hub {
     this.trust = this.reputation;
     this.ledger = new Ledger(this.node, this.trust);
     this.live = new LiveState(this.node, this.archive, this.x0x);
+    this.problems = new Problems(this);
   }
 
   setTrust(t: TrustModel) { this.trust = t; this.ledger.setTrust(t); }

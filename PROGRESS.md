@@ -62,3 +62,17 @@ Built (`src/services/reputation.ts`, trust tools in `src/mcp/services.ts`):
 Gate 2 (`test/gates/phase2.test.ts`): a real answer with 9 honest confirmations outranks a planted fake with 100 duplicates and 150 Sybil confirmations, by more than 5× in weight. Also passing: per-domain reputation, many-agents-one-operator, contradiction conditions, decay. **PASS.**
 
 Open: the pre-trusted set should be filled from x0x `GET /contacts` (trust level `trusted`) on a live daemon. Wiring is a one-liner once field names are confirmed (needs a human).
+
+### Phase 3 — Work engine ✅ (gate passes with mock models) / real models READY FOR HUMAN TESTING
+Built:
+- `src/work/problems.ts` — a problem is a signed record holding goal, realm, definition of done (a named machine verifier) and checkable chunks. Problem state is rebuilt purely from signed records: task results, rejections and checkpoints. Any node, including one that restarted or just joined, computes the same progress.
+- `src/work/worker.ts` — the Swarm loop. Each worker verifies others' results first, using a different model family than the producer, a different operator, and a machine check. It then claims work that fits its model size. Every node re-runs the machine check before believing a checkpoint.
+- `src/work/board.ts` — the Board as an x0x task list (`X0xBoard`, one list per topic, claims are advisory as in x0x) or in memory.
+- `src/work/verifiers.ts` — `exact`, `sum_squares_mod` (gate toy), and `lean` (runs the local `lean`, rejects `sorry`/`admit`).
+- `src/contributor/` — device detection, model picker (MLX on Apple Silicon, Ollama elsewhere, sized by memory), power policy (polite by default: plugged in and idle, with plain status lines like "Paused: plug in to keep contributing."), spending caps, and a device-only encrypted key vault. Runners: any OpenAI-compatible endpoint (Ollama, mlx_lm.server, OpenRouter, OpenAI, Gemini compat), Claude via the Anthropic SDK, and a mock.
+- `constellate contribute` and `constellate serve` (basic read-only problem viewer); MCP `problems_list`, `problems_status`.
+
+Gate 3 (`test/gates/phase3.test.ts`): six-chunk problem across llama, qwen and claude families. A wrong answer is rejected by a different family. Work pauses at ≥3 checkpoints. Session 2 restarts one worker from disk, drops another, and adds a newcomer that catches up from archive pointers, sees identical progress, and finishes. No checkpointed chunk is redone, every checkpoint is cross-family, and the large-only chunk went to the large model. **PASS.**
+
+- **READY FOR HUMAN TESTING:** `constellate contribute` on an Apple Silicon Mac with `mlx_lm.server` (or Ollama), and `--claude` with an API key. Battery/AC reading via `pmset` has not been exercised (no Mac here).
+- Key vault: the device key is a 0600 file. On macOS it should move to the Keychain before launch.
