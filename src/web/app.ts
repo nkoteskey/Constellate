@@ -3,6 +3,7 @@ import { homedir } from 'node:os';
 import { decodeCanonical } from '../core/canonical.js';
 import { ActivityLog } from '../hub/activity.js';
 import { X0xError, directSendProblem } from '../x0x/client.js';
+import { Planner } from '../collective/planner.js';
 import { openBundle, isBundle } from '../store/bundle.js';
 import { Profiles, profileProblem, ProfileBody } from '../collab/profiles.js';
 import { join, dirname } from 'node:path';
@@ -379,6 +380,19 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
     const j = await body() as { amount?: number; note?: string };
     try { const r = await hub.fund.withdraw(Number(j.amount ?? 0), String(j.note ?? '')); return { withdrawn: Number(j.amount), receipt: r.id }; } catch (e) { return new HttpReply(400, { error: (e as Error).message }); }
   });
+
+  // Planning an idea with an agent (src/collective/planner.ts): started and reviewed only on this computer.
+  const planner = hub.usePlanner(new Planner(hub, opts.guideModel));
+  const local = (req: { socket: { remoteAddress?: string } }) => /^(127\.|::1$|::ffff:127\.)/.test(req.socket.remoteAddress ?? '');
+  const deny = () => new HttpReply(403, { error: 'planning runs on the computer that owns the agents' });
+  const tryIt = async <T>(f: () => Promise<T> | T) => { try { return await f(); } catch (e) { return new HttpReply(400, { error: (e as Error).message }); } };
+  web.route('GET', /^\/api\/plans$/, (req, _m, url) => local(req) ? { options: planner.options(), requests: planner.list(url.searchParams.get('idea') ?? undefined) } : deny());
+  web.route('GET', /^\/api\/plans\/pending$/, (req) => local(req) ? planner.pending().map((r) => ({ id: r.id, title: r.title, brief: planner.brief(r.id) })) : deny());
+  web.route('POST', /^\/api\/plans$/, async (req, _m, _u, body) => { if (!local(req)) return deny(); const j = await body() as { idea?: string; via?: 'claude_code' | 'model' | 'any_agent' }; return tryIt(() => planner.start(String(j.idea ?? ''), j.via ?? 'any_agent')); });
+  web.route('GET', /^\/api\/plans\/([0-9a-f]{12})$/, (req, m) => local(req) ? (planner.get(m[1]) ?? new HttpReply(404, { error: 'unknown planning request' })) : deny());
+  web.route('POST', /^\/api\/plans\/([0-9a-f]{12})\/report$/, async (req, m, _u, body) => { if (!local(req)) return deny(); const j = await body() as { report?: unknown; agent?: string }; return tryIt(() => planner.report(m[1], j.report, j.agent)); });
+  web.route('POST', /^\/api\/plans\/([0-9a-f]{12})\/publish$/, async (req, m) => local(req) ? tryIt(async () => ({ problem: await planner.publish(m[1]) })) : deny());
+  web.route('POST', /^\/api\/plans\/([0-9a-f]{12})\/discard$/, async (req, m) => local(req) ? tryIt(() => planner.discard(m[1])) : deny());
 
   // Storage on THIS computer: what it holds, on disk and per record (docs/STORAGE.md).
   web.route('GET', /^\/api\/storage$/, (req) => {

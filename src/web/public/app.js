@@ -739,11 +739,11 @@ async function proposalsPage() {
     if (await give({ kind: 'proposal', task: body.title, domain: [body.realm], body }, 'Proposed')) proposalsPage();
   };
   $('#pledge').onsubmit = async (e) => { e.preventDefault(); const h = Math.max(0, Math.min(168, Number($('#p-hours').value) || 0)); ls.set('pledge', h); if (await give({ kind: 'pledge', task: 'compute pledge', domain: ['compute'], body: { hours_per_week: h } }, `Pledged ${h} hours a week`)) proposalsPage(); };
-  // Hand an idea to the person's own agent (Claude, Cursor…, connected over MCP): it drafts checkable steps and submits them.
-  $$('[data-plan]').forEach((b) => (b.onclick = () => {
+  // Plan it with your agent: the agent researches the idea and reports a plan in the network's format, which
+  // the person reviews and publishes (src/collective/planner.ts, js/plan.js).
+  $$('[data-plan]').forEach((b) => (b.onclick = async () => {
     const i = ideas.find((x) => x.id === b.dataset.plan);
-    if (!i) return;
-    copy(`Using the Constellate tools, turn this idea into a problem the network can work on.\n\nIdea: ${i.title}\nGoal: ${i.goal}\nDone means: ${i.done}\nIdea id: ${i.id}\n\nFirst check problems_list and failures_search for related work. Then split it into small steps that a machine can check (an exact answer, a Lean proof, or another registered verifier), show me the plan, and once I agree, submit it with proposals_submit (realm: ${i.realm}).`, 'Copied. Paste it into your connected agent (Claude, Cursor…).');
+    if (i) (await import('./js/plan.js')).planSheet(i, { onPublished: (id) => { location.hash = `#/p/${id}`; } });
   }));
   $$('[data-vote]').forEach((b) => (b.onclick = async () => { if ((await toggleVote(b.dataset.vote)) !== null) proposalsPage(); }));
 }
