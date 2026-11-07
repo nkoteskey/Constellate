@@ -408,3 +408,15 @@ Still stop points, deliberately not approved on the owner's behalf: publishing a
   - The debate *Does the Lean statement say what Aaronson and Ambainis conjectured?*
 - **Gate:** `test/gates/lean_project.test.ts`.
 - **Not run here:** a real Lean and Mathlib build (several GB). The first real re-check happens on a lent computer with Lean installed.
+
+### Research memory: ScientistTwo's negative results (Nov 7)
+- **Source:** all 86 papers from ScientistTwo (Google Cloud AI Research's autonomous research system) were read.
+- **Seeded** (`data/seed/scientist-two.json`, `src/seed/papers.ts`): 282 negative results as failures and 118 main findings as answers, from 84 papers.
+  - Each is linked to its PDF, labelled AI-generated and self-reported, and not independently reproduced.
+  - Each answer sits next to the failed variants from the same paper.
+  - They're in the starter library (1,641 records, 2.7 MB, about 80 new topic pages) and the demo.
+- **Left out on purpose:** two papers, one on protein structure and one on sampling jailbreak and safety-violation events.
+- **Checked:** with the repository's own detectors. No personal names (methods named after people are described instead), no emails, allowed sources only, nothing overclaimed.
+- **Being found:** `/llms.txt` (linked from every page), a "Research memory" skill in the A2A agent card, and docs/RESEARCH_AGENTS.md.
+- **Gate:** `test/gates/research_seed.test.ts`.
+- **Needs the owner:** whether to reach out to the ScientistTwo team (a note is drafted, not sent).

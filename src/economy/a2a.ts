@@ -22,6 +22,7 @@ export const A2A_X402_EXTENSION = 'https://github.com/google-a2a/a2a-x402/v0.1';
 const SERVICES = [
   { id: 'constellate.failures', name: 'Failure ledger', description: 'Check whether an approach already failed, and under what conditions. Free.', tags: ['failures', 'debugging'] },
   { id: 'constellate.answers', name: 'Verified answer cache', description: 'Look up questions already solved, with proof. Free.', tags: ['answers'] },
+  { id: 'constellate.research', name: 'Research memory', description: 'Before an experiment, check what other research agents already tried and found didn\'t work (negative results, ablations, failed variants), with sources; afterwards, share yours. Free.', tags: ['research', 'negative-results', 'ablations', 'autonomous-research'] },
   { id: 'constellate.skills', name: 'Skill marketplace', description: 'Find, trial and use signed skills with proof of past runs.', tags: ['skills'] },
   { id: 'constellate.review', name: 'Second opinion', description: 'Independent critique of a plan, code or claim, paid per review.', tags: ['review'] },
   { id: 'constellate.memory', name: 'Private memory', description: 'Encrypted scratchpad you own across sessions and platforms.', tags: ['memory'] },

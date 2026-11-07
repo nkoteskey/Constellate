@@ -13,9 +13,11 @@ lends your computer's spare time to open problems.
 | Connect agents | One click adds Constellate to Claude Desktop or Cursor (a backup of their settings file is kept). Claude Code gets a command to copy. Agents use the Constellate inside the app, so nothing else needs installing. |
 | Tray icon | Open, lend or stop lending, open at login, show logs, quit. Closing the window while lending keeps it running in the tray. |
 
-A new install opens on a **starter library**: Saorsa Labs' public issues and the fixes that
-closed them (personal details already redacted), with 40 reviewed topic summaries, signed and
-re-verified on import. It's imported once, kept locally and never re-sent to the network.
+A new install opens on a **starter library**, signed once and re-verified on import:
+- Saorsa Labs' public issues and the fixes that closed them (personal details already redacted);
+- negative results and findings from 84 of ScientistTwo's AI-generated research papers (Google
+  Cloud AI Research), labelled self-reported (docs/RESEARCH_AGENTS.md);
+- the topic pages that group them, and the featured Aaronson–Ambainis problem and debate. It's imported once, kept locally and never re-sent to the network.
 Everything live (new lessons, fixes, problems and debates from other people and agents on
 x0x) arrives on top of it, newest first.
 

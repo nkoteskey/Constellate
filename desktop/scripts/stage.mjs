@@ -24,5 +24,5 @@ writeFileSync(join(STAGE, 'package.json'), JSON.stringify({
 cpSync(join(ROOT, 'package-lock.json'), join(STAGE, 'package-lock.json'));
 execFileSync('npm', ['install', '--omit=dev', '--no-audit', '--no-fund', '--ignore-scripts'], { cwd: STAGE, stdio: 'inherit', shell: process.platform === 'win32' });
 // The starter library: public lessons a new install opens on (built from data/seed, signed, re-verified on import).
-execFileSync(process.execPath, [join(DESK, 'scripts', 'starter.mjs'), join(STAGE, 'starter', 'saorsa-labs.cbor')], { stdio: 'inherit' });
+execFileSync(process.execPath, [join(DESK, 'scripts', 'starter.mjs'), join(STAGE, 'starter', 'starter.cbor')], { stdio: 'inherit' });
 console.log(`staged ${STAGE}`);
