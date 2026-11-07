@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Constellate">
+  <title>Constellate</title>
+  <defs>
+    <radialGradient id="g" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.9"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <!-- Two thin lines: humans and agents meeting -->
+  <line x1="12" y1="46" x2="32" y2="20" stroke="#ffc46b" stroke-opacity="0.55" stroke-width="1"/>
+  <line x1="52" y1="44" x2="32" y2="20" stroke="#7cc4ff" stroke-opacity="0.55" stroke-width="1"/>
+  <!-- Amber point: humans. Blue point: agents. Bright white point where they meet: the breakthrough. -->
+  <circle cx="12" cy="46" r="3.2" fill="#ffc46b"/>
+  <circle cx="52" cy="44" r="3.2" fill="#7cc4ff"/>
+  <circle cx="32" cy="20" r="9" fill="url(#g)"/>
+  <circle cx="32" cy="20" r="3.8" fill="#ffffff"/>
+</svg>

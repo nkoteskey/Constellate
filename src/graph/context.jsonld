@@ -1,0 +1,26 @@
+{
+  "@context": {
+    "@version": 1.1,
+    "@vocab": "https://constellate.network/ns/v1#",
+    "cst": "https://constellate.network/ns/v1#",
+    "id": "@id",
+    "kind": "@type",
+    "created": { "@id": "cst:created", "@type": "http://www.w3.org/2001/XMLSchema#dateTime" },
+    "author": "cst:author",
+    "agent_id": "cst:agentId",
+    "context": "cst:context",
+    "body": { "@id": "cst:body", "@type": "@json" },
+    "evidence": { "@id": "cst:evidence", "@container": "@set" },
+    "refs": { "@id": "cst:refs", "@type": "@id", "@container": "@set" },
+    "signature": "cst:signature",
+    "buildsOn": { "@id": "cst:buildsOn", "@type": "@id" },
+    "fixes": { "@id": "cst:fixes", "@type": "@id" },
+    "contradicts": { "@id": "cst:contradicts", "@type": "@id" },
+    "confirms": { "@id": "cst:confirms", "@type": "@id" },
+    "inspiredBy": { "@id": "cst:inspiredBy", "@type": "@id" },
+    "sameAs": { "@id": "cst:sameAs", "@type": "@id" },
+    "weight": "cst:weight",
+    "realm": "cst:realm"
+  },
+  "cst:vocabularyVersion": "1.0.0"
+}

@@ -1,0 +1,162 @@
+{
+ "05c511da314193d22b0e5eb1": {
+  "title": "Connection lifecycle races: dials, replacement and shutdown in ant-quic",
+  "summary": "Lost streams and lingering connections came from races in replacing, closing and dialing. Do lifecycle checks and drains inside the connection_lifecycle lock, allow one accept_bi consumer and one reader per connection, hide a peer from lookups as soon as disconnect() starts, join accept workers on shutdown and close superseded connections before releasing the socket. Let dials use the full deadline, not the ~2.08s stage budget."
+ },
+ "0a396b9191d8b4212556350e": {
+  "title": "Durable staged rollout for self-update",
+  "summary": "Staged rollout lost its wait on restart and did not enforce the production minimum. Preserve the staging window and per-participant receipts across restarts, enforce the production fleet minimum in the startup path, and use bounded integer staging delays with sixty-minute defaults."
+ },
+ "106d18b532418e1ba7fa93b8": {
+  "title": "Revocation eviction and catch-up checks for group members",
+  "summary": "Revoked devices could still pull TreeKEM catch-up because handlers checked only agent revocation. Check agent, machine and is_binding_revoked on every catch-up path, wait for the revocation-store write to be durable before S4 seals, keep competing rebind frames as fork evidence, and redo crash-interrupted MLS removals. Keep not_after on synced journal lines, and fix cargo audit failures by updating locked deps (saorsa-pqc 0.5.2)."
+ },
+ "13e64a9051e3812c0db4b903": {
+  "title": "Losing peer verification state across restarts",
+  "summary": "After a restart, nodes had not re-verified known peers, so file offers, Welcome replies, KV StateRequests and direct sends were dropped or refused for minutes until peers re-announced. Persist relationship-peer evidence across restarts (proposed ADR 0089), and make registry bindings honour supersession and keep certificate expiry after cache eviction."
+ },
+ "152d6b5be314e150bbd2c69b": {
+  "title": "Redelivering ShareGrants to grantees that were offline",
+  "summary": "Grants sent while the grantee was unreachable were lost. Keep a durable owner-side outbox that resends pending grants, prune expired entries on load, and include due entries in the reconnect nudge (src/share_grant/outbox.rs)."
+ },
+ "1a088e7ad951b51bcaf812de": {
+  "title": "Deleting or leaving a group as its last member",
+  "summary": "A sole member could not leave because last_admin_self_leave_precheck_error checked the roster after removal, which was empty, and always returned 409. Treat a sole member leaving as deleting the group, and pin with tests that a zero-member group from simultaneous leaves cannot be reached."
+ },
+ "217b1124f3460928940ca391": {
+  "title": "Keeping test daemons off the real network and gossip DM delivery",
+  "summary": "Test daemons found the live mesh via mDNS, caused false failures and inflated production announce traffic, and wrote into the real ~/.x0x. Make test daemons hermetic by default (mdns off, own identity dirs). In gossip, seat the recipient's machine as an eager peer for DM inbox topics, keep extra Leaf peers as lazy members, and never shed Critical-topic IHAVE/IWANT frames under load."
+ },
+ "24f179a6187f57581c0f9be6": {
+  "title": "Group joins, evidence and key catch-up with members offline or restarted",
+  "summary": "Encrypted group and Home joins stalled when the owner or evidence holders were offline, after restarts, or when join events arrived out of order. Make join results carry intervening membership events, retire ended join attempts, put owner certs in seat events, accept evidence from relationship peers, and keep evidence lookups off the Tokio worker. Reproduce each failure first as a W3-H harness case."
+ },
+ "2712bd9d9bb25994e3995bd7": {
+  "title": "Keeping memory and disk consistent when durable writes fail",
+  "summary": "When fsync or a journal write failed after the rename, the API reported failure but the data was already on disk and reappeared after restart. Have durable writes report whether a failure happened before or after the rename, so callers keep in-memory state that matches what will survive restart."
+ },
+ "2901b808e24f7919b5cc5c3f": {
+  "title": "Stopping all background tasks for a clean in-process restart",
+  "summary": "shutdown_and_wait() stopped the server, gossip and QUIC node but left Agent and ExecService tasks and remote exec child processes running. Stop every background task and force-cancel in-flight exec sessions, killing their children, so an embedder can stop and restart x0x in the same process."
+ },
+ "3aa2317d76be7fa20796c942": {
+  "title": "Peers on a different network plane slipping through",
+  "summary": "Peers refused for being on another plane sometimes still joined or reconnected: the legacy-grace clock was per peer not per connection, PolicyRejection tombstones raced redials, and a refused cached peer became a HyParView JOIN seed retried forever (v0.47.0). These are open findings; the common thread is to enforce plane refusal per connection and define the PlaneRefuse invariant."
+ },
+ "3bd22aa27d5673f7d150c314": {
+  "title": "Releasing daemon state on in-process shutdown",
+  "summary": "After shutdown_and_wait, detached tasks and held guards kept AppState, Agent and the UDP socket alive, so history.db stayed locked and same-dir relaunch failed. Give every background task a shutdown owner and drain or join it, abandon in-flight dials, and shield group-state applies from the shutdown abort so persists are not torn."
+ },
+ "45c5ec6ecc0a2f859882867b": {
+  "title": "Rate limits, canonical digests and fork evidence in group recovery",
+  "summary": "Review follow-ups on group recovery: join_carry_attestation signed ML-DSA attestations without a limit, so apply ResponderBudget::may_sign() and a per-requester rate as on the request path. Compute the ReseatJournalV1 digest over a canonical encoding, and keep rebind-sibling fork evidence after a rebind replaces the parent certificate."
+ },
+ "533fe472632b58cdeabc3c37": {
+  "title": "Telling real failures from load flakes in daemon tests",
+  "summary": "Tests blamed on suite load hid real bugs, like a missing --agent flag and an accept loop that exited forever when ant-quic accept() returned None. Mark unproven load causes as unverified in .config/nextest.toml with a CI check, add bounded retries where the product would retry, settle restarts on state not timing, and remove workarounds once the upstream fix (ant-quic 0.27.52) is pinned."
+ },
+ "5b76cb0942ec5641f8534221": {
+  "title": "Half-open connections, stale redials and leftover memory after close",
+  "summary": "A reader task exiting silently left one side Closed and the other Live, so redials to that host timed out and memory from stalled streams and unpolled NatTraversalEvents piled up. Report the real transport close reason instead of a generic ReaderExit, keep events only for callers that poll NatTraversalEndpoint, with a cap, and guard stale-connection redials with a regression test."
+ },
+ "5f3affbf18a8da6022d6f72c": {
+  "title": "Keeping the agent skill small and testing it with an agent",
+  "summary": "SKILL.md grew to about 20.7k tokens, too big for an agent to use. Split it into a core file plus topic pages with token budgets enforced in CI (just check-skill-size), and add an eval that boots two daemons and checks a scripted agent completes first DM, group join and scratch write from the onboarding output."
+ },
+ "6ad156937fe7bcb37070f44d": {
+  "title": "Home groups, persistence rollback and mixed-version compatibility",
+  "summary": "A mix of Home and group bugs: duplicate Homes from per-machine dedup markers, early or dangling home.json markers, sidecar and named_groups.json out of sync, whole-map rollback wiping other groups' writes, and v0.40.4 peers misparsing new adverts and card signatures. Roll back only changed keys with compare-and-restore, set the Home marker after a durable join, and keep signed encodings backward compatible."
+ },
+ "6ede95b74a966660faa3311d": {
+  "title": "Owner device sync, duplicate Homes and unenroll in x0x",
+  "summary": "Second owner devices created duplicate Homes when owner-sync looked empty or the Home pointer had not synced or failed to mint. Publish the local Home pointer before every owner-sync, fail the session if the mint fails, and resolve POST /home/seat from the register's canonical Home. Admit owner machines on verified enrollment, not the discovery cache, persist an unenroll tombstone, and log peer ids only as salted hashes."
+ },
+ "73326d1cd98907322c519c55": {
+  "title": "Making Home and group e2e fixtures trustworthy",
+  "summary": "E2e checks passed when they should not, or failed without clues. Require a joiner to decrypt a message sealed after it joined before calling a private join ready, test that removed members lose access after rekey, keep logs and stderr with one retry when fixture setup times out, and record each node's x0xd sha256 so mixed-version fleets can run with --mixed."
+ },
+ "75ee2bbffc85307f4950c022": {
+  "title": "Measuring gossip efficiency with per-kind counters",
+  "summary": "To set efficiency baselines and target a 20% cut, add per-kind PlumTree counters to GET /diagnostics/gossip for current and last intervals, and record loopback bytes-per-frame and verifies-per-second comparisons between versions as committed evidence."
+ },
+ "76fef2bbab9ceaf4bde94864": {
+  "title": "Enforcing revocation and expiry on every message path",
+  "summary": "Revocation and expiry checks differed between paths: the raw-QUIC DM listener never checked revocation, gossip lacked machine-id checks, the expiry gate was dead code and pubsub bypassed the RevocationSet. Check revocation per message on every path, since revoking does not close live connections, and fail closed on a missing cert, unverifiable state or expiry."
+ },
+ "7fbfca929d66f6f0cc4fb46b": {
+  "title": "Ownerless group re-seat persistence and released-binary compatibility",
+  "summary": "Implementing ADR 0109 ownerless attestation and re-seat raised crash and downgrade risks. Keep the original TreeKEM snapshot on disk while a re-seat is staged, write the S3 placeholder with Home metadata into home-suite-groups.json too, store owner-recovery state durably in a .orcpend file, hold back only the group whose sidecar cannot be written, and test the Home gate against released binaries."
+ },
+ "8a39927fcf70228b81418589": {
+  "title": "Seed peer identity pinning and bootstrap cleanup",
+  "summary": "Seed identities were trust-on-first-use and relay or coordinator roles were self-claimed. Pin expected seed PeerIds at the dial step and back off on mismatches, and remove dead code such as the unused BootstrapConnector."
+ },
+ "9424997ad06a9461581978b6": {
+  "title": "Verifying group re-seat mandates and KeyPackages",
+  "summary": "Re-seat must be checked like a join: verify the KeyPackage against the subject's agent key and refuse with binding_mismatch when subject-signed evidence is missing. Test forged or tampered ReseatMandateV1 messages end to end through verify_reseat_mandate_on_receive, not just with unit tests."
+ },
+ "9b08db0150aed68ed73f2d46": {
+  "title": "Trusting GSS shared secrets only from the right sender",
+  "summary": "The GSS share hold and CryptoExclusionV1 keep-path trusted uncommitted same-epoch secrets from any peer. Keep such a secret only when it comes from the exclusion's actor, and let only pinned secrets end a wait; sender checks for MemberRemoved/Banned arms remain open."
+ },
+ "a397adfc86a35f71a5dc833d": {
+  "title": "Recovering dropped KV retained images and damping digest beacons",
+  "summary": "Incomplete paged KV retained images were silently dropped after 120 s, and digest-beacon wake damping was only per author. Count pruned images and send a StateRequest to refetch, with a retry after cooldown, and add a per-group wake budget with a digest_beacon_wakes_deferred counter."
+ },
+ "a58bc1c8e2849b98bcbcbb72": {
+  "title": "Flushing state before a supervised self-update exit",
+  "summary": "Under ADR 0094 the daemon must flush and acknowledge logs and the bootstrap cache before exiting for an upgrade. Bound producer-drain retries and the flush-worker join, end the old process after a bounded reply once the flush succeeds, and implement the same flush owner on Windows as on Unix."
+ },
+ "add91e989d798e380744511f": {
+  "title": "Long-running daemon health: leaks, stalls and shutdown",
+  "summary": "A loose mix of soak findings: memory and UDP buffer leaks, membership handler timeouts, SIGTERM ignored on macOS, silent self-update restart failures, and stale cache dials. Fixes that worked: decouple membership handlers from unbounded egress and fail fast, enforce the 5 s SIGTERM deadline with a watchdog on a plain OS thread, and check the connected peer id before any cache bookkeeping in connect_peer_with_addrs."
+ },
+ "b04131553c62d4f5d8e76339": {
+  "title": "Leftover temp files and tombstoned peers getting back in",
+  "summary": "Two fixes for flaky tests that hid real bugs: a cancelled tokio::fs write left .tmp files because the async create finished after the guard dropped, so create the file synchronously before the first await and sweep stale debris; and a tombstoned peer could redial in because only outbound dials checked suppression, so check the tombstone in the inbound accept loop too."
+ },
+ "b446b626218214210011131e": {
+  "title": "Answering revoked devices instead of silently dropping them",
+  "summary": "Catch-up requests from revoked machines or bindings got no answer, so the device could not tell why. Address named-group answers to the requesting machine, and send a typed refusal for TreeKEM catch-up so the requester can act on it."
+ },
+ "bb79a8960ead3115b3618638": {
+  "title": "Self-update restarts under launchd and Windows Service supervisors",
+  "summary": "Self-update misdetected supervisors: under launchd it spawned a second x0xd that fought over history.db, and under a Windows Service the daemon stayed Stopped. Decide who owns the restart before replacing the binary, refuse conflicting managed config, and generate a versioned Windows wrapper template from x0x autostart."
+ },
+ "bea90b16abfe8395a0a91145": {
+  "title": "Persisting port forwards and retrying their restore",
+  "summary": "Port forwards are saved in forwards.json pinned to a MachineId, accepted only after the save succeeds. Do not retry permanent restore failures forever; back off transient ones (10, 20, 40, 80, 160 s, then every 10 minutes)."
+ },
+ "c021ac2ddbe140a3f4490cc1": {
+  "title": "Bounding per-connection memory in the QUIC stream layer",
+  "summary": "Remote peers and failed dials could grow memory without limit: gapped STREAM/CRYPTO frames filled the reassembly assembler, and StreamsState preallocated an entry for every stream MAX_STREAMS allowed, about 2.3 MB per failed dial. Cap the number of out-of-order chunks per stream (GHSA-4w2j-m93h-cj5j) and allocate per-stream state lazily."
+ },
+ "d146eb636785643cf271433b": {
+  "title": "Gossip relay costs and accurate egress metering",
+  "summary": "Relays and leaf nodes paid ongoing costs: per-topic validator and token-bucket state never cleared, bootstrap CPU went to ML-DSA-65 verifying relayed traffic, and phones carried the x0x/dm/v1/bus compat bus. Evict idle topic state after an hour under one lifecycle lock. Make metering tests check exact retry counts and use one definition of bus egress (eager plus IHAVE) in Rust and Python."
+ },
+ "d895e3e4a3f3f649c4495dd2": {
+  "title": "Restart timing, gossip fan-out and encryption permit races",
+  "summary": "A loose mix tied to restarts and concurrency: the systemd startup update check ran inside the StartLimitInterval window, so delay it past the window; slow announcements after restarts were fixed by pinning saorsa-gossip 0.5.87; and group plaintext task deltas must be published only while holding the publication permit so a switch to MlsEncrypted cannot leak plaintext."
+ },
+ "dd78a5e2ac61cf7a21a34479": {
+  "title": "Proactive reconnect, KV store retire races and flaky tests under load",
+  "summary": "Reconnect failed because inbound peers' addresses were never saved and dials dropped the PeerId, so save the observed address on PeerConnected and dial with connect_peer_with_addrs and the peer id. Stop KvStoreSync merging after retire and fence reopen until the retired sync finishes. Make fault hooks per-instance; flakes from CPU starvation were fixed in fixtures with retries and larger budgets."
+ },
+ "e22cc0cc7a41e3f4b121f4fc": {
+  "title": "Undialable address hints and coverage jobs that stop early",
+  "summary": "Two unrelated CI lessons: a loopback-bound daemon advertised interface addresses peers could not reach, so agents_connect timed out; advertise only dialable addresses. And a failing test stopped the coverage job before LCOV reporting; run with --no-fail-fast and record each phase's exit code so reporting runs and the job still fails."
+ },
+ "f6b1529ff4cafbc6a1b7b80c": {
+  "title": "Releasing the UDP socket on shutdown and testing connection supersede",
+  "summary": "Rare weak_socket_owner_still_live shutdown failures came from NAT traversal keeping hole-punch dials, session and relay handles and queued streams alive; dropping them on shutdown (0.27.55, 0.27.56) freed the socket. Related reconnect tests failed because redials were deduplicated onto the live connection, so write tests that force a genuine new connection and assert tiebreaks and supersede states directly."
+ },
+ "fb4bc6139105d87ea535f9db": {
+  "title": "Stuck group joins after refused or forged invites",
+  "summary": "Earlier join records blocked valid later invites: a forged card-import stub with the real group id, a refused join's not_member row, or a reused v4 invite left joiners stuck with no error. Let a verified invite replace an inert stub matched on group id, make refused-join rows recoverable, give typed refusals, and make tests fail visibly rather than silently skip a path."
+ },
+ "fe59c3182e89fdfee6e13e8d": {
+  "title": "Daemon adding itself as a contact from its own announcements",
+  "summary": "The announcement loop upserted every observed agent, so rebroadcasts of the daemon's own announcement created a TrustLevel::Unknown self-contact, which also made a card-import test flaky. Skip the daemon's own agent id before calling ContactStore::add_machine."
+ }
+}

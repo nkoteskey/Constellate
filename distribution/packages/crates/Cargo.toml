@@ -1,0 +1,11 @@
+[package]
+name = "constellate-mcp"
+version = "0.1.0"
+edition = "2021"
+description = "Launcher for the Constellate MCP server (on x0x). Requires Node.js 22+."
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/nkoteskey/constellate"
+
+[[bin]]
+name = "constellate-mcp"
+path = "src/main.rs"
