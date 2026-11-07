@@ -6,11 +6,12 @@ import { Guide } from './guide.js';
 import { ProblemSpaces } from '../x0x/spaces.js';
 import { Deliberation } from '../collective/deliberation.js';
 import { verifyRecord, SignedRecord, RecordKind } from '../core/record.js';
-import { scrub } from '../privacy/scrub.js';
+import { scrub, readableBody } from '../privacy/scrub.js';
 import { StoredRecord } from '../store/records.js';
 import { REALMS, ProblemBody } from '../work/problems.js';
 import { verifyOperatorClaim, OperatorClaim } from '../core/operator.js';
-import { fromB64 } from '../util/bytes.js';
+import { fromB64, utf8 } from '../util/bytes.js';
+import { peerIdFromPublicKey, verifyExternal } from '../core/identity.js';
 import { familyOf } from './public/js/models.js';
 import { ModelRunner } from '../contributor/models.js';
 
@@ -199,7 +200,11 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
       helped: [...helped].map((id) => { const b = hub.node.store.get(id)!.rec.body as { title?: string; question?: string }; return { id, title: b.title ?? b.question }; }),
       reputation: hub.reputation.profile(m[1]), credit: receipts.reduce((n, r) => n + r.b.amount, 0),
       pledged_hours: hub.collective.pledged(m[1]),
-      linked_user: (() => { const l = mine.filter((s) => s.rec.kind === 'identity_link').sort((a, b) => b.rec.created.localeCompare(a.rec.created))[0]; return l ? (l.rec.body as { claim: OperatorClaim }).claim.user_id : null; })(),
+      linked_user: (() => { const l = mine.filter((s) => s.rec.kind === 'identity_link' && (s.rec.body as { claim?: OperatorClaim }).claim).sort((a, b) => b.rec.created.localeCompare(a.rec.created))[0]; return l ? (l.rec.body as { claim: OperatorClaim }).claim.user_id : null; })(),
+      // This computer's x0x agent vouching for the person's key (desktop app, one click); re-verified on every read.
+      linked_x0x: (() => { const l = mine.filter((s) => s.rec.kind === 'identity_link' && (s.rec.body as { method?: string }).method === 'x0x-agent').sort((a, b) => b.rec.created.localeCompare(a.rec.created))[0]; return l ? x0xAgentLink(l.rec) : null; })(),
+      // A linked GitHub account: the latest claim; every viewer re-checks the gist in their own browser.
+      linked_github: (() => { const l = mine.filter((s) => s.rec.kind === 'identity_link' && (s.rec.body as { method?: string }).method === 'github').sort((a, b) => b.rec.created.localeCompare(a.rec.created))[0]; if (!l) return null; const b = l.rec.body as { handle: string; proof: string; unlink?: boolean }; return b.unlink ? null : { handle: b.handle, proof: b.proof }; })(),
       founding: receipts.filter((r) => r.b.type === 'founding').length,
       agents: [...new Set(mine.map((s) => s.rec.agent_id))].map((a) => ({ id: a, human: mine.some((s) => s.rec.agent_id === a && /^human\b/.test(s.rec.context.environment)), records: mine.filter((s) => s.rec.agent_id === a).length })),
     };
@@ -210,7 +215,7 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
     const v = verifyRecord(rec);
     if (!v.ok) return new HttpReply(400, { error: `rejected: ${v.reason}` });
     if (!HUMAN_KINDS.includes(rec.kind)) return new HttpReply(400, { error: `the app cannot submit ${rec.kind} records` });
-    const p = scrub({ context: rec.context, body: rec.body }, hub.node.privacy);
+    const p = scrub({ context: rec.context, body: readableBody(rec) }, hub.node.privacy);
     if (!p.ok) return new HttpReply(400, { error: 'blocked by privacy check', findings: p.findings });
     if (!rec.refs.every((r) => hub.node.store.get(r))) return new HttpReply(400, { error: 'refers to unknown records' });
     const problem = await checkHumanRecord(rec);
@@ -257,6 +262,15 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
       }
       case 'payout_address': return /^0x[0-9a-fA-F]{40}$/.test(String(b.address)) && ['base', 'base-sepolia'].includes(b.chain) ? null : { error: 'a payout address is an Ethereum address on Base' };
       case 'identity_link': {
+        if (b.method === 'x0x-agent') return x0xAgentLink(rec) ? null : { error: 'the x0x signature does not verify for this key' };
+        if (b.method === 'github') {
+          // "I'm @handle on GitHub; the proof is this public gist." Readers verify the gist themselves.
+          const handle = String(b.handle ?? '');
+          if (!/^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$/.test(handle)) return { error: 'that is not a GitHub username' };
+          if (b.unlink === true) return null;
+          const m = /^https:\/\/gist\.github\.com\/([A-Za-z0-9-]+)\/[0-9a-f]{20,40}$/.exec(String(b.proof ?? ''));
+          return m && m[1].toLowerCase() === handle.toLowerCase() ? null : { error: 'the proof must be a public gist from that GitHub account' };
+        }
         const v = verifyOperatorClaim(b.claim as OperatorClaim, fromB64(rec.author));
         return v.ok ? null : { error: `identity link does not verify: ${v.reason}` };
       }
@@ -400,4 +414,18 @@ function card(title: string, line: string, prog: { done: number; total: number }
   const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
   const w = prog ? Math.round((prog.done / prog.total) * 520) : 0;
   return `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="315" viewBox="0 0 600 315"><rect width="600" height="315" fill="#0b0d14"/><circle cx="480" cy="90" r="70" fill="#7aa2ff" opacity="0.18"/><circle cx="480" cy="90" r="6" fill="#ffc46b"/><text x="40" y="70" fill="#9aa0ae" font-family="system-ui,sans-serif" font-size="18">${esc(line)}</text><text x="40" y="120" fill="#e8e6e3" font-family="Georgia,serif" font-size="30">${esc(title.slice(0, 34))}</text>${prog ? `<rect x="40" y="220" width="520" height="8" rx="4" fill="#22263a"/><rect x="40" y="220" width="${w}" height="8" rx="4" fill="#7aa2ff"/><text x="40" y="255" fill="#9aa0ae" font-family="system-ui,sans-serif" font-size="16">${prog.done} of ${prog.total} steps verified</text>` : ''}<text x="40" y="290" fill="#9aa0ae" font-family="system-ui,sans-serif" font-size="14">constellate · open results, signed by everyone who helped</text></svg>`;
+}
+
+/**
+ * An x0x agent vouching for a person's key: the agent signed the person's Constellate id under the
+ * context constellate.identity-link.v1 with the x0x external-sign framing. Returns the agent id when
+ * the signature, the key and the id all check out, else null.
+ */
+export function x0xAgentLink(rec: SignedRecord): string | null {
+  const b = rec.body as { x0x_agent_id?: string; x0x_public_key?: string; signature?: string };
+  try {
+    const pk = fromB64(String(b.x0x_public_key));
+    if (peerIdFromPublicKey(pk) !== b.x0x_agent_id) return null;
+    return verifyExternal(pk, 'constellate.identity-link.v1', utf8(rec.agent_id), fromB64(String(b.signature))) ? b.x0x_agent_id! : null;
+  } catch { return null; }
 }

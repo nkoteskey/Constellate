@@ -12,4 +12,5 @@ contextBridge.exposeInMainWorld('constellateDesktop', {
   onPullProgress: (fn) => { const h = (_e, p) => fn(p); ipcRenderer.on('desktop:pull-progress', h); return () => ipcRenderer.off('desktop:pull-progress', h); },
   connectAgent: (id) => ipcRenderer.invoke('desktop:connectAgent', id),
   disconnectAgent: (id) => ipcRenderer.invoke('desktop:disconnectAgent', id),
+  linkX0x: (browserId) => ipcRenderer.invoke('desktop:linkX0x', browserId),
 });

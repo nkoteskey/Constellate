@@ -127,6 +127,31 @@ export class PrivacyBlockedError extends Error {
  * personal details (and secrets) mean the record is not stored, served, archived
  * or passed on. Checks what people read (context, body, evidence), not keys or signatures.
  */
-export function personalDataCheck(rec: { context?: unknown; body?: unknown; evidence?: unknown }): ScrubResult {
-  return scrub({ context: rec.context, body: rec.body, evidence: rec.evidence }, { level: 'standard' });
+export function personalDataCheck(rec: { kind?: string; context?: unknown; body?: unknown; evidence?: unknown }): ScrubResult {
+  return scrub({ context: rec.context, body: readableBody(rec), evidence: rec.evidence }, { level: 'standard' });
+}
+
+const B64 = /^[A-Za-z0-9+/]+={0,2}$/;
+const b64Bytes = (v: unknown) => (typeof v === 'string' && B64.test(v) ? Math.floor((v.length * 3) / 4) - (v.endsWith('==') ? 2 : v.endsWith('=') ? 1 : 0) : -1);
+/** An ML-DSA-65 public key (1952 bytes) or signature (3309 bytes), as base64: binary, not something a person reads. */
+const isPqKeyOrSig = (v: unknown) => [1952, 3309].includes(b64Bytes(v));
+
+/**
+ * The part of a record people read. Identity links carry a post-quantum public key and signature, which
+ * look like secrets to the scrubber but are exactly-sized binary, verified separately, and GitHub links
+ * carry a public gist address; only those fields, only on identity links, only in exactly those shapes,
+ * are set aside. Everything else is checked.
+ */
+export function readableBody(rec: { kind?: string; body?: unknown }): unknown {
+  if (rec.kind !== 'identity_link' || !rec.body || typeof rec.body !== 'object') return rec.body;
+  const b = { ...(rec.body as Record<string, unknown>) };
+  for (const k of ['x0x_public_key', 'signature']) if (isPqKeyOrSig(b[k])) delete b[k];
+  // A public gist's address: its id looks like a token, but it's a public URL (the handle is still checked).
+  if (typeof b.proof === 'string' && /^https:\/\/gist\.github\.com\/[A-Za-z0-9-]+\/[0-9a-f]{20,40}$/.test(b.proof)) delete b.proof;
+  if (b.claim && typeof b.claim === 'object') {
+    const c = { ...(b.claim as Record<string, unknown>) };
+    for (const k of ['user_public_key', 'cert_signature']) if (isPqKeyOrSig(c[k])) delete c[k];
+    b.claim = c;
+  }
+  return b;
 }

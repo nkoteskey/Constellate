@@ -166,6 +166,18 @@ handle('desktop:connectAgent', async (_e, id) => {
   try { const backup = connect(a.file, mcpEntry({ execPath: process.execPath, cliPath: CLI, x0xDataDir: x0x.dataDir, starter: STARTER })); return { ok: true, backup }; }
   catch (err) { return { ok: false, error: err.message }; }
 });
+// One-click x0x link: this computer's x0x agent vouches for the person's browser key. The daemon signs the
+// browser's Constellate id under its own context; the app server re-checks the signature before accepting it.
+export const LINK_CONTEXT = 'constellate.identity-link.v1';
+handle('desktop:linkX0x', async (_e, browserId) => {
+  if (typeof browserId !== 'string' || !/^[0-9a-f]{64}$/.test(browserId)) throw new Error('Not a Constellate id');
+  const ep = x0x.endpoint();
+  if (!ep || x0x.state !== 'online') return { ok: false, error: 'x0x isn’t running on this computer right now.' };
+  const r = await fetch(`${ep.url}/agent/sign`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${ep.token}` }, body: JSON.stringify({ context: LINK_CONTEXT, payload_b64: Buffer.from(browserId, 'utf8').toString('base64') }) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || !j.signature_b64) return { ok: false, error: `x0x couldn’t sign (${j.error ?? r.status}).` };
+  return { ok: true, x0x_agent_id: j.agent_id, x0x_public_key: j.public_key_b64, signature: j.signature_b64, context: LINK_CONTEXT };
+});
 handle('desktop:disconnectAgent', (_e, id) => { const a = agentConfigs()[id]; if (!a) throw new Error('Unknown agent'); try { return { ok: disconnect(a.file) }; } catch (err) { return { ok: false, error: err.message }; } });
 
 // ── Lifecycle ────────────────────────────────────────────────────────────

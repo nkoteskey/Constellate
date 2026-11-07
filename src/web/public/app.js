@@ -713,6 +713,39 @@ async function peoplePage() {
 }
 
 // ── Me ───────────────────────────────────────────────────────────
+/** "Show people it's you": three steps to link a GitHub account (js/github-link.js). */
+async function githubLinkCard(slot, who, linked) {
+  if (!slot) return;
+  const g = await import('./js/github-link.js');
+  if (linked) {
+    slot.innerHTML = `<div class="card"><div class="spread"><span>Linked to <b>@${esc(linked.handle)}</b> on GitHub. Your profile shows it, and anyone can check it.</span><button class="btn ghost sm" id="gh-unlink">Unlink</button></div></div>`;
+    $('#gh-unlink', slot).onclick = async () => { if (await give({ kind: 'identity_link', task: 'unlink a GitHub account', domain: ['identity'], body: { method: 'github', handle: linked.handle, unlink: true } }, 'Unlinked')) mePage(); };
+    return;
+  }
+  const line = g.proofLine(who);
+  slot.innerHTML = `<div class="card" style="display:grid;grid-template-columns:minmax(0,1fr);gap:10px;justify-items:start">
+    <p class="muted" style="margin:0;font-size:13.5px">Link your GitHub account and your profile shows your @username with a check anyone can verify. Only your public username is shared.</p>
+    <label class="faint" for="gh-handle" style="font-size:12.5px">1. Your GitHub username</label>
+    <input class="field" id="gh-handle" placeholder="your-username" autocomplete="username" spellcheck="false" style="width:min(280px,100%)">
+    <span class="faint" style="font-size:12.5px">2. Copy this line, then paste it into a new <b>public</b> gist and save it</span>
+    <div class="copy-row" style="justify-self:stretch"><pre class="code">${esc(line)}</pre><button class="btn" id="gh-copy">${icon.copy}Copy</button></div>
+    <div><a class="btn sm" href="https://gist.github.com/" target="_blank" rel="noopener">Open GitHub Gist ↗</a></div>
+    <span class="faint" style="font-size:12.5px">3. Come back and check</span>
+    <div class="row"><button class="btn primary sm" id="gh-check">Check and link</button><span id="gh-out" class="faint" style="font-size:12.5px"></span></div>
+  </div>`;
+  $('#gh-copy', slot).onclick = () => copy(line, 'Copied. Paste it into a new public gist.');
+  $('#gh-check', slot).onclick = async (e) => {
+    const handle = $('#gh-handle', slot).value.trim().replace(/^@/, '');
+    const out = $('#gh-out', slot);
+    e.target.disabled = true; out.textContent = 'Looking for your gist…';
+    const r = await g.findProof(handle, who);
+    e.target.disabled = false;
+    if (r.error) { out.textContent = r.error; return; }
+    out.textContent = 'Found it.';
+    if (await give({ kind: 'identity_link', task: 'link a GitHub account', domain: ['identity'], body: { method: 'github', handle, proof: r.url } }, `Linked to @${handle}`)) mePage();
+  };
+}
+
 async function mePage(id) {
   const mine = !id;
   if (mine && !hasIdentity()) {
@@ -736,7 +769,7 @@ async function mePage(id) {
   const sky = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;margin:18px 0" role="img" aria-label="Your light and what it helped">${nodes.map((n) => `<line x1="${cx}" y1="${cy}" x2="${n.x}" y2="${n.y}" stroke="${human ? '#ffc46b' : '#7cc4ff'}" stroke-opacity=".35"/><circle cx="${n.x}" cy="${n.y}" r="16" fill="#8fa8ff" fill-opacity=".14"/><circle cx="${n.x}" cy="${n.y}" r="3" fill="#fff"/> <text x="${n.x}" y="${n.y + (n.y > cy ? 34 : -24)}" fill="#8a90a0" font-size="11" text-anchor="middle" font-family="Inter">${esc((n.title ?? '').slice(0, 30))}</text>`).join('')}<circle cx="${cx}" cy="${cy}" r="26" fill="${human ? '#ffc46b' : '#7cc4ff'}" fill-opacity=".18"/><circle cx="${cx}" cy="${cy}" r="6" fill="${human ? '#ffc46b' : '#7cc4ff'}"/></svg>`;
   page(`<div class="page narrow">
     <div class="eyebrow">${mine ? 'Me' : 'Contributor'}</div>
-    <div class="row" style="margin:12px 0 4px">${identicon(who, human, 52)}<div><h1 class="display" style="font-size:var(--d-sm)">${mine ? 'Your light in the sky' : `${human ? 'Person' : 'Agent'} ${short(who)}`}</h1><button class="claim faint num" style="font-size:12.5px" id="copy-id" title="Copy full id">${short(who)}</button></div></div>
+    <div class="row" style="margin:12px 0 4px">${identicon(who, human, 52)}<div><h1 class="display" style="font-size:var(--d-sm)">${mine ? 'Your light in the sky' : me.linked_github ? `@${esc(me.linked_github.handle)}` : `${human ? 'Person' : 'Agent'} ${short(who)}`}</h1>${me.linked_github ? `<a class="chip sm" id="gh-badge" href="${esc(me.linked_github.proof)}" target="_blank" rel="noopener" style="margin:4px 0">@${esc(me.linked_github.handle)} on GitHub · checking…</a>` : ''}<button class="claim faint num" style="font-size:12.5px" id="copy-id" title="Copy full id">${short(who)}</button></div></div>
     ${sky}
     <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(130px,1fr))">
       <div class="stat"><b class="num">${me.contributions}</b><span>contribution${me.contributions === 1 ? '' : 's'}</span></div>
@@ -757,15 +790,31 @@ async function mePage(id) {
     <h2 class="section">Your weekly digest</h2><pre style="font-family:var(--sans);font-size:14px">${esc(digest.text)}</pre>
     <div class="row"><button class="btn sm" id="copy-digest">${icon.copy}Copy to forward</button>${typeof Notification !== 'undefined' && !STATIC ? `<button class="btn ghost sm" id="notify" aria-pressed="${ls.get('notify', false)}">${ls.get('notify', false) ? 'Notifications on' : 'Notify me in this browser'}</button>` : ''}</div>
     <p class="faint" style="font-size:12.5px">Following ${follows().problems.length} problem${follows().problems.length === 1 ? '' : 's'}, ${follows().people.length} ${follows().people.length === 1 ? 'person or agent' : 'people and agents'} and ${follows().realms.length} realm${follows().realms.length === 1 ? '' : 's'}. Follows stay on this device.</p>
-    <h2 class="section">Link a real-world identity <span class="faint" style="font-size:14px">(optional)</span></h2>
-    <p class="muted" style="font-size:13.5px">If you use x0x, your x0x user key can vouch for this browser’s key, so your reputation is one, across all your devices and agents. Nothing else is shared.</p>
-    <details class="raw"><summary>Link with x0x</summary>
+    <h2 class="section">Show people it’s you <span class="faint" style="font-size:14px">(optional)</span></h2>
+    ${DESKTOP ? `<div class="card spread" id="x0x-link" style="margin-bottom:12px">${me.linked_x0x ? `<span>Linked to this computer’s x0x identity <span class="chip sm ok"><span class="dot"></span>agent ${short(me.linked_x0x)} ✓</span></span>` : `<span><b>Your x0x identity</b><span class="faint" style="display:block;font-size:12.5px">One click: this computer’s x0x agent vouches for you, so you and your agents share one reputation.</span></span><button class="btn agent sm" id="x0x-link-btn">Link to this computer’s x0x identity</button>`}</div>` : ''}
+    <div id="gh-link"></div>
+    <details class="raw" style="margin-top:12px"><summary>Advanced: link an x0x user key</summary>
+      <p class="faint" style="font-size:12.5px">If you run x0x, your x0x user key can vouch for this browser’s key, so your reputation is one across all your devices and agents.</p>
       <p class="faint" style="font-size:12.5px">1. Have your x0x user key certify this browser’s public key:</p><div class="copy-row"><pre class="code" id="my-pk" style="max-height:80px">${esc(idm.publicKeyB64().slice(0, 64))}…</pre><button class="btn sm" id="copy-pk">${icon.copy}Copy key</button></div>
       <p class="faint" style="font-size:12.5px">2. Paste the certificate (JSON with user_id, user_public_key, issued_at, cert_signature):</p>
       <form id="link-form" class="stack"><textarea class="field" id="claim" rows="4" aria-label="x0x certificate"></textarea><div class="row"><button class="btn sm">Check and link</button><span id="link-out" class="faint" style="font-size:12.5px"></span></div></form></details>
     <h2 class="section">Team</h2><p class="muted">Contribute as part of a university, company or group of friends.</p><form id="team-form" class="chat-form"><input class="field" id="team" maxlength="40" value="${esc(ls.get('team', ''))}" placeholder="Team name" aria-label="Team name"><button class="btn">Save</button></form>
     <h2 class="section">Keep your identity</h2><p class="muted">Your key lives only on this device. Back it up, or move it to your other devices.</p><button class="btn" id="backup">Download backup</button>` : ''}
   </div>`);
+  if (me.linked_github) import('./js/github-link.js').then(async (g) => {
+    const ok = await g.verifyLink(me.linked_github.handle, me.linked_github.proof, who);
+    const b = $('#gh-badge'); if (!b) return;
+    b.textContent = `@${me.linked_github.handle} on GitHub · ${ok === null ? 'couldn’t check right now' : ok ? 'verified ✓' : 'proof not found'}`;
+    b.classList.add(ok ? 'ok' : 'warn');
+  });
+  if (mine) void githubLinkCard($('#gh-link'), who, me.linked_github);
+  $('#x0x-link-btn')?.addEventListener('click', async (e) => {
+    e.target.disabled = true;
+    const r = await window.constellateDesktop.linkX0x(who).catch((err) => ({ ok: false, error: err.message }));
+    if (!r.ok) { toast(r.error); e.target.disabled = false; return; }
+    if (await give({ kind: 'identity_link', task: 'link this computer’s x0x identity', domain: ['identity'], body: { method: 'x0x-agent', x0x_agent_id: r.x0x_agent_id, x0x_public_key: r.x0x_public_key, signature: r.signature } }, 'Linked to your x0x identity')) mePage();
+    else e.target.disabled = false;
+  });
   if (mine) {
     $('#copy-light').onclick = () => copy(`${location.origin}/#/me/${who}`, 'Link copied');
     $('#copy-id').onclick = () => copy(who, 'Id copied');

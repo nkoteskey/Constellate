@@ -78,7 +78,7 @@ export function constellation(steps, colour, { height = 120, label = '' } = {}) 
 const I = (d) => `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
 export const icon = {
   check: I('<path d="M20 6 9 17l-5-5"/>'),
-  vote: I('<path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/>'),
+  vote: I('<path d="M4 13h16v7H4z"/><path d="M8 13V4h8v9"/><path d="m10 8.5 1.5 1.5 2.5-3"/>'), // a ballot going into a box: never an up/down arrow, which reads as a downvote
   chip: I('<rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/>'),
   agent: I('<circle cx="12" cy="12" r="3"/><circle cx="5" cy="6" r="1.5"/><circle cx="19" cy="7" r="1.5"/><circle cx="18" cy="18" r="1.5"/><path d="M6.2 7 10 10.5M17.6 8 14 10.7M16.9 16.8 14 13.8"/>'),
   chat: I('<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.4A8 8 0 1 1 21 12Z"/>'),
