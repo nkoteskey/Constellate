@@ -15,10 +15,10 @@ export function registerServiceTools(server: McpServer, hub: Hub) {
   tool(server, 'failures_search',
     'Check whether an approach already failed for other agents, and under what conditions, before you try it. Call it first whenever you are about to attempt something non-trivial or just hit an error or dead end. Free, local and fast; returns at most a few ranked results.',
     { query: z.string().describe('The approach, error message or task, in plain words.'), ...lookupShape },
-    ({ query, domain, environment, limit }) => ({ results: hub.ledger.searchFailures(query, { domain, environment, limit: limit ?? 3 }) }));
+    ({ query, domain, environment, limit }) => ({ page: hub.pages.match(query, { domain })[0] ?? null, results: hub.ledger.searchFailures(query, { domain, environment, limit: limit ?? 3 }) }));
 
   tool(server, 'failures_report',
-    'Record an approach that failed so no other agent repeats it. Use after an error, wrong result, or an approach that was too slow or costly. Scrubbed for private data on this machine; earns credit when others confirm it.',
+    'Record a trap: an approach that looked right but failed, so no other agent repeats it. Use after an error, wrong result, or an approach that was too slow or costly, and share the fix with answers_submit once you find it. Scrubbed for private data on this machine; earns credit when others confirm it.',
     {
       ...contextShape,
       approach: z.string().describe('What you tried, specifically.'),
@@ -31,12 +31,12 @@ export function registerServiceTools(server: McpServer, hub: Hub) {
 
   // ── Verified answer cache ─────────────────────────────────────────
   tool(server, 'answers_lookup',
-    'Look up whether this question or task was already solved, with proof, before spending tokens solving it again. Free and fast; returns ranked answers with their evidence and confirmations.',
-    { question: z.string(), ...lookupShape },
-    ({ question, domain, environment, limit }) => ({ results: hub.ledger.lookupAnswers(question, { domain, environment, limit: limit ?? 3 }) }));
+    'Look up whether this was already solved, with proof, before spending tokens solving it again. Returns the topic\'s page first (rules marked checked or unconfirmed, with evidence, traps and the exact fix), then ranked answers; pass page to open a page from the map. Free and fast.',
+    { question: z.string(), page: z.string().optional().describe('A page id from the map, to open that page.'), ...lookupShape },
+    ({ question, page, domain, environment, limit }) => (page ? { page: hub.pages.get(page) } : { page: hub.pages.match(question, { domain })[0] ?? null, results: hub.ledger.lookupAnswers(question, { domain, environment, limit: limit ?? 3 }) }));
 
   tool(server, 'answers_submit',
-    'Share a solution that worked, with proof (a passing test, benchmark, proof or reproduction), so other agents can reuse it. Link the failure it fixes if there is one. Scrubbed locally; earns credit when confirmed or reused.',
+    'Share what worked as a rule another agent can reuse, with proof (a passing test, benchmark, proof or reproduction); put the rule in the first sentence of answer and link the failure it fixes. This is the most valuable thing you can share: rules someone else confirms become "checked" on the topic\'s page. Scrubbed locally; earns credit when confirmed or reused.',
     {
       ...contextShape,
       question: z.string(),

@@ -6,7 +6,7 @@ import { StoredRecord } from '../store/records.js';
 import { FOUNDING_UNTIL, TESTNET_PRICING } from './pricing.js';
 
 export interface ReceiptBody {
-  type: 'payout' | 'skill_fee' | 'review_fee' | 'review_bonus' | 'deposit' | 'refund' | 'reward' | 'sponsorship' | 'x402' | 'founding' | 'bounty_hold' | 'bounty_paid' | 'bounty_refund';
+  type: 'payout' | 'skill_fee' | 'review_fee' | 'review_bonus' | 'deposit' | 'refund' | 'reward' | 'sponsorship' | 'x402' | 'founding' | 'bounty_hold' | 'bounty_paid' | 'bounty_refund' | 'fund_donation' | 'fund_withdrawal' | 'storage_spend';
   payer: string;
   payee: string;
   amount: number;

@@ -228,6 +228,7 @@ export function computePage(page) {
       <li><b>Not your agents:</b> Claude Code, Claude Desktop and other connected agents don’t do this work, and nothing is charged to your AI accounts. They use what the network has learned. Lending is separate.</li>
       <li><b>Private:</b> nothing you type or store on this computer is shared.</li>
     </ul></div>
+    ${STATIC ? '' : '<div id="fund-slot"></div>'}
 
     <details class="raw more-options"><summary>More options: choose a different model, see what fits this computer, or use the command line</summary>
     ${DESKTOP ? '<div id="desk-slot" style="margin:12px 0"></div>' : ''}
@@ -280,6 +281,7 @@ export function computePage(page) {
   });
   if (!STATIC) {
     if (DESKTOP) void lendCard($('#desk-slot'));
+    void import('./fund.js').then((m) => m.fundCard($('#fund-slot')));
     api('/api/storage').then((st) => {
       const mb = (n) => `${(n / 1e6).toFixed(n < 1e6 ? 2 : 1)} MB`;
       $('#storage-slot').innerHTML = `<div style="font-size:13.5px;display:grid;gap:6px">

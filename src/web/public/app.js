@@ -313,7 +313,7 @@ async function search(q) {
   const guide = r.guide ? `<div class="result"><span class="kind answer">From the network</span><div style="margin-top:4px">${esc(r.guide.answer)}</div>${r.guide.about ? `<div style="margin-top:8px"><a class="btn sm" href="#/${r.guide.kind === 'deliberation' ? 'd' : 'p'}/${r.guide.about}">Open ${icon.arrow}</a></div>` : ''}</div>` : '';
   const learned = (r.learned ?? []).map((l) => `<div class="result"><div class="spread"><span class="kind learned">What the network learned</span><span class="faint" style="font-size:12px">${l.projects?.length ? `${l.projects.map(esc).join(', ')} · ` : ''}${l.sources} linked lessons${l.latest ? ` · latest ${new Date(l.latest).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })}` : ''}</span></div>
       <div style="margin-top:4px"><button class="claim" data-rec="${l.id}">${esc(l.title)}</button></div>
-      ${learnedFixes(l.summary)}</div>`).join('');
+      ${l.rules?.length ? pageRules(l) : learnedFixes(l.summary)}</div>`).join('');
   const repos = [...new Set(r.failures.map((f) => repoOf(f.environment)).filter(Boolean))];
   const filters = repos.length > 1 ? `<div class="filters" role="group" aria-label="Filter by project"><button class="chip on" data-filter="">All</button>${repos.map((x) => `<button class="chip" data-filter="${esc(x)}">${esc(x)}</button>`).join('')}</div>` : '';
   const skills = (r.skills ?? []).map((k) => `<div class="result"><div class="spread"><span class="kind skill">A skill you can use</span>${k.source ? `<a class="faint" style="font-size:12px" href="${esc(k.source)}" target="_blank" rel="noopener">source</a>` : ''}</div><div style="margin-top:4px"><button class="claim" data-rec="${k.id}">${esc(k.name)}</button></div><div class="muted" style="font-size:13.5px">${esc(k.description)}</div></div>`).join('');
@@ -362,6 +362,13 @@ function related(neighbours = [], skip = []) {
   const n = neighbours.filter((x, i, a) => !skip.includes(x.id) && a.findIndex((y) => y.id === x.id) === i).slice(0, 2);
   if (!n.length) return '';
   return `<div class="related"><span class="faint">Related</span>${n.map((x) => `<span><span class="faint">${esc(LINK[x.link] ?? x.link)}</span> <button class="claim" data-rec="${x.id}">${esc(clipText(x.title || x.kind, 90))}</button></span>`).join('')}</div>`;
+}
+// A topic page (docs/MEMORY.md): its rules, each marked by how well it's supported, and the trap to avoid.
+const RULE = { checked: (r) => `<span class="chip ok sm"><span class="dot"></span>Checked by ${r.confirmations}</span>`, merged: () => '<span class="chip sm">Fixed upstream</span>', unconfirmed: () => '<span class="chip sm faint">Unconfirmed</span>' };
+function pageRules(l) {
+  const trap = (l.traps ?? []).find((t) => !t.disputed_fix) ?? l.traps?.[0];
+  return `<ul class="learned-fixes">${l.rules.slice(0, 3).map((r) => `<li>${esc(clipText(r.text, 170))} ${(RULE[r.status] ?? RULE.unconfirmed)(r)}</li>`).join('')}</ul>
+    ${trap ? `<div class="faint" style="font-size:12.5px;margin-top:4px">Trap: ${esc(clipText(trap.text, 160))}</div>` : ''}`;
 }
 // A distilled summary, kept light: the fixes that recur across the cluster, two at most.
 function learnedFixes(summary) {

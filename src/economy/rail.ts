@@ -54,7 +54,8 @@ export interface PaymentRail {
   settle(m: SignedMandate): Promise<Settlement>;
   balance(account: string): number;
   /**
-   * Bounties (src/economy/bounties.ts): move money out of an `escrow:` account this ledger holds, once.
+   * Move money out of an account this ledger holds for the network, once: a bounty's `escrow:` account
+   * (src/economy/bounties.ts) or the storage fund's `fund:` account (src/economy/fund.ts).
    * Returns false if `ref` was already applied. Only the ledger's own hub calls it, after its own checks.
    */
   release?(from: string, to: string, amount: number, ref: string): boolean;
@@ -71,7 +72,7 @@ export class TestnetLedger implements PaymentRail {
   faucet(account: string, amount: number) { this.balances.set(account, this.balance(account) + amount); }
 
   release(from: string, to: string, amount: number, ref: string) {
-    if (!from.startsWith('escrow:')) throw new Error('only escrow accounts are released without a mandate');
+    if (!/^(escrow|fund):/.test(from)) throw new Error('only escrow and fund accounts are released without a mandate');
     if (this.seen.has(ref)) return false;
     if (!Number.isSafeInteger(amount) || amount <= 0 || this.balance(from) < amount) throw new Error('escrow does not hold that much');
     this.seen.add(ref);
