@@ -65,9 +65,19 @@ export class Collective {
     return Math.sqrt(compute) + 0.5 * this.hub.reputation.reputation(op);
   }
 
+  /** Who currently supports this: each person's latest vote counts, and a vote with support:false withdraws theirs. */
+  supporters(problemId: string): string[] {
+    const latest = new Map<string, { at: string; support: boolean }>();
+    for (const v of this.hub.node.store.referencing(problemId, 'vote')) {
+      const p = latest.get(v.operatorId);
+      if (!p || v.rec.created >= p.at) latest.set(v.operatorId, { at: v.rec.created, support: (v.rec.body as { support?: boolean }).support !== false });
+    }
+    return [...latest].filter(([, x]) => x.support).map(([op]) => op);
+  }
+
   tally(problemId: string) {
     const latest = new Map<string, number>();
-    for (const v of this.hub.node.store.referencing(problemId, 'vote')) latest.set(v.operatorId, this.voteWeight(v.operatorId));
+    for (const op of this.supporters(problemId)) latest.set(op, this.voteWeight(op));
     let w = 0; for (const x of latest.values()) w += x;
     return { voters: latest.size, weight: Math.round(w * 1000) / 1000 };
   }

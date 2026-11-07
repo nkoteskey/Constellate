@@ -40,11 +40,16 @@ writeFileSync(join(home, '.config', 'Claude', 'claude_desktop_config.json'), JSO
     // A new install opens on the starter library: real, signed lessons to search on day one.
     const found = await win.evaluate(async () => (await (await fetch('/api/search?q=restart')).json()).failures.length);
     assert.ok(found > 0, 'the starter library was imported');
+    const roles = await win.evaluate(async () => (await (await fetch('/api/people')).json()).map((p) => p.role).filter(Boolean));
+    assert.ok(roles.includes('starter'), `the starter library is labelled in People (${roles})`);
 
     // Lend this computer: without Ollama it asks for Ollama instead of failing.
     await win.evaluate(() => { location.hash = '#/compute'; });
-    await win.waitForSelector('#desk-slot .card', { timeout: 15_000 });
-    const lend = await win.textContent('#desk-slot');
+    // One button first ("Start helping", or the one free download it needs); the detailed controls sit under More options.
+    await win.waitForSelector('#start-slot .card', { timeout: 15_000 });
+    assert.match(await win.textContent('#start-slot'), /Start helping|Install Ollama/);
+    await win.waitForFunction(() => document.querySelector('#desk-slot .card'), null, { timeout: 15_000 });
+    const lend = await win.evaluate(() => document.querySelector('#desk-slot').textContent);
     assert.match(lend, /On the x0x network/);
     if (process.env.E2E_REAL_X0X) console.log(`real x0xd: ${st.x0x.version ?? 'online'}`);
     assert.match(lend, /Ollama|hosted model/);
@@ -62,6 +67,16 @@ writeFileSync(join(home, '.config', 'Claude', 'claude_desktop_config.json'), JSO
     assert.equal(cfg.mcpServers.constellate.env.ELECTRON_RUN_AS_NODE, '1');
     assert.match(cfg.mcpServers.constellate.args[0], /dist[\\/]cli\.js$/);
     if (shots) await win.screenshot({ path: join(shots, 'desktop-connect.png') });
+
+    // One click: this computer's x0x agent vouches for the person (works with the real x0xd too).
+    const me = await win.evaluate(async () => (await import('/identity.js')).identity().agentId);
+    await win.evaluate(() => { location.hash = '#/me'; });
+    await win.waitForSelector('#x0x-link-btn', { timeout: 15_000 });
+    await win.click('#x0x-link-btn');
+    await win.waitForSelector('#x0x-link .chip.ok', { timeout: 20_000 });
+    const linked = await win.evaluate(async (id) => (await (await fetch(`/api/me/${id}`)).json()).linked_x0x, me);
+    assert.match(String(linked), /^[0-9a-f]{64}$/, 'linked to the x0x agent');
+    if (shots) await win.screenshot({ path: join(shots, 'desktop-me.png') });
 
     // Other pages never get the bridge's powers: same preload, different origin, refused.
     const preload = join(ROOT, 'desktop', 'preload.cjs');

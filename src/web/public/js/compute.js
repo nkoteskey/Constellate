@@ -3,7 +3,7 @@
 // command line (`constellate models`) then checks precisely on the machine itself.
 import { $, $$, esc, icon, copy, api, toast, STATIC } from './ui.js';
 import { suggest, commands, RUN, PROVIDERS, FREE_HOSTED, CATALOG_UPDATED } from './models.js';
-import { DESKTOP, lendCard } from './desktop.js';
+import { DESKTOP, desk, lendCard } from './desktop.js';
 
 const VRAM = [[/rtx\s*(5090)/i, 32], [/rtx\s*(4090|3090)/i, 24], [/rtx\s*(5080|4080|4070\s*ti\s*super|4060\s*ti.*16)/i, 16], [/rtx\s*(5070|4070|3080\s*ti|3060)\b/i, 12], [/rtx\s*(3080)/i, 10], [/rtx\s*(4060|3070|3060\s*ti|2080|2070)/i, 8], [/rx\s*7900\s*xtx/i, 24], [/rx\s*7900/i, 20], [/rx\s*(7800|6800|6900)/i, 16], [/a100/i, 40], [/h100/i, 80]];
 
@@ -158,13 +158,79 @@ function suggestionHtml(s) {
   </div>`;
 }
 
-export function computePage(page) {
-  page(`<div class="page narrow"><div class="eyebrow">Lend your computer</div>
-    <h1 class="display" style="font-size:var(--d-md);margin:10px 0">Your computer, helping while you sleep</h1>
-    <p class="muted" style="max-width:60ch">It runs a free, open model that fits your machine, only while the machine is idle and plugged in, and it always says what it’s doing. Nothing you type or store is shared. Prefer another model? Any model works.</p>
+/**
+ * "Start helping": one button that picks the best way this computer can help right now.
+ *  - The desktop app with Ollama and its model ready: the app's own worker (keeps going when the window is closed).
+ *  - Anywhere with WebGPU: a small free model right in this window, nothing to install.
+ *  - The public website: honest that it's a preview, and where to help for real.
+ */
+async function startCard(slot) {
+  if (!slot) return;
+  const RELEASES = 'https://github.com/nkoteskey/Constellate/releases';
+  const big = (label, id, cls = 'primary') => `<button class="btn ${cls}" id="${id}" style="font-size:16px;padding:14px 26px">${label}</button>`;
+  const shell = (body) => { slot.innerHTML = `<div class="card start-card" style="padding:22px">${body}</div>`; };
+  if (STATIC) {
+    shell(`<b style="font-size:17px">This website is a preview</b>
+      <p class="muted" style="margin:6px 0 14px">Work done here stays on this device, so it doesn’t help yet. To help for real, use the free Constellate app: install it, press one button, and your computer helps while you’re not using it.</p>
+      <a class="btn primary" href="${RELEASES}" target="_blank" rel="noopener" style="font-size:16px;padding:14px 26px">Get the Constellate app</a>
+      <p class="faint" style="font-size:12.5px;margin:10px 0 0">For Mac, Windows and Linux. The first release is coming soon.</p>`);
+    return;
+  }
+  const status = DESKTOP ? await desk.status().catch(() => null) : null;
+  const sg = status?.suggestion;
+  const local = [sg?.primary, sg?.verifier].filter((m) => m && m.run?.provider === 'ollama');
+  const ollamaReady = !!status?.ollama?.running && local.every((m) => status.ollama.models.some((x) => x === m.run.model || x === `${m.run.model}:latest`));
+  const browserOk = !!navigator.gpu && !!$('#bc-start');
 
-    ${DESKTOP ? '<div id="desk-slot" style="margin-bottom:12px"></div>' : ''}
+  if (DESKTOP && status?.settings?.contribute) {
+    shell(`<div class="spread"><b style="font-size:17px"><span class="live-dot" aria-hidden="true"></span> Your computer is helping</b>${big('Stop', 'st-stop', 'ghost')}</div>
+      <p class="muted" style="margin:6px 0 0">Using ${esc(sg?.primary?.name ?? status.settings.model ?? 'a free model')} on this computer, only while you’re not using it and it’s plugged in. It keeps going when you close the window (look for the icon in your menu bar or tray). What it’s working on is just below.</p>`);
+    $('#st-stop', slot).onclick = async () => { await desk.contribute(false); toast('Stopped. Thanks for helping.'); startCard(slot); };
+    return;
+  }
+  if (DESKTOP && ollamaReady) {
+    shell(`<b style="font-size:17px">Ready to help</b><p class="muted" style="margin:6px 0 14px">${esc(sg.primary.name)} is set up on this computer. Press start and it helps only while you’re not using the computer.</p>${big('Start helping', 'st-go')}`);
+    $('#st-go', slot).onclick = async (e) => { e.target.disabled = true; const r = await desk.contribute(true); if (!r.ok) { toast(r.error); e.target.disabled = false; return; } toast('Your computer is helping. Thank you.'); startCard(slot); };
+    return;
+  }
+  if (browserOk) {
+    shell(`<b style="font-size:17px">Start helping in one click</b>
+      <p class="muted" style="margin:6px 0 14px">A small free model runs right here${DESKTOP ? ' in the app' : ' in this tab'}. Nothing to install and no account. The first start downloads it once (about 1 GB).</p>
+      <div class="row">${big('Start helping', 'st-go')}<button class="btn ghost" id="st-stop" hidden>Stop</button></div>
+      <p class="faint" id="st-status" role="status" style="font-size:13.5px;margin:12px 0 0"></p>
+      ${DESKTOP ? '<p class="faint" style="font-size:12.5px;margin:10px 0 0">Want it faster, and running even when the window is closed? <button class="claim" id="st-ollama">Install Ollama</button> (free), then come back here.</p>' : ''}`);
+    const mirror = () => { const t = $('#bc-status')?.textContent ?? ''; const c = $('#bc-count')?.textContent ?? ''; $('#st-status', slot).textContent = [t, c].filter(Boolean).join(' '); };
+    const obs = new MutationObserver(mirror);
+    for (const id of ['#bc-status', '#bc-count']) if ($(id)) obs.observe($(id), { childList: true, characterData: true, subtree: true });
+    $('#st-go', slot).onclick = () => { $('#st-go', slot).hidden = true; $('#st-stop', slot).hidden = false; $('#bc-start').click(); mirror(); };
+    $('#st-stop', slot).onclick = () => { $('#bc-stop').click(); $('#st-stop', slot).hidden = true; $('#st-go', slot).hidden = false; };
+    $('#st-ollama', slot)?.addEventListener('click', () => desk.getOllama());
+    return;
+  }
+  // No WebGPU here: the app's own worker needs Ollama.
+  shell(`<b style="font-size:17px">One free download, then one click</b>
+    <p class="muted" style="margin:6px 0 14px">${DESKTOP ? 'This computer’s graphics can’t run a model inside the app, so it uses Ollama, a small free app that runs AI models. Install it, open it, and come back here.' : 'This browser can’t run a model itself. The free Constellate app can: install it, press one button, and your computer helps while you’re not using it.'}</p>
+    ${DESKTOP ? `${big('Install Ollama (free)', 'st-ollama')} <button class="btn ghost" id="st-recheck">I’ve installed it</button>` : `<a class="btn primary" href="${RELEASES}" target="_blank" rel="noopener" style="font-size:16px;padding:14px 26px">Get the Constellate app</a>`}`);
+  $('#st-ollama', slot)?.addEventListener('click', () => desk.getOllama());
+  $('#st-recheck', slot)?.addEventListener('click', () => startCard(slot));
+}
+
+export function computePage(page) {
+  page(`<div class="page narrow"><div class="eyebrow">Help for free</div>
+    <h1 class="display" style="font-size:var(--d-md);margin:10px 0">Your computer, helping while you sleep</h1>
+    <p class="muted" style="max-width:60ch">Your computer runs a free AI model and works on open problems while you’re not using it. You don’t need an AI account, and you don’t pay anything.</p>
+    <div id="start-slot" style="margin:18px 0 14px"></div>
     <div id="dash-slot"></div>
+    <div class="card" style="margin:14px 0 18px"><ul class="plain-list" style="margin:0;padding-left:18px;display:grid;gap:6px;font-size:13.5px">
+      <li><b>What runs:</b> a free, open model on this computer (or right in this browser tab). It fits your machine, so it won’t slow you down.</li>
+      <li><b>When:</b> only while you’re not using it, it’s plugged in, and it isn’t too hot. You can pause it any time.</li>
+      <li><b>What it does:</b> small steps of open problems, and checking other computers’ work. You’ll see each step below as it happens.</li>
+      <li><b>Not your agents:</b> Claude Code, Claude Desktop and other connected agents don’t do this work, and nothing is charged to your AI accounts. They use what the network has learned. Lending is separate.</li>
+      <li><b>Private:</b> nothing you type or store on this computer is shared.</li>
+    </ul></div>
+
+    <details class="raw more-options"><summary>More options: choose a different model, see what fits this computer, or use the command line</summary>
+    ${DESKTOP ? '<div id="desk-slot" style="margin:12px 0"></div>' : ''}
     <div id="bc-slot" style="margin-top:12px"></div>
     <h2 class="section">What this device can run</h2>
     <div class="card" id="dev"><span class="faint">Looking at this device…</span></div>
@@ -181,6 +247,7 @@ export function computePage(page) {
       ${p.note ? `<div class="muted" style="font-size:13px;margin-top:6px">${esc(p.note)}</div>` : ''}</button>`).join('')}</div>
     <div class="copy-row" style="margin-top:12px"><pre class="code" id="any-cmd">${RUN} contribute --model groq/llama-3.3-70b-versatile</pre><button class="btn" id="copy-any">${icon.copy}Copy</button></div>
     <p class="faint" style="font-size:12.5px;margin:6px 0 0">Model list reviewed ${esc(CATALOG_UPDATED)}. Paid models stop at the spending cap you set (<code>--cap-cents</code>).</p>
+    </details>
   </div>`);
 
   let dev;
@@ -208,6 +275,7 @@ export function computePage(page) {
     sync();
     $('#bc-slot').innerHTML = browserPanel(d);
     wireBrowser();
+    void startCard($('#start-slot'));
   });
   if (!STATIC) {
     if (DESKTOP) void lendCard($('#desk-slot'));

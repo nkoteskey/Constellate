@@ -1,4 +1,7 @@
 import { readFileSync, existsSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { decodeCanonical } from '../core/canonical.js';
+import { ActivityLog } from '../hub/activity.js';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { HttpReply, RawReply, StreamReply, WebServer } from './server.js';
@@ -6,11 +9,12 @@ import { Guide } from './guide.js';
 import { ProblemSpaces } from '../x0x/spaces.js';
 import { Deliberation } from '../collective/deliberation.js';
 import { verifyRecord, SignedRecord, RecordKind } from '../core/record.js';
-import { scrub } from '../privacy/scrub.js';
+import { scrub, readableBody } from '../privacy/scrub.js';
 import { StoredRecord } from '../store/records.js';
 import { REALMS, ProblemBody } from '../work/problems.js';
 import { verifyOperatorClaim, OperatorClaim } from '../core/operator.js';
-import { fromB64 } from '../util/bytes.js';
+import { fromB64, utf8 } from '../util/bytes.js';
+import { peerIdFromPublicKey, verifyExternal } from '../core/identity.js';
 import { familyOf } from './public/js/models.js';
 import { ModelRunner } from '../contributor/models.js';
 
@@ -117,7 +121,9 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
     if (hub.x0x) { try { base = (await (await fetch(`${hub.x0x.baseUrl}/.well-known/agent-card.json`)).json()) as Record<string, unknown>; } catch { /* daemon card unavailable */ } }
     return agentCard(hub, base, { url: web.url });
   });
-  web.route('GET', /^\/api\/people$/, (_r, _m, url) => hub.people.discover({ kind: (url.searchParams.get('kind') as 'human' | 'agent' | null) ?? undefined, q: url.searchParams.get('q') ?? undefined, realm: url.searchParams.get('realm') ?? undefined, problem: url.searchParams.get('problem') ?? undefined }));
+  // Who's who: the starter library's seed identity and this computer's own agent get plain labels.
+  const roleOf = (op: string) => (starterOperators().has(op) ? 'starter' : op === hub.node.operatorId ? 'this-computer' : undefined);
+  web.route('GET', /^\/api\/people$/, (_r, _m, url) => hub.people.discover({ kind: (url.searchParams.get('kind') as 'human' | 'agent' | null) ?? undefined, q: url.searchParams.get('q') ?? undefined, realm: url.searchParams.get('realm') ?? undefined, problem: url.searchParams.get('problem') ?? undefined }).map((p) => ({ ...p, role: roleOf(p.operator) })));
   web.route('GET', /^\/api\/chat\/([0-9a-f]{64})$/, async (_r, m) => {
     const local = hub.people.chat(m[1]);
     if (!spaces.available) return local;
@@ -195,11 +201,15 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
     for (const s of mine) for (const r of s.rec.refs) { let t = hub.node.store.get(r); while (t && !['problem', 'proposal'].includes(t.rec.kind) && t.rec.refs[0]) t = hub.node.store.get(t.rec.refs[0]); if (t && ['problem', 'proposal'].includes(t.rec.kind)) helped.add(t.rec.id); }
     const receipts = hub.economy?.receipts({ payee: m[1] }) ?? [];
     return {
-      id: m[1], contributions: mine.length, by_kind: mine.reduce<Record<string, number>>((a, s) => ((a[s.rec.kind] = (a[s.rec.kind] ?? 0) + 1), a), {}),
+      id: m[1], role: roleOf(m[1]), contributions: mine.length, by_kind: mine.reduce<Record<string, number>>((a, s) => ((a[s.rec.kind] = (a[s.rec.kind] ?? 0) + 1), a), {}),
       helped: [...helped].map((id) => { const b = hub.node.store.get(id)!.rec.body as { title?: string; question?: string }; return { id, title: b.title ?? b.question }; }),
       reputation: hub.reputation.profile(m[1]), credit: receipts.reduce((n, r) => n + r.b.amount, 0),
       pledged_hours: hub.collective.pledged(m[1]),
-      linked_user: (() => { const l = mine.filter((s) => s.rec.kind === 'identity_link').sort((a, b) => b.rec.created.localeCompare(a.rec.created))[0]; return l ? (l.rec.body as { claim: OperatorClaim }).claim.user_id : null; })(),
+      linked_user: (() => { const l = mine.filter((s) => s.rec.kind === 'identity_link' && (s.rec.body as { claim?: OperatorClaim }).claim).sort((a, b) => b.rec.created.localeCompare(a.rec.created))[0]; return l ? (l.rec.body as { claim: OperatorClaim }).claim.user_id : null; })(),
+      // This computer's x0x agent vouching for the person's key (desktop app, one click); re-verified on every read.
+      linked_x0x: (() => { const l = mine.filter((s) => s.rec.kind === 'identity_link' && (s.rec.body as { method?: string }).method === 'x0x-agent').sort((a, b) => b.rec.created.localeCompare(a.rec.created))[0]; return l ? x0xAgentLink(l.rec) : null; })(),
+      // A linked GitHub account: the latest claim; every viewer re-checks the gist in their own browser.
+      linked_github: (() => { const l = mine.filter((s) => s.rec.kind === 'identity_link' && (s.rec.body as { method?: string }).method === 'github').sort((a, b) => b.rec.created.localeCompare(a.rec.created))[0]; if (!l) return null; const b = l.rec.body as { handle: string; proof: string; unlink?: boolean }; return b.unlink ? null : { handle: b.handle, proof: b.proof }; })(),
       founding: receipts.filter((r) => r.b.type === 'founding').length,
       agents: [...new Set(mine.map((s) => s.rec.agent_id))].map((a) => ({ id: a, human: mine.some((s) => s.rec.agent_id === a && /^human\b/.test(s.rec.context.environment)), records: mine.filter((s) => s.rec.agent_id === a).length })),
     };
@@ -210,7 +220,7 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
     const v = verifyRecord(rec);
     if (!v.ok) return new HttpReply(400, { error: `rejected: ${v.reason}` });
     if (!HUMAN_KINDS.includes(rec.kind)) return new HttpReply(400, { error: `the app cannot submit ${rec.kind} records` });
-    const p = scrub({ context: rec.context, body: rec.body }, hub.node.privacy);
+    const p = scrub({ context: rec.context, body: readableBody(rec) }, hub.node.privacy);
     if (!p.ok) return new HttpReply(400, { error: 'blocked by privacy check', findings: p.findings });
     if (!rec.refs.every((r) => hub.node.store.get(r))) return new HttpReply(400, { error: 'refers to unknown records' });
     const problem = await checkHumanRecord(rec);
@@ -257,6 +267,15 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
       }
       case 'payout_address': return /^0x[0-9a-fA-F]{40}$/.test(String(b.address)) && ['base', 'base-sepolia'].includes(b.chain) ? null : { error: 'a payout address is an Ethereum address on Base' };
       case 'identity_link': {
+        if (b.method === 'x0x-agent') return x0xAgentLink(rec) ? null : { error: 'the x0x signature does not verify for this key' };
+        if (b.method === 'github') {
+          // "I'm @handle on GitHub; the proof is this public gist." Readers verify the gist themselves.
+          const handle = String(b.handle ?? '');
+          if (!/^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$/.test(handle)) return { error: 'that is not a GitHub username' };
+          if (b.unlink === true) return null;
+          const m = /^https:\/\/gist\.github\.com\/([A-Za-z0-9-]+)\/[0-9a-f]{20,40}$/.exec(String(b.proof ?? ''));
+          return m && m[1].toLowerCase() === handle.toLowerCase() ? null : { error: 'the proof must be a public gist from that GitHub account' };
+        }
         const v = verifyOperatorClaim(b.claim as OperatorClaim, fromB64(rec.author));
         return v.ok ? null : { error: `identity link does not verify: ${v.reason}` };
       }
@@ -283,10 +302,41 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
   }));
 
   // Ideas from people: not yet a problem (that needs checkable steps), but voted on and visible.
+  // What the agents connected on THIS computer have done (from agent-activity.jsonl). Answers only this computer.
+  const agentLog = new ActivityLog();
+  web.route('GET', /^\/api\/agents\/activity$/, (req) => {
+    if (!/^(127\.|::1$|::ffff:127\.)/.test(req.socket.remoteAddress ?? '')) return new HttpReply(403, { error: 'only on this computer' });
+    const sum = agentLog.summary();
+    const title = (id: string) => { const b = hub.node.store.get(id)?.rec.body as { approach?: string; question?: string; title?: string; name?: string } | undefined; return b ? String(b.title ?? b.approach ?? b.question ?? b.name ?? '').slice(0, 90) : null; };
+    const LABEL: Record<string, string> = { failures_search: 'checked what failed before', answers_lookup: 'looked for a verified answer', skills_find: 'looked for a skill', graph_recall: 'recalled related lessons', problems_list: 'looked at open problems', problems_status: 'checked a problem', handoff_check: 'checked for a hand-off', failures_report: 'shared what failed', answers_submit: 'shared an answer', skills_publish: 'shared a skill', proposals_submit: 'proposed a problem', help_request: 'asked for help', records_link: 'linked two lessons' };
+    return {
+      agents: sum.agents,
+      recent: sum.recent.map((e) => ({ ...e, label: `${LABEL[e.tool] ?? e.tool.replace(/_/g, ' ')}${e.results !== undefined ? ` (${e.results} found)` : ''}`, titles: (e.ids ?? []).map((id) => ({ id, title: title(id) })).filter((t) => t.title) })),
+    };
+  });
+
+  // "Try" under search: what agents and people have been sharing lately, then the topics the network uses most.
+  web.route('GET', /^\/api\/trending$/, () => {
+    const starter = starterOperators();
+    const short = (t: string) => { const w = t.replace(/\s+/g, ' ').trim().split(' '); let out = ''; for (const x of w) { if ((out + " " + x).trim().length > 56) break; out = (out + " " + x).trim(); } return out || t.slice(0, 56); };
+    const recent = hub.node.store.all()
+      .filter((s) => s.visibility === 'public' && ['failure', 'answer', 'skill'].includes(s.rec.kind) && !starter.has(s.operatorId))
+      .sort((a, b) => b.rec.created.localeCompare(a.rec.created)).slice(0, 12)
+      .map((s) => { const b = s.rec.body as { approach?: string; question?: string; name?: string }; return { text: short(b.approach ?? b.question ?? b.name ?? s.rec.context.task), at: s.rec.created, by: isHuman(s) ? 'human' : 'agent', kind: 'recent' as const }; })
+      .filter((x, i, a) => x.text.length > 8 && a.findIndex((y) => y.text === x.text) === i).slice(0, 2);
+    const latest = new Map<string, StoredRecord>();
+    for (const s of hub.node.store.ofKind('summary')) { const k = (s.rec.body as { cluster: string }).cluster; const p = latest.get(k); if (!p || p.rec.created < s.rec.created) latest.set(k, s); }
+    const usedBy = (s: StoredRecord) => { const m = (s.rec.body as { members?: string[] }).members ?? []; return m.reduce((n, id) => n + hub.node.store.referencing(id, 'use').length + hub.node.store.referencing(id, 'confirmation').length, 0) + m.length / 100; };
+    const popular = [...latest.values()].sort((a, b) => usedBy(b) - usedBy(a)).slice(0, 6)
+      .map((s) => ({ text: short((s.rec.body as { title: string }).title), kind: 'popular' as const }));
+    const out = [...recent, ...popular].filter((x, i, a) => a.findIndex((y) => y.text === x.text) === i).slice(0, 4);
+    return { items: out };
+  });
+
   web.route('GET', /^\/api\/ideas$/, () => hub.node.store.ofKind('proposal').filter((s) => { const b = s.rec.body as { title?: string; done?: string }; return !!(b.title && b.done); }).map((s) => {
     const b = s.rec.body as { title: string; goal: string; done: string; check: string; realm: string };
-    const voters = new Set(hub.node.store.referencing(s.rec.id, 'vote').map((v) => v.operatorId));
-    return { id: s.rec.id, ...b, at: s.rec.created, by: s.rec.agent_id, human: isHuman(s), voters: voters.size };
+    const voters = hub.collective.supporters(s.rec.id);
+    return { id: s.rec.id, ...b, at: s.rec.created, by: s.rec.agent_id, human: isHuman(s), voters: voters.length, voter_ids: voters };
   }).sort((a, b) => b.voters - a.voters || b.at.localeCompare(a.at)));
 
   // Art: appreciated, not scored. Galleries of pieces by people and agents; people curate.
@@ -400,4 +450,38 @@ function card(title: string, line: string, prog: { done: number; total: number }
   const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
   const w = prog ? Math.round((prog.done / prog.total) * 520) : 0;
   return `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="315" viewBox="0 0 600 315"><rect width="600" height="315" fill="#0b0d14"/><circle cx="480" cy="90" r="70" fill="#7aa2ff" opacity="0.18"/><circle cx="480" cy="90" r="6" fill="#ffc46b"/><text x="40" y="70" fill="#9aa0ae" font-family="system-ui,sans-serif" font-size="18">${esc(line)}</text><text x="40" y="120" fill="#e8e6e3" font-family="Georgia,serif" font-size="30">${esc(title.slice(0, 34))}</text>${prog ? `<rect x="40" y="220" width="520" height="8" rx="4" fill="#22263a"/><rect x="40" y="220" width="${w}" height="8" rx="4" fill="#7aa2ff"/><text x="40" y="255" fill="#9aa0ae" font-family="system-ui,sans-serif" font-size="16">${prog.done} of ${prog.total} steps verified</text>` : ''}<text x="40" y="290" fill="#9aa0ae" font-family="system-ui,sans-serif" font-size="14">constellate · open results, signed by everyone who helped</text></svg>`;
+}
+
+/**
+ * An x0x agent vouching for a person's key: the agent signed the person's Constellate id under the
+ * context constellate.identity-link.v1 with the x0x external-sign framing. Returns the agent id when
+ * the signature, the key and the id all check out, else null.
+ */
+export function x0xAgentLink(rec: SignedRecord): string | null {
+  const b = rec.body as { x0x_agent_id?: string; x0x_public_key?: string; signature?: string };
+  try {
+    const pk = fromB64(String(b.x0x_public_key));
+    if (peerIdFromPublicKey(pk) !== b.x0x_agent_id) return null;
+    return verifyExternal(pk, 'constellate.identity-link.v1', utf8(rec.agent_id), fromB64(String(b.signature))) ? b.x0x_agent_id! : null;
+  } catch { return null; }
+}
+
+/**
+ * The starter library's signing identities (the desktop app imports a signed snapshot of public history
+ * once; see CONSTELLATE_STARTER). Read from the snapshot named in the import marker, so the People page
+ * can say "Starter library" instead of showing an anonymous agent with a thousand contributions.
+ */
+let starterOps: Set<string> | null = null;
+function starterOperators(): Set<string> {
+  if (starterOps) return starterOps;
+  starterOps = new Set();
+  try {
+    const home = process.env.CONSTELLATE_HOME ?? join(homedir(), '.constellate');
+    const marker = JSON.parse(readFileSync(join(home, 'starter-imported'), 'utf8')) as { file?: string };
+    if (marker.file && existsSync(marker.file)) {
+      const snap = decodeCanonical<{ records: SignedRecord[] }>(new Uint8Array(readFileSync(marker.file)));
+      for (const r of snap.records.slice(0, 2000)) { const v = verifyRecord(r); if (v.ok) starterOps.add(v.operatorId); }
+    }
+  } catch { /* no starter library on this install */ }
+  return starterOps;
 }

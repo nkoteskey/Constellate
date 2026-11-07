@@ -22,6 +22,10 @@ export function agentConfigs({ platform = process.platform, home = homedir(), ap
   return {
     'claude-desktop': { name: 'Claude Desktop', file: join(claudeDir, 'claude_desktop_config.json'), present: existsSync(claudeDir) },
     cursor: { name: 'Cursor', file: join(home, '.cursor', 'mcp.json'), present: existsSync(join(home, '.cursor')) },
+    windsurf: { name: 'Windsurf', file: join(home, '.codeium', 'windsurf', 'mcp_config.json'), present: existsSync(join(home, '.codeium', 'windsurf')) },
+    'gemini-cli': { name: 'Gemini CLI', file: join(home, '.gemini', 'settings.json'), present: existsSync(join(home, '.gemini')) },
+    'qwen-code': { name: 'Qwen Code', file: join(home, '.qwen', 'settings.json'), present: existsSync(join(home, '.qwen')) },
+    'lm-studio': { name: 'LM Studio (Qwen, DeepSeek, Llama… on this computer)', file: join(home, '.lmstudio', 'mcp.json'), present: existsSync(join(home, '.lmstudio')) },
   };
 }
 
