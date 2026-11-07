@@ -106,8 +106,8 @@ export function registerCollectiveTools(server: McpServer, hub: Hub) {
     'Your person asked you to plan an idea for the network. Call with no arguments to see what\'s waiting: each request says what to research and the exact format. Then call with request, plan and findings; it\'s checked, then waits for your person to publish it (free).',
     {
       request: z.string().optional(),
-      plan: z.record(z.unknown()).optional().describe('In the format the request gives.'),
-      findings: z.record(z.unknown()).optional().describe('In the format the request gives.'),
+      plan: z.union([z.record(z.unknown()), z.string()]).optional().describe('In the format the request gives.'),
+      findings: z.union([z.record(z.unknown()), z.string()]).optional().describe('In the format the request gives.'),
     },
     async ({ request, plan, findings }) => {
       const agent = server.server.getClientVersion()?.name ?? 'agent';
@@ -116,7 +116,9 @@ export function registerCollectiveTools(server: McpServer, hub: Hub) {
         const waiting = await viaApp(`/api/plans/pending?agent=${encodeURIComponent(agent)}`).catch(() => { const list = hub.planner.pending().map((r) => ({ id: r.id, title: r.title, brief: hub.planner.brief(r.id) })); hub.planner.pickedUp(agentName(agent)); return list; });
         return { waiting, note: (waiting as unknown[]).length ? 'Research each one, then report it with request, plan and findings.' : 'Nothing is waiting to be planned.' };
       }
-      const report = { plan, findings };
+      // Models often send nested objects as JSON text: accept either.
+      const obj = (v: unknown) => { if (typeof v !== 'string') return v; try { return JSON.parse(v); } catch { throw new Error('plan and findings must be JSON objects in the format the request gives'); } };
+      const report = { plan: obj(plan), findings: obj(findings) };
       const r = await viaApp(`/api/plans/${request}/report`, { report, agent }).catch(async (e: Error) => { if (/open the Constellate app/.test(e.message)) return hub.planner.report(request, report, agent); throw e; }) as { status?: string; problems?: string[] };
       return { status: r.status, problems: r.problems ?? [], next: r.problems?.length ? 'Fix these and report again.' : 'Reported. Your person reviews it and publishes it from the Proposals page.' };
     });
