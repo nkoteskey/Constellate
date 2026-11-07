@@ -497,11 +497,12 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
     const failures = hub.ledger.searchFailures(q, { limit: 6 }).map((f) => ({ ...f, fixes: f.fixed_by.map((id) => { const a = hub.node.store.get(id); const b = a?.rec.body as { answer: string; headline?: string; proof?: { type: string; detail: string } } | undefined;
       return a && b ? { id, answer: b.answer, headline: b.headline, proof: b.proof, source: a.rec.evidence[0] ?? null, confirmations: hub.trust.explain(a).confirmations, domain: a.rec.context.domain } : null; }).filter(Boolean) }));
     const answers = hub.ledger.lookupAnswers(q, { limit: 3 });
+    const onX0x = await hub.x0xSkills.capabilities(q, 2).catch(() => []);
     const asksAboutWork = /happening|progress|status|how('s| is)|going|what about/i.test(q);
     const guide = asksAboutWork || !(failures.length || answers.length) ? await guide_.ask(q).catch(() => null) : null;
     const learned = hub.ledger.learned(q, { limit: 2 });
     const skills = hub.skills.find(q, 2).map((k) => ({ id: k.id, name: k.name, description: k.description, source: hub.node.store.get(k.id)?.rec.evidence[0] ?? null }));
-    return { q, failures, answers, learned, skills, guide };
+    return { q, failures, answers, learned, skills, guide, on_x0x: onX0x };
   });
 
   web.route('POST', /^\/api\/ask$/, async (_r, _m, _u, body) => guide.ask(String((await body()).question ?? '').slice(0, 500)));

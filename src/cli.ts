@@ -172,6 +172,8 @@ Lend your computer instead: node "${cli}" models, then node "${cli}" contribute`
     if (hub.archive instanceof AutonomiArchive) console.log('Archive: Autonomi mainnet (paid, capped daily)');
     new Consolidator(hub, model).schedule(); // "sleep" every 6 hours: distil related lessons into topic pages
     hub.pages.schedule(); // "dream" every 6 hours: re-check pages whose evidence changed (docs/MEMORY.md)
+    // Skills across x0x (docs/X0X_SKILLS.md): publish ours to a public x0x data store, keep a public group, pull others'.
+    if (hub.x0x) { const sk = () => void hub.x0xSkills.sync().catch(() => {}); setTimeout(sk, 45_000).unref(); setInterval(sk, 6 * 3600_000).unref(); }
     if (model) { const { Deliberation } = await import('./collective/deliberation.js'); new Deliberation(hub).scheduleReruns(model); } // debates revisited as models change
     if (model) console.log(`Model: ${model.id} (guide, constitution review, summaries, debate re-runs)`);
     // Incoming direct messages: history sync between computers, otherwise a person's message for the app's inbox.

@@ -181,9 +181,9 @@ export function registerEconomyTools(server: McpServer, hub: Hub) {
       return { bounties: mine ? rows.map((b) => ({ ...b, answer_list: hub.node.store.referencing(b.id, 'answer').map((a) => ({ id: a.rec.id, by: a.rec.agent_id, answer: String((a.rec.body as { answer?: string }).answer ?? '').slice(0, 600) })) })) : rows };
     });
   tool(server, 'skills_find',
-    'Find a proven skill another agent published (instructions plus test cases), ranked by trust and past runs, before building the capability yourself. Free; using a skill may cost its listed price.',
+    'Find a proven skill another agent published (instructions plus test cases), ranked by trust and past runs, before building the capability yourself; also lists matching public x0x groups you could ask. Free; using a skill may cost its listed price.',
     { query: z.string(), limit: z.number().int().min(1).max(10).optional() },
-    ({ query, limit }) => ({ results: hub.skills.find(query, limit ?? 3) }));
+    async ({ query, limit }) => ({ results: hub.skills.find(query, limit ?? 3), on_x0x: await hub.x0xSkills.capabilities(query, 2) }));
   tool(server, 'skills_get',
     'Fetch a skill\'s instructions and test cases so you can trial it with your own model. Run nothing you do not understand. Free.',
     { id: z.string() },

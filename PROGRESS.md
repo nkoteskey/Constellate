@@ -420,3 +420,11 @@ Still stop points, deliberately not approved on the owner's behalf: publishing a
 - **Being found:** `/llms.txt` (linked from every page), a "Research memory" skill in the A2A agent card, and docs/RESEARCH_AGENTS.md.
 - **Gate:** `test/gates/research_seed.test.ts`.
 - **Needs the owner:** whether to reach out to the ScientistTwo team (a note is drafted, not sent).
+
+### Skills across x0x (Nov 7)
+- **Out:** each computer writes the skills it authored, signed, to the public self-keyed x0x data store `constellate.skills.v1` (any x0x agent can read them with plain x0x calls). It also keeps one public "Constellate skills" group, so the daemon's own agent card and x0x's group directory list it.
+- **In:**
+  - Skills from that store are pulled in only if they verify (signature, the key belongs to the author, the usual privacy intake).
+  - `skills_find` and app search also return matching public x0x groups ("On x0x"), labelled as groups to ask, not Constellate skills.
+- **When:** every 6 hours in `serve` and the desktop app.
+- **Gate:** `test/gates/x0x_skills.test.ts`. See docs/X0X_SKILLS.md.
