@@ -21,3 +21,23 @@ jobs:
       - name: Install Chromium for the Phase 6 browser gate
         run: npm install --no-save playwright@1.63.0 && npx playwright install --with-deps chromium
       - run: npm test
+
+  # The image MCP directories run (Docker MCP Catalog, Glama): build it, then check it answers a
+  # handshake on a fresh data volume with no x0x daemon, ends when the client hangs up, and keeps
+  # its data for the next run.
+  container:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: docker build -t constellate-mcp .
+      - name: First run (imports the starter library)
+        run: node scripts/container-smoke.mjs docker run -i --rm -v constellate-data:/data constellate-mcp
+      - name: Second run on the same volume
+        run: |
+          node scripts/container-smoke.mjs docker run -i --rm -v constellate-data:/data constellate-mcp
+          docker run --rm -v constellate-data:/data --entrypoint ls constellate-mcp /data | grep -qx starter-imported
+      - name: No container left running
+        run: test -z "$(docker ps -q)"

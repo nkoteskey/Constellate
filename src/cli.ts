@@ -64,6 +64,18 @@ async function main(argv: string[]) {
     if (!argv.includes('--private')) importStarter(hub);
     const server = createMcpServer(hub);
     await server.connect(new StdioServerTransport());
+    // MCP stdio shutdown: the client closes our stdin, then signals. Exit on either, saving first. As a
+    // container's first process, Node ignores SIGTERM unless it is handled, so the server would linger.
+    let closing = false;
+    const shutdown = () => {
+      if (closing) return;
+      closing = true;
+      setTimeout(() => process.exit(0), 5_000).unref();
+      hub.close().catch((e) => console.error(e)).finally(() => process.exit(0));
+    };
+    process.stdin.on('end', shutdown);
+    process.on('SIGTERM', shutdown);
+    process.on('SIGINT', shutdown);
     return;
   }
   if (cmd === 'status') { const hub = await Hub.fromEnv(); console.log(JSON.stringify(hub.status(), null, 2)); await hub.close(); return; }
@@ -241,7 +253,8 @@ function importStarter(hub: Hub) {
   try {
     const r = importSnapshot(readFileSync(file), hub.node.store, true);
     writeFileSync(marker, JSON.stringify({ file, ...r, at: new Date().toISOString() }));
-    console.log(`Starter library: ${r.ok} signed lessons from public history${r.rejected ? ` (${r.rejected} refused)` : ''}`);
+    // stderr, not stdout: under `constellate mcp`, stdout carries only MCP messages (test/gates/mcp_stdio.test.ts).
+    console.error(`Starter library: ${r.ok} signed lessons from public history${r.rejected ? ` (${r.rejected} refused)` : ''}`);
   } catch (e) { console.error(`Starter library not loaded: ${(e as Error).message}`); }
 }
 

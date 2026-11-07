@@ -269,6 +269,13 @@ Real money, **ready and off by default** (docs/MAINNET.md):
 - The old page fades out on click. The new one is drawn hidden and fades in once no request is in flight and it has stopped changing (at most 0.9 s). Reduce motion turns the fades off.
 - Measured with a 300 ms delay on every request, the layout shift is now 0 on People (was 0.47) and Problems (was 0.08), and 0.065 on Lend your computer (was 0.08).
 
+### A container image, and two stdio fixes (Nov 7)
+- **ClawHub:** the `constellate` skill 0.1.0 is published. `distribution/LISTINGS.md` tracks every listing and what each one still needs.
+- **`Dockerfile`** for the directories that run servers in containers (Glama, the Docker MCP Catalog). It's the same build as the npm package, starter library included, with your data in a `/data` volume. With no x0x daemon to reach, it works from the starter library and your own records. CI builds the image and checks it answers an MCP handshake, ends when the client hangs up, and keeps its data between runs (`scripts/container-smoke.mjs`).
+- **Fixed: the first run printed a line on stdout.** "Starter library: N signed lessons…" went to stdout, which under `constellate mcp` must carry only MCP messages. Strict clients and directory checks would reject the server on its first start. The line now goes to stderr. npm 0.1.0 still has the bug, so it needs a 0.1.1 release.
+- **Fixed: the server didn't end when its client did.** With a daemon's event stream open, closing stdin left it running. Running as a container's first process, it ignored SIGTERM, so `docker stop` had to kill it. It now saves and exits on either.
+- `test/gates/mcp_stdio.test.ts` starts the server the way clients do and covers all three. Each part fails without its fix.
+
 ## Summary of what needs a human
 1. **Live x0x (blocks confidence in every phase):** run the gates against two real `x0xd` daemons. Confirm ML-DSA signature interop between `/agent/sign` and noble, `/stores` and `/task-lists` field names, contacts → pre-trusted operators, and Spaces/DMs for chat.
 2. **Gate 1 behaviour:** `ANTHROPIC_API_KEY=… npx tsx evals/gate1.ts 3`.
@@ -279,7 +286,8 @@ Real money, **ready and off by default** (docs/MAINNET.md):
 7. **Safety:** review the constitution keyword rules and attach a model reviewer before going public (stop point, not crossed).
 8. **Gate 6 for real:** five first-time users, unaided, timed to first contribution.
 9. **Open questions from the sketch, with current defaults:** hub name (working name "Constellate"); MCP server runs locally per agent; deposit and pricing levels (test values only); scrubbing strictness (strict by default in `fromEnv`, preview on); humans can browse the ledger (public reads); reputation bootstraps without a paywall (pre-trusted seeds plus confirming work; deposits optional).
-10. **Desktop release:** code-signing certificates (Apple Developer ID, Windows) to remove first-launch warnings; then tag `v0.1.0` and publish the drafted release. Check the app's x0x on a real home network.
+10. **Desktop release:** `v0.1.0` is tagged (Nov 7) and its release drafted by the Desktop workflow; review it and publish. Code-signing certificates (Apple Developer ID, Windows) would remove first-launch warnings. Check the app's x0x on a real home network.
+11. **npm 0.1.1:** publish the stdio fixes (security-key sign-in), then update the MCP Registry entry and the ClawHub skill version.
 
 ## Amendment 1 (Nov 6, 2026)
 Folded into the existing phases; no completed phase was restarted. DESIGN.md (updated Nov 6) is now in the repo and the build was checked against it (see below).
