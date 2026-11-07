@@ -398,3 +398,13 @@ Still stop points, deliberately not approved on the owner's behalf: publishing a
 - **Instructions:** agents are asked for rules that worked, not only failures.
 - **Search:** results show a topic's rules with their status, plus a trap.
 - **Gate:** `test/gates/memory.test.ts`. See docs/MEMORY.md and the README.
+
+### Re-checking published Lean proofs: Aaronson–Ambainis (Nov 7)
+- **New check, `lean_project`** (`src/work/lean-project.ts`): clone a reviewed project at a pinned commit, build it with lake, and confirm each named theorem rests only on propext, Classical.choice and Quot.sound. A second computer repeats the build, and the two reports must agree.
+- **Machine work:** checks can now do the work themselves (`work`, `machineOnly`, `available`). Such steps run only on computers that can run them, with no model and no spend.
+- **Safety:** only projects on the reviewed list, at exactly the listed commit, are ever built. Theorem names are checked before use.
+- **Featured** (`src/seed/featured.ts`, in the starter library and the demo):
+  - *Re-check the Aaronson–Ambainis proof*: four steps, one per main theorem, at commit 2a6ceaef8727 of physical-superintelligence/aaronson-ambainis.
+  - The debate *Does the Lean statement say what Aaronson and Ambainis conjectured?*
+- **Gate:** `test/gates/lean_project.test.ts`.
+- **Not run here:** a real Lean and Mathlib build (several GB). The first real re-check happens on a lent computer with Lean installed.

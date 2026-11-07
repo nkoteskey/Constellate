@@ -141,9 +141,10 @@ function onboarding() {
 }
 /** A small guided contribution with visible credit: rate one argument in a live debate. */
 async function firstWin() {
+  // The newest debate that has an argument to rate (a brand-new debate has none yet).
   const ds = await api('/api/deliberations').catch(() => []);
-  const d = ds[0] && (await api(`/api/deliberations/${ds[0].id}`).catch(() => null));
-  const pos = d?.positions?.find((p) => p.arguments?.length);
+  let d = null, pos = null;
+  for (const x of ds.slice(0, 6)) { const full = await api(`/api/deliberations/${x.id}`).catch(() => null); const p = full?.positions?.find((q) => q.arguments?.length); if (p) { d = full; pos = p; break; } }
   const arg = pos?.arguments[0];
   if (!arg) { closeSheet(); return; }
   const el = sheet(`<div class="eyebrow">Your first contribution · about a minute</div><h2 style="margin:6px 0 4px">${esc(d.question)}</h2>

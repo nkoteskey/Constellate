@@ -17,6 +17,7 @@ import { Consolidator } from './graph/consolidate.js';
 import { SkillCard } from './economy/skills.js';
 import { settleFounding } from './economy/economy.js';
 import { Seeder } from './seed/seeder.js';
+import { seedFeatured } from './seed/featured.js';
 import { GitHubSource } from './seed/github.js';
 import { IssueSeeder, IssueDump } from './seed/issues.js';
 import { RecordStore } from './store/records.js';
@@ -108,6 +109,9 @@ export async function seedDemo(opts: { steps?: number; knowledge?: number | 'all
     realm: 'maths_physics', definition_of_done: { verifier: 'exact', description: 'each scan’s growth measure reproduced' },
     chunks: NAVIER.map((v, i) => ({ key: `family-${i + 1}`, title: `Initial-condition family ${i + 1}`, prompt: `Scan vorticity family ${i + 1} and report growth.`, check: { expected: v } })),
   })).problem!.id;
+
+  // Featured: re-check the Aaronson–Ambainis proof, and debate its statement (src/seed/featured.ts).
+  await seedFeatured(agents[1]);
 
   // Life sciences gets a human safety review before work starts.
   await new Constitution(reviewerHub).humanReview(antibiotic, 'approve', 'Screening approved medicines against a published target: benign. Each checkpoint still gets reviewed.');

@@ -56,10 +56,11 @@ export class Worker {
       for (const r of c.pending) {
         const rb = r.rec.body as unknown as TaskResultBody;
         if (rb.family === this.runner.family || r.operatorId === me) continue;
-        if (!this.charge()) return 'paused';
+        if (verifier.available && !verifier.available()) continue; // e.g. no Lean here: leave it for a computer that has it
+        if (!verifier.machineOnly && !this.charge()) return 'paused';
         const chunk = st.problem.chunks.find((x) => x.key === c.key)!;
         const machine = await verifier.check(chunk.check, rb.output);
-        const opinion = machine.ok
+        const opinion = verifier.machineOnly ? (machine.ok ? 'YES' : 'NO') : machine.ok
           ? await this.runner.run(`You are verifying another model's answer.\nTask: ${chunk.prompt}\nAnswer: ${rb.output}\nReply YES if the answer is correct, otherwise NO and why.`, { maxTokens: 512 })
           : 'NO';
         const agrees = machine.ok && /^\s*yes\b/i.test(opinion);
@@ -94,13 +95,19 @@ export class Worker {
     for (const c of st.chunks) {
       if (c.checkpoint || c.pending.length) continue;
       const chunk = st.problem.chunks.find((x) => x.key === c.key)!;
-      if (chunk.needs.size !== 'any' && chunk.needs.size !== this.runner.size) continue;
+      // Machine work (e.g. rebuilding a Lean proof) runs on computers that can do it, whatever their model size.
+      if (verifier.work) { if (verifier.available && !verifier.available()) continue; }
+      else if (chunk.needs.size !== 'any' && chunk.needs.size !== this.runner.size) continue;
       const taskId = await this.board.ensure(`[${problemId.slice(0, 12)}] ${chunk.title}`, { problem: problemId, chunk: c.key, size: chunk.needs.size });
-      if (!this.charge()) return 'paused';
+      if (!verifier.work && !this.charge()) return 'paused';
       await this.board.claim(taskId, this.hub.node.agentId);
-      const output = await this.runner.run(chunk.prompt);
-      const body: TaskResultBody = { problem: problemId, chunk: c.key, output: output.slice(0, 20_000), model: this.runner.id, family: this.runner.family };
-      await this.hub.node.submit({ kind: 'task_result', context: { task: `${st.problem.title} / ${c.key}`, domain: [st.problem.realm], environment: this.runner.id }, body: body as unknown as Record<string, unknown>, refs: [problemId] }, { publish: true });
+      let output: string, model = this.runner.id, family = this.runner.family;
+      if (verifier.work) {
+        try { output = await verifier.work(chunk.check); } catch (e) { output = `could not complete: ${(e as Error).message.slice(0, 2000)}`; }
+        model = 'lean-kernel (lake build)'; family = 'machine';
+      } else output = await this.runner.run(chunk.prompt);
+      const body: TaskResultBody = { problem: problemId, chunk: c.key, output: output.slice(0, 20_000), model, family };
+      await this.hub.node.submit({ kind: 'task_result', context: { task: `${st.problem.title} / ${c.key}`, domain: [st.problem.realm], environment: model }, body: body as unknown as Record<string, unknown>, refs: [problemId] }, { publish: true });
       return 'worked';
     }
     return 'idle';

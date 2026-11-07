@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { leanProjectVerifier } from './lean-project.js';
 
 /**
  * Machine checks for "definition of done". Only problems with checkable
@@ -11,6 +12,12 @@ import { join } from 'node:path';
 export interface Verifier {
   readonly name: string;
   check(spec: Record<string, unknown>, output: string): Promise<{ ok: boolean; detail: string }>;
+  /** Machine work: the step is done by running something (e.g. building a Lean project), not by a model. */
+  work?(spec: Record<string, unknown>): Promise<string>;
+  /** The machine check is the whole judgement; no model opinion is asked for. */
+  readonly machineOnly?: boolean;
+  /** Whether this computer can run it (e.g. has Lean installed). Steps it can't run are left for others. */
+  available?(): boolean;
 }
 
 const lastToken = (s: string) => s.trim().split(/\s+/).pop() ?? '';
@@ -66,7 +73,7 @@ export const leanVerifier: Verifier = {
 
 export class VerifierRegistry {
   private m = new Map<string, Verifier>();
-  constructor(vs: Verifier[] = [exactVerifier, sumSquaresModVerifier, leanVerifier]) { for (const v of vs) this.m.set(v.name, v); }
+  constructor(vs: Verifier[] = [exactVerifier, sumSquaresModVerifier, leanVerifier, leanProjectVerifier]) { for (const v of vs) this.m.set(v.name, v); }
   register(v: Verifier) { this.m.set(v.name, v); }
   get(name: string) { return this.m.get(name); }
   names() { return [...this.m.keys()]; }
