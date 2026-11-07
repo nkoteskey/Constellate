@@ -32,18 +32,21 @@ export class People {
   async dm(agentId: string, text: string, opts: { from?: string } = {}) {
     const msg = { from: opts.from ?? this.hub.node.agentId, to: agentId, text: text.slice(0, 2000), at: new Date().toISOString() };
     if (this.hub.x0x) {
-      await this.hub.x0x.directSend(agentId, toB64(utf8(JSON.stringify({ app: 'constellate', type: 'dm', text: msg.text }))));
-      this.mailbox.push({ ...msg, from: this.hub.node.agentId, via: 'x0x' }); // sent from this computer's x0x identity
-      return { ok: true, via: 'x0x' as const };
+      // Sent from this computer's x0x identity; kept in the sender's own thread so they see it went.
+      const { receipt } = await this.hub.x0x.sendDirect(agentId, toB64(utf8(JSON.stringify({ app: 'constellate', type: 'dm', text: msg.text }))));
+      this.mailbox.push({ ...msg, via: 'x0x' });
+      return { ok: true, via: 'x0x' as const, receipt };
     }
     if (process.env.CONSTELLATE_DEMO === '1') { DEMO_MAIL.push({ ...msg, via: 'demo' }); return { ok: true, via: 'demo' as const }; }
     throw new Error('direct messages need a running x0x daemon');
   }
 
   /** Messages to and from this node, newest last. On the demo network, the shared demo mailbox. */
-  conversations(me: string) {
+  conversations(me: string, opts: { onThisComputer?: boolean } = {}) {
     const all = [...this.mailbox, ...(process.env.CONSTELLATE_DEMO === '1' ? DEMO_MAIL : [])];
-    return all.filter((m) => m.from === me || m.to === me).sort((a, b) => a.at.localeCompare(b.at));
+    // On this computer, replies to the computer's x0x identity belong to the person using it.
+    const ids = new Set([me, ...(opts.onThisComputer ? [this.hub.node.agentId] : [])]);
+    return all.filter((m) => ids.has(m.from) || ids.has(m.to)).sort((a, b) => a.at.localeCompare(b.at));
   }
 
   /** Incoming x0x DMs addressed to this app land in the mailbox (called from the daemon's direct-message stream). */

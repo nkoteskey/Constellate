@@ -30,7 +30,7 @@ export class HistorySync {
   private state(): { last?: string } { try { return JSON.parse(readFileSync(this.stateFile, 'utf8')); } catch { return {}; } }
   private save(s: { last?: string }) { mkdirSync(dirname(this.stateFile), { recursive: true }); writeFileSync(this.stateFile, JSON.stringify(s)); }
 
-  private send(to: string, m: Msg) { return this.hub.x0x!.directSend(to, toB64(utf8(JSON.stringify({ app: 'constellate', ...m })))); }
+  private send(to: string, m: Msg) { return this.hub.x0x!.sendDirect(to, toB64(utf8(JSON.stringify({ app: 'constellate', ...m })))); }
 
   /** Ask up to `peers` for what this computer is missing. */
   async request(peers: string[]) {

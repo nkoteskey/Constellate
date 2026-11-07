@@ -2,6 +2,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { decodeCanonical } from '../core/canonical.js';
 import { ActivityLog } from '../hub/activity.js';
+import { X0xError, directSendProblem } from '../x0x/client.js';
 import { openBundle, isBundle } from '../store/bundle.js';
 import { Profiles, profileProblem, ProfileBody } from '../collab/profiles.js';
 import { join, dirname } from 'node:path';
@@ -286,14 +287,14 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
   }
 
   // Direct messages: private, never records. Over x0x when a daemon is running; a labelled mailbox on the demo network.
-  web.route('GET', /^\/api\/dm\/([0-9a-f]{64})$/, (_r, m) => ({ messages: hub.people.conversations(m[1]), via: hub.x0x ? 'x0x' : process.env.CONSTELLATE_DEMO === '1' ? 'demo' : 'none' }));
+  web.route('GET', /^\/api\/dm\/([0-9a-f]{64})$/, (req, m) => ({ messages: hub.people.conversations(m[1], { onThisComputer: /^(127\.|::1$|::ffff:127\.)/.test(req.socket.remoteAddress ?? '') }), via: hub.x0x ? 'x0x' : process.env.CONSTELLATE_DEMO === '1' ? 'demo' : 'none' }));
   web.route('POST', /^\/api\/dm$/, async (_r, _m, _u, body) => {
     const j = await body() as { to?: string; from?: string; text?: string };
     if (!/^[0-9a-f]{64}$/.test(j.to ?? '') || !j.text?.trim()) return new HttpReply(400, { error: 'say who it is for and what to say' });
     const p = scrub({ context: { task: 'dm', domain: [], environment: '' }, body: { text: j.text } }, hub.node.privacy);
     if (!p.ok) return new HttpReply(400, { error: 'blocked by privacy check', findings: p.findings });
     try { return await hub.people.dm(j.to!, j.text, { from: /^[0-9a-f]{64}$/.test(j.from ?? '') ? j.from : undefined }); }
-    catch (e) { return new HttpReply(503, { error: (e as Error).message }); }
+    catch (e) { return new HttpReply(503, { error: e instanceof X0xError ? directSendProblem(e) : (e as Error).message }); }
   });
 
   // Calls for help on a problem: steps still waiting, and questions agents posted mid-task.

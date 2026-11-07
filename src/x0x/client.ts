@@ -16,7 +16,18 @@ export interface X0xTask { id: string; title: string; description?: string | nul
 export interface DiscoveredGroup { id: string; name: string; description: string; tags: string[]; members: number; owner: string; updated: number }
 
 export class X0xError extends Error {
-  constructor(readonly status: number, message: string) { super(`x0x ${status}: ${message}`); }
+  constructor(readonly status: number, readonly code: string) { super(`x0x ${status}: ${code}`); }
+}
+
+/** What a failed direct message means, in plain words (x0x docs: "Direct send error codes"). */
+export function directSendProblem(e: unknown): string {
+  const code = e instanceof X0xError ? e.code : '';
+  if (code === 'recipient_key_unavailable') return 'Couldn’t reach them: their agent hasn’t announced itself anywhere your computer can see on x0x. It may be offline, or not set up for direct messages. Nothing was sent; try again later.';
+  if (code === 'recipient_key_invalid') return 'x0x is still catching up on their keys. Nothing was sent; try again in a minute.';
+  if (code === 'recipient_pairing_denied') return 'x0x refused to send to that agent on this machine. Nothing was sent.';
+  if (code === 'payload_too_large') return 'That message is too long for an x0x direct message. Try a shorter one.';
+  if (code === 'timeout') return 'x0x took too long to confirm delivery. It may or may not have arrived.';
+  return `x0x couldn’t send it (${e instanceof Error ? e.message : String(e)}).`;
 }
 
 export class X0xClient {
@@ -171,7 +182,38 @@ export class X0xClient {
     return () => ctl.abort();
   }
 
-  directSend(agentId: string, payloadB64: string) { return this.req<{ ok: true }>('POST', '/direct/send', { agent_id: agentId, payload: payloadB64 }); }
+  directSend(agentId: string, payloadB64: string, opts: { durable?: boolean } = {}) {
+    return this.req<{ ok: true; path?: string }>('POST', '/direct/send', { agent_id: agentId, payload: payloadB64, ...(opts.durable === false ? { require_durable_app_ack: false } : {}) });
+  }
+
+  /** Ask the network to look an agent up, and wait briefly for its card (x0x: POST /agents/find, GET /agents/discovered?wait). */
+  async findAgent(agentId: string, waitMs = 8000) {
+    await this.req('POST', `/agents/find/${agentId}`, {}).catch(() => {});
+    const ctl = AbortSignal.timeout(waitMs);
+    const token = this.token;
+    await fetch(`${this.baseUrl}/agents/discovered/${agentId}?wait=true`, { signal: ctl, headers: token ? { authorization: `Bearer ${token}` } : {} }).catch(() => {});
+  }
+
+  /**
+   * A direct message that copes with strangers: if x0x doesn't know the recipient yet, look them up and try
+   * once more; if they can't send delivery receipts (an older x0x), send without asking for one.
+   * Returns whether a delivery receipt came back.
+   */
+  async sendDirect(agentId: string, payloadB64: string): Promise<{ receipt: boolean }> {
+    const attempt = async (): Promise<{ receipt: boolean }> => {
+      try { await this.directSend(agentId, payloadB64); return { receipt: true }; }
+      catch (e) {
+        if (e instanceof X0xError && e.code === 'recipient_ack_semantics_unavailable') { await this.directSend(agentId, payloadB64, { durable: false }); return { receipt: false }; }
+        throw e;
+      }
+    };
+    try { return await attempt(); }
+    catch (e) {
+      if (!(e instanceof X0xError) || e.code !== 'recipient_key_unavailable') throw e;
+      await this.findAgent(agentId);
+      return attempt();
+    }
+  }
 
   constitution() { return this.req<Record<string, unknown>>('GET', '/constitution'); }
 }

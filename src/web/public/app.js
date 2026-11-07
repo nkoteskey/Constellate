@@ -54,8 +54,9 @@ if (!STATIC) try {
 // ── Direct messages: private, never records. Over x0x from the live app; not in the static preview. ──
 async function dmSheet(to, opts = {}) {
   if (STATIC) { toast('Direct messages need the live app: they travel over x0x, privately, and this preview isn’t connected.', 5200); return; }
-  const meId = hasIdentity() ? (await ID()).identity().agentId : null;
-  const load = async () => (meId ? (await api(`/api/dm/${meId}`)).messages.filter((m) => m.to === to || m.from === to) : []);
+  // Who you are is read each time: sending your first message creates your identity, and the thread must follow.
+  let meId = hasIdentity() ? (await ID()).identity().agentId : null;
+  const load = async () => { if (!meId && hasIdentity()) meId = (await ID()).identity().agentId; return meId ? (await api(`/api/dm/${meId}`)).messages.filter((m) => m.to === to || m.from === to) : []; };
   const el = sheet(`<div class="spread"><div class="eyebrow">Message ${esc(opts.name ?? short(to))}</div><button class="btn ghost sm" data-close>Close</button></div>
     <p class="faint" style="font-size:12.5px;margin:6px 0 12px">Private: sent over x0x direct messages, never stored as a public record.</p>
     <div class="feed" id="dm-list" style="max-height:40vh;overflow:auto"></div>
@@ -66,9 +67,14 @@ async function dmSheet(to, opts = {}) {
     e.preventDefault();
     const text = $('#dm-text', el).value.trim(); if (!text) return;
     const from = meId ?? (await ID()).identity().agentId;
+    const btn = $('#dm-form button', el); btn.disabled = true; btn.textContent = 'Sending…';
     const r = await api('/api/dm', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ to, from, text }) }).catch((x) => ({ error: x.message }));
-    if (r.error) { toast(r.error, 5200); return; }
-    $('#dm-text', el).value = ''; draw();
+    btn.disabled = false; btn.textContent = 'Send';
+    if (r.error) { toast(r.error, 7000); return; } // the draft stays, so they can try again
+    $('#dm-text', el).value = '';
+    toast(r.via === 'x0x' ? (r.receipt ? 'Delivered over x0x.' : 'Sent over x0x (their x0x doesn’t send delivery receipts).') : 'Sent.');
+    opts.onSent?.();
+    await draw();
   };
   draw();
 }
@@ -819,7 +825,12 @@ async function openGroups(slot) {
       ${g.tags.length ? `<div class="row" style="gap:6px;margin-top:8px">${g.tags.slice(0, 6).map((t) => `<span class="chip sm">${esc(t)}</span>`).join('')}</div>` : ''}
       ${g.owner ? `<div class="row" style="margin-top:10px"><button class="btn sm" data-intro="${esc(g.owner)}" data-name="${esc(g.name.slice(0, 40))}">Introduce yourself</button></div>` : ''}</div>`).join('')}</div>` : `<p class="muted">Nothing listed publicly under those topics yet. When groups appear, they show here.</p>`}
     ${ours.length ? `<p class="faint" style="font-size:12.5px;margin-top:10px">Constellate’s own problem spaces are listed too (${ours.length}), so others can find us the same way.</p>` : ''}`;
-  $$('[data-intro]', slot).forEach((b) => (b.onclick = () => dmSheet(b.dataset.intro, { name: `the owner of ${b.dataset.name}`, draft: intro })));
+  const introduced = () => ls.get('introduced', []);
+  $$('[data-intro]', slot).forEach((b) => {
+    const mark = () => { b.textContent = 'Introduced ✓'; b.classList.add('ghost'); };
+    if (introduced().includes(b.dataset.intro)) mark();
+    b.onclick = () => dmSheet(b.dataset.intro, { name: `the owner of ${b.dataset.name}`, draft: introduced().includes(b.dataset.intro) ? '' : intro, onSent: () => { ls.set('introduced', [...new Set([...introduced(), b.dataset.intro])]); mark(); } });
+  });
 }
 
 /** Me: your public profile, hosted by this computer's x0x agent. Only a public handle, never a real name. */
