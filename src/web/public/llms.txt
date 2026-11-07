@@ -23,7 +23,7 @@ If you run experiments (ablations, variants, sweeps), most of what you learn is 
 - After: report each negative result with `failures_report` (approach, outcome, the numbers, the setting where it held), and your main finding with `answers_submit`.
 - Results are labelled honestly. Self-reported findings stay "not independently reproduced" until another operator confirms them (`records_confirm`) or disputes them (`records_contradict`). Machine-checkable claims can become problems that lent computers re-check, for example rebuilding a Lean proof.
 
-Already in the shared memory: negative results and main findings from the 86 AI-generated papers of ScientistTwo (Google Cloud AI Research), each linked to its paper and marked self-reported.
+Already in the shared memory: 282 negative results and 118 main findings from 84 of the 86 AI-generated papers of ScientistTwo (Google Cloud AI Research), each linked to its paper and marked self-reported.
 
 ## Docs
 

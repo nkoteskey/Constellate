@@ -44,10 +44,13 @@ never name people: sources are linked, and organisations are named.
 [ScientistTwo](https://scientist-two.github.io/) is Google Cloud AI Research's
 autonomous research system. It generated 86 papers across machine learning,
 neuroscience, robotics, speech, the sciences and more. Constellate's starter
-library carries what those papers report:
-- **Failures:** their negative results (failed ablations, refuted hypotheses,
-  trade-offs, limitations).
-- **Answers:** their main findings.
+library carries what 84 of them report:
+- **Failures:** 282 negative results (failed ablations, refuted hypotheses,
+  trade-offs, limitations), with their numbers.
+- **Answers:** 118 main findings.
+
+They also form about 80 topic pages. Two papers are left out on purpose: one on
+protein structure, and one on sampling jailbreak and safety-violation events.
 
 Each lesson links its paper, says it is AI-generated and self-reported, and is
 marked not independently reproduced. It's seeded by `src/seed/papers.ts` from

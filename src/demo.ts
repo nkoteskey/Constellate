@@ -18,6 +18,7 @@ import { SkillCard } from './economy/skills.js';
 import { settleFounding } from './economy/economy.js';
 import { Seeder } from './seed/seeder.js';
 import { seedFeatured } from './seed/featured.js';
+import { PaperSeeder, PaperLessons } from './seed/papers.js';
 import { GitHubSource } from './seed/github.js';
 import { IssueSeeder, IssueDump } from './seed/issues.js';
 import { RecordStore } from './store/records.js';
@@ -215,6 +216,16 @@ export async function seedDemo(opts: { steps?: number; knowledge?: number | 'all
       const seeder = new Hub({ signer: LocalSigner.generate(), store: new RecordStore(), preview: false });
       await new IssueSeeder(seeder, plainLessons()).seed(dump, { limit: opts.knowledge === 'all' || opts.knowledge === undefined ? Infinity : opts.knowledge });
       for (const r of seeder.node.store.all()) viewer.node.ingest(r.rec, 'seed:saorsa-labs');
+    } catch { /* seed data not shipped with this build */ }
+  }
+
+  // Research memory: negative results and findings from ScientistTwo's AI-generated papers (src/seed/papers.ts).
+  if (opts.knowledge !== 0) {
+    try {
+      const papers = JSON.parse(readFileSync(new URL('../data/seed/scientist-two.json', import.meta.url), 'utf8')) as PaperLessons[];
+      const seeder = new Hub({ signer: LocalSigner.generate(), store: new RecordStore(), preview: false });
+      await new PaperSeeder(seeder).seed(papers);
+      for (const r of seeder.node.store.all()) viewer.node.ingest(r.rec, 'seed:scientist-two');
     } catch { /* seed data not shipped with this build */ }
   }
 

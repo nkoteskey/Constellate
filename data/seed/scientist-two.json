@@ -1,5 +1,210 @@
 [
  {
+  "paper": "applications__Others_DR-LEF",
+  "title": "DR-LEF: Log-Euclidean SPD Riemannian Geometry and Calibrated Tsallis Entropic Discrepancy for Any-to-Any Multi-Spectral Object Re-Identification",
+  "url": "https://scientist-two.github.io/generated-papers/applications/Others_DR-LEF.pdf",
+  "tags": [
+   "re-identification",
+   "multi-spectral",
+   "riemannian-geometry",
+   "loss-design",
+   "metric-learning"
+  ],
+  "summary": "DR-LEF replaces binary-target orthogonality loss and unnormalized Euclidean triplet ratios in modality-decoupled multi-spectral ReID with Log-Euclidean SPD tangent-space orthogonality plus a calibrated Tsallis entropic discrepancy, reporting +3.2 mAP matched and +2.2 mAP mismatched on RGBNT201 (90.3 mAP with re-ranking) and +2.7/+5.7 mAP on MSVR310.",
+  "lessons": [
+   {
+    "kind": "failure",
+    "approach": "Conformal Geodesic Cross-Ratio (CGCR) geometry in place of Log-Euclidean tangent orthogonality for covariance decoupling",
+    "outcome": "wrong_result",
+    "error_summary": "The paper reports CGCR collapses the query-gallery distance matrix's effective rank by about 74% (12.7 to 3.5), driving retrieval below 11% mAP, so the module was pruned. Voiculescu Free Entropy Alignment is also reported to yield no gain and leave shared-specific mutual information unchanged.",
+    "applies_when": "Modality-decoupled multi-spectral ReID on RGBNT201 / MSVR310 with covariance-based orthogonality constraints"
+   },
+   {
+    "kind": "failure",
+    "approach": "Rigid binary (1.0/0.0) MSE orthogonality target (ROL) and unnormalized Euclidean covariance cross-correlation as the decoupling constraint",
+    "outcome": "wrong_result",
+    "error_summary": "On RGBNT201 the binary-MSE target reaches only 26.2 vs 37.2 mAP on mismatched+re-ranking relative to Log-Euclidean (21.0 vs 26.2 mismatch-average mAP), and the paper attributes this to dimensional collapse; a Cholesky tangent variant also does not transfer to mismatched settings (21.6 mAP).",
+    "applies_when": "High-dimensional modality-decoupled feature spaces evaluated under query-gallery modality mismatch"
+   },
+   {
+    "kind": "failure",
+    "approach": "One loss-integration strategy for both object domains, and temperature or entropic-index settings outside the calibrated range",
+    "outcome": "wrong_result",
+    "error_summary": "No single integration wins: hybrid anchor retention beats pure replacement on deformable persons (75.6 vs 69.6% matched mAP) but loses on rigid vehicles (48.7 vs 50.9%). Temperature at or above 0.5 causes gradient starvation (57.6x smaller norm, CV 1.18), and the Shannon limit q=1.0 gives a peak gradient spike of 11577.74.",
+    "applies_when": "Cross-domain multi-spectral ReID training with entropic discrepancy losses"
+   },
+   {
+    "kind": "answer",
+    "question": "How do I stop modality-decoupling losses from collapsing features and spiking gradients in multi-spectral re-identification?",
+    "answer": "Enforce feature orthogonality in the Lie algebra tangent space of SPD covariance matrices instead of against binary scalar targets, and compute the discrepancy term on temperature-normalized probability simplexes. Matrix-log projection avoids rigid magnitude bounds (mismatch+re-ranking mAP 37.2 vs 28.4 for binary-MSE on RGBNT201), and calibrated Tsallis with temperature 0.05 and index 1.5 cuts gradient variance over 10x, gradient CV about 9x, and worst-case spikes about 25x."
+   },
+   {
+    "kind": "answer",
+    "question": "Should a new geometric loss replace the baseline loss outright or be blended with it?",
+    "answer": "Match the integration strategy to the rigidity of the target class rather than picking one globally. The paper found deformable targets need baseline anchors retained (persons, RGBNT201: 75.6 vs 69.6% matched mAP, intra-class variance 0.1031 vs 0.1736), while rigid targets do better with full replacement (vehicles, MSVR310: 50.9 vs 48.7% matched and 30.5 vs 28.1% mismatch, variance 0.1562 vs 0.2193)."
+   }
+  ]
+ },
+ {
+  "paper": "applications__Sciences_SYMP-MONGE",
+  "title": "SYMP-MONGE: Continuous Symplectic Contact Dynamics and Monge-Ampere Density Transport for Virtual Screening under Structural Uncertainty",
+  "url": "https://scientist-two.github.io/generated-papers/applications/Sciences_SYMP-MONGE.pdf",
+  "tags": [
+   "virtual-screening",
+   "drug-discovery",
+   "contrastive-learning",
+   "geometric-deep-learning",
+   "optimal-transport"
+  ],
+  "summary": "SYMP-MONGE adds a differentiable induced-fit contact flow, a symplectic sub-pocket hypergraph, a quaternionic spectral matcher and an entropic optimal-transport channel to a contrastive pocket-ligand retriever, reporting mean AUROC 0.9467, BEDROC 0.6532 and EF1% 40.17% on the 38-target DUD-E benchmark (vs 0.8734 / 0.6046 / 39.08% for AANet) at 8.05 s/epoch and 1.01 GB VRAM.",
+  "lessons": [
+   {
+    "kind": "failure",
+    "approach": "Static-embedding hyperbolic dense retrieval (HypSeek) carried from co-crystallized holo pockets to blind AlphaFold2 structures",
+    "outcome": "wrong_result",
+    "error_summary": "The paper reports HypSeek is the strongest baseline on holo pockets (AUROC 0.956 / BEDROC 0.772 / EF1% 48.5 vs 0.955 / 0.738 / 47.2) but its crisp static pocket geometry does not survive structural uncertainty: EF1% drops 41.9 points moving to blind AlphaFold2 models, a 14.5 EF1%-point deficit on the five-setting average.",
+    "applies_when": "Structure-based virtual screening evaluated on apo or AlphaFold2-predicted structures rather than holo complexes"
+   },
+   {
+    "kind": "failure",
+    "approach": "Geometric channels combined with a naive max-over-candidate-cavities aggregation under blind pocket detection",
+    "outcome": "wrong_result",
+    "error_summary": "The authors report an honest trade-off: under max-over-candidates the geometric channels slightly lower blind early enrichment (apo-pred blind BEDROC 0.6317 down to 0.5781) because a few spurious predicted cavities inflate the per-candidate maximum; a volume-penalized aggregation is reported to remove the artifact.",
+    "applies_when": "Blind screening where pocket candidates come from a cavity detector with no co-crystallized ligand"
+   },
+   {
+    "kind": "failure",
+    "approach": "Transferring DUD-E contrastive-retrieval gains zero-shot to leakage-filtered random-real-molecule decoy pools (BayesBind, PLINDER)",
+    "outcome": "wrong_result",
+    "error_summary": "The fine-tuned heads do not lead on BayesBind (EFB1% 4.90 vs 9.45) or PLINDER, so the paper states the advantage is established only for property-matched screening under structural uncertainty; structural robustness still persists (delta AUROC under 0.02 across regimes).",
+    "applies_when": "Evaluating screening models on random-real-molecule decoys instead of property-matched decoys"
+   },
+   {
+    "kind": "failure",
+    "approach": "Frozen projection heads, or unfreezing the whole transformer backbone, instead of end-to-end fine-tuning of tri-modal projections",
+    "outcome": "wrong_result",
+    "error_summary": "In the training-regime ablation over 20 DUD-E targets both frozen projections and full-backbone unfreezing underperform end-to-end tri-modal projection fine-tuning, which carries +0.1532 BEDROC over frozen heads; the frozen dual tower also collapses to AUROC about 0.30 on off-target cavities.",
+    "applies_when": "Dual-tower contrastive screening models with pretrained pocket and ligand encoders"
+   },
+   {
+    "kind": "answer",
+    "question": "Why do contrastive virtual-screening retrievers collapse on apo or AlphaFold2 structures, and what fixes it?",
+    "answer": "Replace static Euclidean pocket crops and binary IoU supervision with a differentiable ligand-conditioned contact flow and a soft entropic optimal-transport density match, and fine-tune the projection heads end to end. The paper reports this reopens collapsed cavities and gives detector-agnostic robustness, lifting AUROC by 0.006 to 0.010 per structural setting over an all-geometry-removed dual tower and reaching mean AUROC 0.9467 / EF1% 40.17% at negligible cost (8.05 vs 7.68 s/epoch)."
+   },
+   {
+    "kind": "answer",
+    "question": "Is it better to rely on one strong global contrastive similarity channel or to blend in localized physical channels?",
+    "answer": "Blend them: the learned mixture of global contrastive and localized geometric channels is needed for early retrieval. The learned mixture reaches AUROC 0.9467 versus 0.9219 for top-2 channel truncation, with geometric channels (spectral, geo, OT, fine) summing to 52.1% of total weight against 47.9% for global contrastive channels, and the quaternionic-spectral channel alone (0.229) nearly matching the global cls channel (0.256)."
+   }
+  ]
+ },
+ {
+  "paper": "deep_learning__LLMs_CS-HLA",
+  "title": "Cellular Sheaf Harmonic Latent Alignment: Test-Time Prompt Robustness via Residual-Stream Topological Diffusion",
+  "url": "https://scientist-two.github.io/generated-papers/deep_learning/LLMs_CS-HLA.pdf",
+  "tags": [
+   "llm-robustness",
+   "prompt-sensitivity",
+   "test-time-intervention",
+   "activation-steering",
+   "topology"
+  ],
+  "summary": "CS-HLA models a decision token's late residual-stream representation as a cochain on a cellular sheaf and applies a gated closed-form harmonic descent only when sheaf energy signals perturbation, reporting recovery of 72.8% of prompt-perturbation damage at +1.0% clean accuracy across 3 open-weight 7-8B LLMs and 10 tasks, at about 0.81 ms/prompt and no extra forward passes.",
+  "lessons": [
+   {
+    "kind": "failure",
+    "approach": "Static residual-stream steering vectors (RepE, ITI, ActAdd) applied uniformly regardless of whether the prompt is perturbed",
+    "outcome": "wrong_result",
+    "error_summary": "Pooled over 3 models, 10 tasks and both perturbation families, RepE recovers none of the damage (0.0% recovery) and ActAdd barely helps, with the best steering baseline at 38.6% recovery versus 72.8% for the gated sheaf update; a logit-debiasing baseline reaches 61.6% recovery but costs -2.9% clean accuracy (-5 to -6.5% in format cells).",
+    "applies_when": "Post-hoc test-time debiasing of prompt-format and typo sensitivity in 7-8B open-weight LLMs"
+   },
+   {
+    "kind": "failure",
+    "approach": "Putting the sheaf on full token-token context graphs (sequential, star, top-k attention, dense) with graph sheaf-Laplacian diffusion",
+    "outcome": "wrong_result",
+    "error_summary": "Every such topology yields negative recovery: best is the star graph at -9.6%, top-1 collapses clean accuracy to -24.5%, and the dense graph over-smooths at -77.1%. The paper reads this as the perturbation-relevant coboundary concentrating at the decision vertex, not in token-token interactions.",
+    "applies_when": "Choosing the cell complex for residual-stream topological corrections"
+   },
+   {
+    "kind": "failure",
+    "approach": "Unsupervised restriction maps (identity, orthogonal Procrustes/SVD) for estimating the coboundary",
+    "outcome": "wrong_result",
+    "error_summary": "Both fail to capture directional shifts and give negative recovery (identity -44.9%, Procrustes/SVD -15.0%), while supervised coboundary fitting works (linear ridge 70.1% recovery at +1.0% clean). The paper concludes supervised fitting from a clean anchor set is essential.",
+    "applies_when": "Fitting the restriction map offline from a small clean calibration set"
+   },
+   {
+    "kind": "failure",
+    "approach": "Running more than one harmonic-descent step per prompt",
+    "outcome": "wrong_result",
+    "error_summary": "Recovery peaks at a single step for all schedules; beyond three steps over-smoothing erases task signal and recovery collapses to negative values while clean accuracy drops, as kernel alignment with the zero-coboundary subspace rises monotonically (sheaf energy contracting at ratio about 0.886 per step).",
+    "applies_when": "Iterating the closed-form latent correction at inference time"
+   },
+   {
+    "kind": "answer",
+    "question": "How can I make an LLM robust to prompt format and typo perturbations at test time without hurting clean accuracy or adding forward passes?",
+    "answer": "Gate the intervention on a measured inconsistency signal so clean prompts are left untouched, and apply a single closed-form correction to the decision token's late residual stream. Treating that token's multi-layer representation as a cochain on a cellular sheaf, with an energy-divergence gate and one harmonic-descent step, recovers 72.8% of damage at +1.0% clean accuracy (damage up to 62.2% unmitigated), versus 38.6% for the best static steering baseline, at about 0.81 ms/prompt and zero extra forward passes."
+   },
+   {
+    "kind": "answer",
+    "question": "Where in a transformer should a test-time robustness correction be applied, and how much capacity does it need?",
+    "answer": "Concentrate it on the decision token across a few late decoder layers rather than spreading it over the sequence or the output logits. Late stalk depth beats early layers (early L/4 recovers only 47.7% on one 36-layer model), full token-token graphs give negative recovery, and edge-stalk rank compression saturates early: rank-64 factors store 6.35 MB (10.3% of full rank) and add 1.0 microsecond per prompt, with the isolated harmonic update at 0.059 microseconds."
+   }
+  ]
+ },
+ {
+  "paper": "deep_learning__Others_HARMONIC-MoP",
+  "title": "HARMONIC-MoP: Harmonic-Preserving Spectral Decomposition and Dual-Context Prompting for Time Series Foundation Models",
+  "url": "https://scientist-two.github.io/generated-papers/deep_learning/Others_HARMONIC-MoP.pdf",
+  "tags": [
+   "time-series",
+   "foundation-models",
+   "self-supervised-pretraining",
+   "spectral-methods",
+   "mixture-of-prompts"
+  ],
+  "summary": "HARMONIC-MoP adds harmonic-set-coherent frequency masking, a global-local spectral prompt router and a phase-aware dual-domain Fourier loss to a lightweight time-series foundation model, reporting a 40% cut in stage-1 reconstruction MSE (0.0198 vs 0.0329) and +3.1% MSE / +2.5% MAE zero-shot across the 7-dataset TSLib benchmark at 6.88M parameters.",
+  "lessons": [
+   {
+    "kind": "failure",
+    "approach": "Masking only the fundamental peak frequencies during self-supervised pretraining, without their overtones",
+    "outcome": "wrong_result",
+    "error_summary": "Fundamental-peak-only masking scores 0.431 zero-shot MSE, worse than plain random frequency-bin masking (0.422) and contiguous-band masking (0.407), versus 0.387 for coherent harmonic-set masking. The paper reads peak-only being worse than random as evidence that masking fundamentals without overtones breaks phase lock.",
+    "applies_when": "Frequency-domain masking objectives for time-series foundation-model pretraining"
+   },
+   {
+    "kind": "failure",
+    "approach": "Training with point-wise time-domain MSE only, dropping the phase-conscious dual-domain loss",
+    "outcome": "wrong_result",
+    "error_summary": "Removing H-Loss leaves stage-1 reconstruction MSE essentially unchanged (0.0197) but degrades zero-shot MSE to 0.420, worse than the 0.342 baseline and the 0.318 full model, because point-wise MSE permits arbitrary phase-shifted overtones. Magnitude-only (0.3952) and L2 (0.3695) variants also lose to joint complex L1 (0.3611).",
+    "applies_when": "Zero-shot transfer to strongly periodic series after self-supervised pretraining"
+   },
+   {
+    "kind": "failure",
+    "approach": "Learnable or hard-adaptive spectral back-off and peak selection instead of fixed linear, entropy-conditioned soft masking",
+    "outcome": "wrong_result",
+    "error_summary": "Learnable back-off variants (exponential, sigmoid, threshold) add no gain on stochastic data yet regress on periodic data, and hard adaptive peak selection degrades transfer to 0.491 MSE through pre-train/tuning spectral mismatch, versus 0.409 for soft entropy-conditioned masking; added capacity does not help stochastic series such as ETTm1 and Weather.",
+    "applies_when": "Adapting spectral masking strength across heterogeneous periodic and stochastic domains"
+   },
+   {
+    "kind": "failure",
+    "approach": "Scaling the harmonic tolerance band with window length, and assuming monotone benefits from more harmonic groups",
+    "outcome": "wrong_result",
+    "error_summary": "The MSE-optimal leakage tolerance is reported not to scale monotonically with sequence length: small fixed values stay near-optimal (tolerance 1 gives 0.387 vs 0.402) and inflating it at long lengths slightly hurts by over-masking non-harmonic content. The group-count sweep is also non-monotonic, optimal at 6 groups (0.387).",
+    "applies_when": "Tuning DFT leakage tolerance and harmonic group count across window lengths"
+   },
+   {
+    "kind": "answer",
+    "question": "How should I mask frequencies and define the loss when pretraining a time-series foundation model for zero-shot transfer?",
+    "answer": "Mask whole harmonic sets together, not independent frequency bins, and pair reconstruction with a magnitude-weighted complex Fourier penalty. Identifying top-K fundamental peaks with a small fixed leakage tolerance and masking their overtones coherently cuts stage-1 reconstruction MSE 40% (0.0198 vs 0.0329) for 9.8% epoch overhead (210s vs 191s), and the joint complex L1 loss turns that into +3.1% TSLib MSE and up to +10.1% on strongly periodic series."
+   },
+   {
+    "kind": "answer",
+    "question": "How do I keep mixture-of-prompts routing stable across domain shift in a frozen-backbone forecaster?",
+    "answer": "Condition expert selection on a sequence-level spectral signature as well as the local patch token, combined by multiplicative gating. The paper reports gated dual-context routing (0.466 MSE on ETTh1, frozen backbone) and global-only (0.464) edge out standard patch-token routing, and removing dual routing from the full model raises average MSE from 0.318 to 0.320; the benefit is reported as stabilizing which prompt a sequence's patches select rather than a large headline gain."
+   }
+  ]
+ },
+ {
   "paper": "deep_learning__Others_Soft-VSM",
   "title": "Soft-VSM: Threshold-Free Visual Consistency Evaluation for Subject-Driven Image Generation",
   "url": "https://scientist-two.github.io/generated-papers/deep_learning/Others_Soft-VSM.pdf",
