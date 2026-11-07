@@ -11,7 +11,7 @@ import { toB64, utf8 } from '../util/bytes.js';
  * - Discovery: find people by realm, problem and interest, with what they contributed.
  */
 const isHuman = (s: StoredRecord) => /^human\b/.test(s.rec.context.environment);
-export interface Mail { from: string; to: string; text: string; at: string; via: 'x0x' | 'demo' }
+export interface Mail { from: string; to: string; text: string; at: string; via: 'x0x' | 'demo'; out?: boolean }
 /** The demo network's shared mailbox: every demo hub lives in one process, so this stands in for x0x DMs. */
 const DEMO_MAIL: Mail[] = [];
 
@@ -34,7 +34,7 @@ export class People {
     if (this.hub.x0x) {
       // Sent from this computer's x0x identity; kept in the sender's own thread so they see it went.
       const { receipt } = await this.hub.x0x.sendDirect(agentId, toB64(utf8(JSON.stringify({ app: 'constellate', type: 'dm', text: msg.text }))));
-      this.mailbox.push({ ...msg, via: 'x0x' });
+      this.mailbox.push({ ...msg, via: 'x0x', out: true });
       return { ok: true, via: 'x0x' as const, receipt };
     }
     if (process.env.CONSTELLATE_DEMO === '1') { DEMO_MAIL.push({ ...msg, via: 'demo' }); return { ok: true, via: 'demo' as const }; }
@@ -47,6 +47,22 @@ export class People {
     // On this computer, replies to the computer's x0x identity belong to the person using it.
     const ids = new Set([me, ...(opts.onThisComputer ? [this.hub.node.agentId] : [])]);
     return all.filter((m) => ids.has(m.from) || ids.has(m.to)).sort((a, b) => a.at.localeCompare(b.at));
+  }
+
+  /**
+   * This computer's inbox: every conversation it has had over x0x, one per person or agent, newest first.
+   * Only ever served to this computer (it holds the whole mailbox).
+   */
+  inbox() {
+    const by = new Map<string, { peer: string; last: Mail; count: number; incoming: string[] }>();
+    for (const m of [...this.mailbox].sort((a, b) => a.at.localeCompare(b.at))) {
+      const peer = m.out ? m.to : m.from;
+      const t = by.get(peer) ?? { peer, last: m, count: 0, incoming: [] };
+      t.last = m; t.count++;
+      if (!m.out) t.incoming.push(m.at);
+      by.set(peer, t);
+    }
+    return [...by.values()].sort((a, b) => b.last.at.localeCompare(a.last.at)).map((t) => ({ peer: t.peer, count: t.count, incoming: t.incoming.slice(-50), last: { text: t.last.text.slice(0, 160), at: t.last.at, from_me: !!t.last.out } }));
   }
 
   /** Incoming x0x DMs addressed to this app land in the mailbox (called from the daemon's direct-message stream). */

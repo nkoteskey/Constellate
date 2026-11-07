@@ -230,7 +230,7 @@ export function computePage(page) {
     </ul></div>
     ${STATIC ? '' : '<div id="fund-slot"></div>'}
 
-    <details class="raw more-options"><summary>More options: choose a different model, see what fits this computer, or use the command line</summary>
+    <details class="more-options"><summary><span>More options<span class="mo-sub">Choose a different model, see what fits this computer, bring any model, check storage, or use the command line</span></span></summary>
     ${DESKTOP ? '<div id="desk-slot" style="margin:12px 0"></div>' : ''}
     <div id="bc-slot" style="margin-top:12px"></div>
     <h2 class="section">What this device can run</h2>

@@ -81,7 +81,7 @@ writeFileSync(join(home, '.config', 'Claude', 'claude_desktop_config.json'), JSO
     // A public profile, hosted by this computer's x0x agent in the open directory (real x0xd in CI).
     await win.fill('#pf-handle', 'e2e-tester');
     await win.fill('#pf-about', 'Checks Lean proofs at night');
-    await win.click('#prof-form button');
+    await win.click('#prof-form button.btn.primary');
     // Once published, the form gives way to the card others see, with an Edit button.
     await win.waitForSelector('#prof-slot #pf-edit', { timeout: 20_000 });
     const shown = await win.textContent('#prof-slot');

@@ -288,6 +288,7 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
 
   // Direct messages: private, never records. Over x0x when a daemon is running; a labelled mailbox on the demo network.
   web.route('GET', /^\/api\/dm\/([0-9a-f]{64})$/, (req, m) => ({ messages: hub.people.conversations(m[1], { onThisComputer: /^(127\.|::1$|::ffff:127\.)/.test(req.socket.remoteAddress ?? '') }), via: hub.x0x ? 'x0x' : process.env.CONSTELLATE_DEMO === '1' ? 'demo' : 'none' }));
+  web.route('GET', /^\/api\/inbox$/, (req) => /^(127\.|::1$|::ffff:127\.)/.test(req.socket.remoteAddress ?? '') ? { threads: hub.people.inbox(), via: hub.x0x ? 'x0x' : 'none' } : new HttpReply(403, { error: 'only on this computer' }));
   web.route('POST', /^\/api\/dm$/, async (_r, _m, _u, body) => {
     const j = await body() as { to?: string; from?: string; text?: string };
     if (!/^[0-9a-f]{64}$/.test(j.to ?? '') || !j.text?.trim()) return new HttpReply(400, { error: 'say who it is for and what to say' });

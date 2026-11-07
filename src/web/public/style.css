@@ -399,7 +399,7 @@ details.raw pre { margin-top: 8px; }
 .call { padding: 10px 0; border-top: 1px solid var(--line); font-size: 14px; }
 .call:first-of-type { border-top: 0; }
 .shift { display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; font-size: 13px; margin: 8px 0; }
-form.card label, form .row label { display: grid; gap: 6px; font-size: 13px; color: var(--fg-2); }
+form.card label:not(.inline-check), form .row label:not(.inline-check) { display: grid; gap: 6px; font-size: 13px; color: var(--fg-2); }
 select.field { width: 100%; background: rgba(0,0,0,.28); color: var(--fg); border: 1px solid var(--line-2); border-radius: var(--r-md); padding: 12px 14px; font: inherit; font-size: 14px; }
 
 .filters .chip[data-prealm].on { color: var(--fg); border-color: var(--c); }
@@ -428,3 +428,24 @@ select.field { width: 100%; background: rgba(0,0,0,.28); color: var(--fg); borde
 
 @media (max-width: 720px) { #lend-top span { display: none; } #lend-top { padding: 7px 10px; } }
 @media (max-width: 1240px) { #lend-top span { display: none; } #lend-top { padding: 7px 10px; } }
+
+/* Unread messages on the Me tab */
+nav.views a[data-view="me"] { position: relative; }
+.nav-badge { position: absolute; top: -3px; right: -4px; display: inline-grid; place-items: center; min-width: 17px; height: 17px; padding: 0 5px; border-radius: 999px; background: var(--accent, #ffc46b); color: #1a1408; font-size: 11px; font-weight: 700; line-height: 1; vertical-align: 1px; }
+.nav-badge[hidden] { display: none; }
+.inbox-row { width: 100%; }
+
+/* Help for free: "More options" is a real choice, shown as a card you can open */
+details.more-options { margin-top: 6px; }
+details.more-options > summary { list-style: none; cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; border: 1px solid var(--line, rgba(255,255,255,.12)); border-radius: var(--r-card, 14px); background: var(--surface-2, rgba(255,255,255,.04)); color: var(--fg); font-weight: 600; font-size: 15px; }
+details.more-options > summary::-webkit-details-marker { display: none; }
+details.more-options > summary:hover { background: var(--surface-3, rgba(255,255,255,.07)); }
+details.more-options > summary .mo-sub { display: block; font-weight: 400; font-size: 13px; color: var(--muted); margin-top: 3px; }
+details.more-options > summary::after { content: ""; flex: none; width: 9px; height: 9px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(45deg); margin-right: 4px; transition: transform var(--t-fast, .15s); opacity: .7; }
+details.more-options[open] > summary::after { transform: rotate(-135deg); }
+details.more-options[open] > summary { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+details.more-options > :not(summary) { padding-left: 2px; }
+
+/* A checkbox and its words on one line, whatever the surrounding label styles say */
+form label.inline-check, label.inline-check { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; color: var(--fg-2); }
+label.inline-check input { margin: 0; width: 16px; height: 16px; accent-color: var(--accent, #ffc46b); }
