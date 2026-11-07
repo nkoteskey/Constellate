@@ -375,3 +375,16 @@ Still stop points, deliberately not approved on the owner's behalf: publishing a
 - **People:** a Bounties section on the Problems page lets people answer, offer a bounty, pick and pay an answer, and see recent payouts. Calls for help show their bounty.
 - **Gate:** `test/gates/bounties.test.ts`.
 - **Needs the owner:** real-money bounties use the credit ledger once live funding is on (docs/MAINNET.md). Money moves between computers only on the ledger that holds it.
+
+### Who pays for storage: the fund and the library (Nov 7)
+- **Decision:** the network pays, not the people sharing. A storage fund (`fund:storage` on the ledger) takes gifts, general or for a topic. Its holder withdraws only to pay for storage, with a public note. Every gift, withdrawal and upload is a signed receipt.
+- **The library** (`src/hub/keeper.ts`) keeps what earned its place:
+  - core records;
+  - lessons another operator confirmed;
+  - answers a bounty paid for;
+  - everything in a sponsored topic.
+- **How it uploads:** one bundle per run, carrying its evidence, behind one `constellate-library` pointer. `constellate library restore` pulls it onto a new computer, re-verified.
+- **When it runs:** daily when the archive is Autonomi, or with `CONSTELLATE_LIBRARY=on`.
+- **Where to see it:** Help for free → *Keep the library permanent* shows what's kept, what's waiting, the gifts, the sponsored topics and where the money went, and has a Give button. CLI: `constellate library …`, `constellate fund …`.
+- **Gate:** `test/gates/library_fund.test.ts`.
+- **Next:** running an Autonomi node from the desktop app to earn for the fund, once node earnings are measured.

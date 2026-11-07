@@ -361,6 +361,23 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
     try { return withAnswers(await hub.bounties.award(m[1], String(j.answer ?? ''))); } catch (e) { return new HttpReply(400, { error: (e as Error).message }); }
   });
 
+  // The storage fund and the permanent library (docs/STORAGE.md): public to read; giving comes from this computer's balance.
+  web.route('GET', /^\/api\/fund$/, (req) => ({
+    ...hub.fund.view(), library: hub.keeper.status(),
+    ...(onThisComputer(req) ? { can_give: !!hub.economy?.rail.release, my_balance: hub.economy?.balance() ?? 0, network: hub.economy?.rail.network ?? null } : {}),
+  }));
+  web.route('POST', /^\/api\/fund\/give$/, async (req, _m, _u, body) => {
+    if (!onThisComputer(req)) return new HttpReply(403, { error: 'gifts come from the balance on the computer that runs this app' });
+    const j = await body() as { usd?: number; topic?: string };
+    try { await hub.fund.donate(Math.round(Number(j.usd ?? 0) * 1e6), j.topic); return hub.fund.view(); } catch (e) { return new HttpReply(400, { error: (e as Error).message }); }
+  });
+
+  web.route('POST', /^\/api\/fund\/withdraw$/, async (req, _m, _u, body) => {
+    if (!onThisComputer(req)) return new HttpReply(403, { error: 'only the fund\'s holder, on this computer' });
+    const j = await body() as { amount?: number; note?: string };
+    try { const r = await hub.fund.withdraw(Number(j.amount ?? 0), String(j.note ?? '')); return { withdrawn: Number(j.amount), receipt: r.id }; } catch (e) { return new HttpReply(400, { error: (e as Error).message }); }
+  });
+
   // Storage on THIS computer: what it holds, on disk and per record (docs/STORAGE.md).
   web.route('GET', /^\/api\/storage$/, (req) => {
     if (!/^(127\.|::1$|::ffff:127\.)/.test(req.socket.remoteAddress ?? '')) return new HttpReply(403, { error: 'only on this computer' });

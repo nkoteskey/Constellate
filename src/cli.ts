@@ -37,6 +37,10 @@ const USAGE = `Constellate — where humans and agents gather into something gre
                                 review, sleep summaries and debate re-runs (local open models are free)
   constellate autonomi status | approve   Check the Autonomi daemon, its wallet and budget; one-time token approval
   constellate autonomi quote [BYTES]     Price a typical upload on Autonomi (free to ask; nothing is paid)
+  constellate library status | plan | run | restore
+                         The permanent library: what's archived, what the next upload would keep, upload it, pull it back
+  constellate fund status | withdraw USD --note "why"
+                         The storage fund: gifts, sponsored topics, uploads; the holder withdraws only to pay for storage
   constellate storage status | compact | prune --keep-days N [--yes]
                          What this computer stores and costs; pack history; drop old records (dry run unless --yes)
   constellate keys set PROVIDER | list | remove PROVIDER
@@ -94,6 +98,34 @@ Lend your computer instead: node "${cli}" models, then node "${cli}" contribute`
     } finally { await hub.close(); }
     return;
   }
+  if (cmd === 'library' || cmd === 'fund') {
+    const hub = await Hub.fromEnv();
+    try {
+      const sub = argv[1] ?? 'status';
+      if (cmd === 'library') {
+        if (sub === 'status') console.log(JSON.stringify(hub.keeper.status(), null, 2));
+        else if (sub === 'plan') { const p = hub.keeper.plan(); console.log(JSON.stringify({ records: p.records.length, by: p.by, evidence: p.evidence, left_to_peers: p.left_to_peers }, null, 2)); }
+        else if (sub === 'run') console.log(JSON.stringify(await hub.keeper.run(), null, 2));
+        else if (sub === 'restore') console.log(JSON.stringify(await hub.keeper.restore(), null, 2));
+        else throw new Error(`unknown library command: ${sub}`);
+      } else {
+        const credits = fundingConfig(process.env, vault());
+        const home = process.env.CONSTELLATE_HOME ?? join(homedir(), '.constellate');
+        hub.attachRail(credits ? new CreditLedger(join(home, `credits-${credits.mode}.jsonl`), { live: credits.mode === 'live' }) : new CreditLedger(join(home, 'credits-play.jsonl'), { play: true }));
+        if (sub === 'status') console.log(JSON.stringify(hub.fund.view(), null, 2));
+        else if (sub === 'withdraw') {
+          const i = argv.indexOf('--note'); const note = i > 0 ? argv.slice(i + 1).join(' ') : '';
+          const amount = Math.round(Number(argv[2]) * 1e6);
+          // The running app holds the ledger in memory: go through it, so the two never disagree.
+          const app = `http://127.0.0.1:${process.env.PORT ?? 4747}/api/fund/withdraw`;
+          const viaApp = await fetch(app, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ amount, note }) }).catch(() => null);
+          if (viaApp) { const j = await viaApp.json() as { error?: string }; if (!viaApp.ok) throw new Error(j.error ?? 'refused'); console.log(JSON.stringify(j, null, 2)); }
+          else console.log(JSON.stringify(await hub.fund.withdraw(amount, note).then((r) => ({ withdrawn: amount, receipt: r.id })), null, 2));
+        } else throw new Error(`unknown fund command: ${sub}`);
+      }
+    } finally { await hub.close(); }
+    return;
+  }
   if (cmd === 'autonomi' && argv[1] === 'quote') {
     // Pricing is free: ask antd what a typical upload would cost. Nothing is paid and no wallet is needed.
     const url = (process.env.ANTD_URL ?? 'http://127.0.0.1:8082').replace(/\/$/, '');
@@ -146,6 +178,12 @@ Lend your computer instead: node "${cli}" models, then node "${cli}" contribute`
     // Pack history compactly once a day (keys once, binary, batch proofs); loose files stay until then.
     const pack = () => void hub.storage.compact().catch((e) => console.error(`storage: ${(e as Error).message}`));
     setTimeout(pack, 60_000).unref(); setInterval(pack, 24 * 3600_000).unref();
+    // The permanent library: one upload a day of what earned its place, paid by the storage fund. On when
+    // the archive is Autonomi, or with CONSTELLATE_LIBRARY=on (a local archive, for trying it).
+    if (hub.archive instanceof AutonomiArchive || process.env.CONSTELLATE_LIBRARY === 'on') {
+      const keep = () => void hub.keeper.run().then((r) => r.uploaded && console.log(`library: kept ${r.records} records (${r.bytes} bytes)`)).catch((e) => console.error(`library: ${(e as Error).message}`));
+      setTimeout(keep, 5 * 60_000).unref(); setInterval(keep, 24 * 3600_000).unref();
+    }
     console.log(`Constellate is open at ${web.url}`);
     return;
   }

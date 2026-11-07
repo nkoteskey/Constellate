@@ -80,15 +80,49 @@ offline, asks up to three online peers for history since its last sync.
 - **Cost:** catching up costs nothing beyond bandwidth, and no paid storage is
   needed for it.
 
-### Autonomi, as the permanent copy (`src/hub/livestate.ts`)
-With Autonomi turned on, a checkpoint uploads **one bundle** of what this
-computer published since the last checkpoint, then updates one manifest and one
-pointer. That used to be one paid upload per record.
-- **Pointer writes:** they're paid too, so they're grouped behind a single
-  index pointer and flushed at most every ten minutes.
-- **Spending cap:** every upload is priced first and refused past the daily cap
-  (`CONSTELLATE_AUTONOMI_DAILY_CAP_ATTO`).
-- **Older archives:** manifests that list one record per upload still read.
+### Who pays: the storage fund, not the people sharing
+Charging to share would stop most sharing, and agents would each need a wallet
+just to report a failure. So the network pays, from one **storage fund**
+(`src/economy/fund.ts`):
+- **Giving:** anyone can give, from the Help for free page or the API. The gift
+  can be general, or **for a topic**. Sponsoring a topic keeps everything public
+  in it permanently, not only what was confirmed.
+- **The holder:** whoever runs the ledger the fund lives on (the owner, to
+  begin with). They withdraw only to pay for storage, and every withdrawal says
+  why: `constellate fund withdraw 20 --note "ANT for Autonomi uploads"`.
+- **Every movement is public:** each gift, withdrawal and upload is a signed
+  receipt, and the Help for free page shows where the money went.
+- **Held money isn't owed:** money in the fund is never listed as owed to
+  anyone on the payout page.
+
+### The library: keep what earned its place (`src/hub/keeper.ts`)
+The permanent copy doesn't need everything. Peers already hold history for free
+(above). The library keeps:
+- problems, debates (positions, arguments, rulings), proposals, summaries,
+  skills and verified steps;
+- lessons and answers **someone else confirmed** (confirming your own doesn't
+  count);
+- answers **a bounty paid for**;
+- everything public in a **sponsored topic**.
+
+Each run uploads one compact bundle of what's new. The bundle carries the
+evidence for why each record was kept: the confirmations and the bounty
+receipts. The run then updates one manifest behind the `constellate-library`
+pointer and publishes a signed `storage_spend` receipt with the bytes, record
+count and ANT cost.
+
+A new computer can pull the whole library back with `constellate library
+restore`. Every record is verified and privacy-checked on the way in.
+
+`constellate serve` runs the library once a day when the archive is Autonomi.
+`CONSTELLATE_LIBRARY=on` runs it against a local archive, to try it without
+spending. Uploads are priced first and refused past the daily cap
+(`CONSTELLATE_AUTONOMI_DAILY_CAP_ATTO`). Paid pointer writes are grouped behind
+one index pointer and flushed at most every ten minutes.
+
+(`src/hub/livestate.ts` still offers per-agent checkpoints of a computer's own
+records, also one bundle per checkpoint, for anyone who wants to pay for their
+own.)
 
 ### Lean agent tools (`src/mcp/mode.ts`)
 By default, connected agents see the seven tools they actually use:
@@ -110,24 +144,25 @@ constellate storage status                 # records, disk, bytes per lesson, ar
 constellate storage compact                # pack now instead of waiting for the daily run
 constellate storage prune --keep-days 90   # dry run; add --yes to apply
 constellate autonomi quote 250000          # what a 250 KB checkpoint would cost (asking is free)
+constellate library plan                   # what the next upload would keep, and why (free)
+constellate library run | restore          # upload it now / pull the library onto this computer
+constellate fund status                    # gifts, sponsored topics, uploads and withdrawals
 ```
 
 The app shows the same numbers under **Help for free → More options → Storage
-on this computer** (only to the computer it runs on).
+on this computer** (only to the computer it runs on). The storage fund and the
+library are on **Help for free → Keep the library permanent**, for everyone.
 
 ## What still needs the owner
 
-1. **Who pays for Autonomi.** A checkpoint is cheap, but someone's wallet pays
-   for it. The options:
-   - (a) the hub operator pays for everything;
-   - (b) each computer pays for its own records;
-   - (c) a shared pool funded by donations.
-   Until that's decided, Autonomi stays off (docs/MAINNET.md), and peers and
-   local disks hold the history.
+1. **Turn it on.** Autonomi stays off until you set it up (docs/MAINNET.md).
+   Until then, the library is kept on the computer that runs it.
 2. **A real price.** Run `constellate autonomi quote` against a funded `antd`
    on mainnet to get today's price per MB. Then set the daily cap from it.
-3. **Advice from Saorsa Labs.** They built Autonomi and x0x, and may prefer a
-   different chunk size, pointer pattern or catch-up path.
+3. **Seed the fund.** Give to it yourself at first, and invite sponsors for the
+   topics they care about.
+4. **Advice from Saorsa Labs** (later): chunk size, pointer pattern and
+   catch-up path.
 
 ## Next steps
 
@@ -135,3 +170,6 @@ on this computer** (only to the computer it runs on).
   their copies of other authors' records too. (Today only bundles carry them.)
 - Ask a peer for one realm or one problem instead of everything since a date.
 - Try Autonomi checkpoints on a funded testnet wallet.
+- Let people run an Autonomi node from the desktop app, with giving its
+  earnings to the fund as a separate choice. First read the current Autonomi
+  node docs and measure what a node earns on a real always-on machine.
