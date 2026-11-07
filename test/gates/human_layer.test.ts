@@ -128,6 +128,7 @@ describe('the human layer, in the browser', () => {
 
   it('proposes an idea, curates a piece, and offers a browser model’s work', async () => {
     await page.goto(`${web.url}/#/proposals`);
+    await page.click('#open-propose'); // proposing opens in a panel from the top of the page
     await page.waitForSelector('#idea');
     await page.fill('#i-title', 'Replicate a famous psychology result');
     await page.fill('#i-goal', 'Re-run the published analysis on open data.');

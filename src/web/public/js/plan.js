@@ -5,6 +5,25 @@ import { $, $$, esc, api, copy, toast, sheet, closeSheet, realm, STATIC } from '
 const post = (p, body = {}) => api(p, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
 const STATUS = { waiting: 'Waiting for your agent', running: 'Your agent is working on it', reported: 'Plan ready for you to review', failed: 'Didn’t work', published: 'Published', discarded: 'Discarded' };
 
+const clock = (iso) => new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' });
+const since = (iso) => { const s = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 1000)); return s < 60 ? `${s} s` : `${Math.floor(s / 60)} min ${s % 60} s`; };
+/** What actually happened, in order: proof the agent ran, and what it did. */
+function activity(req) {
+  const log = req.log ?? [];
+  if (!log.length) return '';
+  return `<div class="card" style="margin:10px 0"><div class="eyebrow">What’s happened</div><ol class="plan-log">${log.map((l) => `<li><span class="faint num">${clock(l.at)}</span> ${esc(l.text)}</li>`).join('')}</ol>
+    ${req.status === 'published' ? '' : '<p class="faint" style="font-size:12.5px;margin:8px 0 0">“Being worked on” changes only after you publish the plan: it becomes a live problem, and votes give it computer time.</p>'}</div>`;
+}
+
+/** One line for an idea's card on the Proposals page: where its plan stands. */
+export function planChip(req) {
+  if (!req || req.status === 'discarded') return '';
+  const label = { waiting: req.agent ? `${req.agent} is planning it` : 'Plan waiting for your agent', running: `${req.via === 'claude_code' ? 'Claude Code' : req.agent ?? 'Your agent'} is planning it · ${since(req.at)}`, reported: 'Plan ready to review', failed: 'Planning didn’t finish', published: 'Plan published' }[req.status] ?? req.status;
+  const tone = req.status === 'reported' || req.status === 'published' ? 'ok' : req.status === 'failed' ? 'stop' : 'warn';
+  const last = req.log?.at(-1);
+  return `<div class="plan-chip"><span class="chip sm ${tone}"><span class="dot"></span>${esc(label)}</span>${last ? `<span class="faint" style="font-size:12.5px">${esc(last.text.slice(0, 110))}</span>` : ''}</div>`;
+}
+
 export async function planSheet(idea, { onPublished } = {}) {
   if (STATIC) { toast('Planning with your agent needs the app on your computer, where your agents are.', 5200); return; }
   const d = await api(`/api/plans?idea=${idea.id}`).catch((e) => ({ error: e.message }));
@@ -33,7 +52,8 @@ export async function planSheet(idea, { onPublished } = {}) {
     const rep = req.report;
     body.innerHTML = `<div class="spread" style="margin-bottom:10px"><span class="chip ${req.status === 'reported' || req.status === 'published' ? 'ok' : ''}"><span class="dot"></span>${STATUS[req.status] ?? req.status}</span><span class="faint" style="font-size:12px">${req.agent ? `from ${esc(req.agent)}` : ''}</span></div>
       ${req.status === 'waiting' ? `<p class="muted" style="font-size:13.5px">Open your agent and say: <b>“check Constellate for planning requests”</b>. It finds this request with its <code>plan_report</code> tool, researches it and reports back here.</p><div class="row"><button class="btn sm" id="plan-copy">Copy that for your agent</button></div>` : ''}
-      ${req.status === 'running' ? '<p class="muted" style="font-size:13.5px">Researching related work and drafting checkable steps. You can close this; the plan waits on the Proposals page.</p>' : ''}
+      ${req.status === 'running' ? `<p class="muted" style="font-size:13.5px">Researching related work and drafting checkable steps, for ${since(req.at)} so far. You can close this: the idea’s card on the Proposals page shows how it’s going.</p>` : ''}
+      ${activity(req)}
       ${req.status === 'failed' ? `<p class="muted" style="font-size:13.5px">${esc(req.error ?? 'It didn’t finish.')}</p>` : ''}
       ${rep ? `
         <div class="card" style="margin-bottom:10px"><div class="eyebrow">What it found</div>

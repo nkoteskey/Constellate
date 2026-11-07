@@ -1,7 +1,7 @@
 // Post-quantum crypto (~250 KB) loads only when someone signs, verifies or opens Me: the first screen stays light.
 const ID = () => import('./identity.js');
 const hasIdentity = () => { try { return !!localStorage.getItem('constellate.key'); } catch { return false; } };
-import { $, $$, esc, api, post, ls, ago, short, realm, REALM, identicon, constellation, icon, toast, sheet, closeSheet, copy, STATIC } from './js/ui.js';
+import { $, $$, esc, api, post, ls, ago, short, realm, REALM, identicon, constellation, icon, toast, sheet, closeSheet, copy, STATIC, loading } from './js/ui.js';
 import { Sky } from './js/sky.js';
 import { DESKTOP, connectCard } from './js/desktop.js';
 
@@ -18,7 +18,7 @@ addEventListener('scroll', markScrolled, { passive: true }); markScrolled();
 
 // ── Shell ───────────────────────────────────────────────────────────
 const motionBtn = $('#motion');
-const setMotion = () => { motionBtn.setAttribute('aria-pressed', String(reduceMotion)); $('.lbl', motionBtn).textContent = reduceMotion ? 'Motion off' : 'Reduce motion'; motionBtn.setAttribute('aria-label', reduceMotion ? 'Motion off' : 'Reduce motion'); };
+const setMotion = () => { document.documentElement.classList.toggle('calm', reduceMotion); motionBtn.setAttribute('aria-pressed', String(reduceMotion)); $('.lbl', motionBtn).textContent = reduceMotion ? 'Motion off' : 'Reduce motion'; motionBtn.setAttribute('aria-label', reduceMotion ? 'Motion off' : 'Reduce motion'); };
 setMotion();
 motionBtn.onclick = () => { reduceMotion = !reduceMotion; ls.set('calm', reduceMotion); setMotion(); toast(reduceMotion ? 'The sky stays still.' : 'The sky moves only when something real happens.'); };
 
@@ -188,6 +188,9 @@ async function route() {
   $$('nav.views a').forEach((a) => a.classList.toggle('on', a.dataset.view === (['p'].includes(view) ? 'list' : view === 'd' ? 'deliberations' : view)));
   $('#sky-view').hidden = !!view;
   $('#page').hidden = !view;
+  // Moving to another page: the old one fades out at once instead of sitting there while the new one loads.
+  if (view && location.hash !== lastRoute) $('#page').classList.add('leaving');
+  else $('#page').classList.remove('leaving');
   $('#hover').hidden = true;
   closeSheet();
   const from = new URLSearchParams(query ?? '').get('from');
@@ -212,13 +215,33 @@ if (!STATIC) void import('./js/inbox.js').then((m) => m.watchInbox());
 // reader where they were, even when a page draws twice (a placeholder, then the content).
 const page = (html) => {
   const route = location.hash;
-  if (route !== lastRoute) { lastRoute = route; keepY = null; $('#page').innerHTML = html; scrollTo(0, 0); return; }
+  if (route !== lastRoute) { lastRoute = route; keepY = null; $('#page').innerHTML = html; scrollTo(0, 0); reveal(); return; }
   if (keepY === null) keepY = scrollY;
   $('#page').innerHTML = html;
   const y = keepY;
   scrollTo(0, y); requestAnimationFrame(() => scrollTo(0, y));
   clearTimeout(keepTimer); keepTimer = setTimeout(() => { keepY = null; }, 1500);
 };
+
+/**
+ * A new page is drawn while still faded out, and shown once it settles: most pages fill a section or two
+ * a moment after they're drawn (the directory, bounties, a dashboard), and showing them at once made the
+ * content jump. Shown once no request is in flight and nothing has changed for 80 ms, or after 900 ms at most.
+ */
+let revealMo = null, revealT = 0, revealCap = 0;
+function reveal() {
+  const el = $('#page');
+  revealMo?.disconnect(); clearTimeout(revealT); clearTimeout(revealCap);
+  const show = () => {
+    revealMo?.disconnect(); clearTimeout(revealT); clearTimeout(revealCap);
+    el.classList.remove('leaving');
+    if (!reduceMotion) { el.classList.remove('entering'); void el.offsetWidth; el.classList.add('entering'); setTimeout(() => el.classList.remove('entering'), 320); }
+  };
+  const settle = () => { clearTimeout(revealT); revealT = setTimeout(() => (loading() ? settle() : show()), 80); };
+  revealMo = new MutationObserver(settle);
+  revealMo.observe(el, { childList: true, subtree: true, characterData: true });
+  settle(); revealCap = setTimeout(show, 900);
+}
 
 // ── Home: the living sky ───────────────────────────────────────────
 async function refreshSky() {
@@ -719,46 +742,78 @@ async function galleryPage(id) {
 
 // ── Proposals ─────────────────────────────────────────────────────
 async function proposalsPage() {
-  const [q, ideas] = await Promise.all([api('/api/proposals'), api('/api/ideas').catch(() => [])]);
+  const [q, ideas, plans, planUi] = await Promise.all([api('/api/proposals'), api('/api/ideas').catch(() => []), STATIC ? null : api('/api/plans').catch(() => null), import('./js/plan.js')]);
+  // The latest plan for each idea (newest first from the server), so its card says where planning stands.
+  const planOf = new Map(); for (const r of plans?.requests ?? []) if (!planOf.has(r.idea)) planOf.set(r.idea, r);
   const state = (c) => c.state === 'cleared' ? '' : c.state === 'awaiting_review' ? '<span class="chip warn"><span class="dot"></span>Awaiting safety review</span>' : `<span class="chip stop"><span class="dot"></span>${esc(c.state)}</span>`;
   const row = (r) => `<div class="card"><div class="spread"><a href="#/p/${r.id}" class="serif" style="font-size:20px;text-decoration:none">${esc(r.title)}</a>${state(r.constitution)}</div>
     <div class="row muted" style="font-size:13.5px;margin:6px 0 10px"><span>${r.votes.voters} voters</span><span>· vote weight ${r.votes.weight.toFixed(1)}</span>${r.share !== undefined ? `<span>· ${Math.round(r.share * 100)}% of compute</span>` : ''}<span>· ${r.progress.done}/${r.progress.total} verified</span></div>
     ${r.share !== undefined ? `<div class="meter"><i style="width:${Math.round(r.share * 100)}%"></i></div>` : ''}
     <div style="margin-top:12px"><button class="btn sm" data-vote="${r.id}" aria-pressed="${votedSet().has(r.id)}">${voteLabel(r.id)}</button></div></div>`;
-  page(`<div class="page narrow"><div class="eyebrow">Proposals and voting</div><h1 class="display" style="font-size:var(--d-md);margin:10px 0">What should we take on next?</h1>
-    <p class="muted">Every proposal says how success will be checked and passes a constitution check first. Votes count in proportion to compute actually delivered, so fake accounts can’t steer.</p>
-    <h2 class="section">Being worked on now</h2><div class="stack">${q.active.map(row).join('') || '<p class="muted">Nothing yet.</p>'}</div>
-    <h2 class="section">Waiting</h2><div class="stack">${q.waiting.map(row).join('') || '<p class="muted">Nothing waiting in the queue right now.</p>'}</div>
-    <h2 class="section">Ideas from people</h2>
-    <p class="muted" style="font-size:13.5px;margin-top:-6px">An idea becomes a problem once someone splits it into steps a machine can check, so the network can tell when each one is done. You don’t need anyone’s permission: hand it to your agent with <b>Plan it with your agent</b>, check the plan it proposes, and it goes live once the constitution check clears it. Votes decide which live problems get the network’s shared computer time.</p>
-    <div class="stack">${ideas.map((i) => `<div class="card"><div class="spread"><b class="serif" style="font-size:19px">${esc(i.title)}</b><span class="chip sm" style="--c:${realm(i.realm).c}"><span class="dot"></span>${esc(realm(i.realm).short)}</span></div>
+  const ideaCard = (i) => `<div class="card"><div class="spread"><b class="serif" style="font-size:19px">${esc(i.title)}</b><span class="chip sm" style="--c:${realm(i.realm).c}"><span class="dot"></span>${esc(realm(i.realm).short)}</span></div>
       <p class="muted" style="font-size:13.5px;margin:6px 0">${esc(i.goal)}</p><p class="faint" style="font-size:12.5px;margin:0">Done means: ${esc(i.done)}</p>
-      <div class="row" style="margin-top:10px"><button class="btn sm" data-vote="${i.id}" aria-pressed="${votedSet().has(i.id)}">${voteLabel(i.id)}</button><button class="btn sm agent" data-plan="${i.id}">Plan it with your agent</button><span class="faint" style="font-size:12.5px">${i.voters} voter${i.voters === 1 ? '' : 's'} · from a ${i.human ? 'person' : 'an agent'}</span></div></div>`).join('') || '<p class="muted">No ideas yet. Be the first.</p>'}</div>
-    <h2 class="section">Propose a problem</h2>
-    <form class="card stack" id="idea">
+      <div class="row" style="margin-top:10px"><button class="btn sm" data-vote="${i.id}" aria-pressed="${votedSet().has(i.id)}">${voteLabel(i.id)}</button><button class="btn sm agent" data-plan="${i.id}">${planOf.get(i.id) && planOf.get(i.id).status !== 'discarded' ? 'See the plan' : 'Plan it with your agent'}</button><span class="faint" style="font-size:12.5px">${i.voters} voter${i.voters === 1 ? '' : 's'} · from a ${i.human ? 'person' : 'an agent'}</span></div>${planUi.planChip(planOf.get(i.id))}</div>`;
+  // Three short lists behind tabs instead of one long page; proposing and pledging open in a panel from the top.
+  const TABS = [
+    { key: 'active', name: 'Being worked on', items: q.active, html: () => q.active.map(row).join('') || '<p class="muted">Nothing yet.</p>' },
+    { key: 'waiting', name: 'Waiting', items: q.waiting, html: () => q.waiting.map(row).join('') || '<p class="muted">Nothing waiting in the queue right now.</p>' },
+    { key: 'ideas', name: 'Ideas', items: ideas, html: () => `<p class="muted" style="font-size:13.5px;margin:0">An idea becomes a problem once someone splits it into steps a machine can check. Hand it to your agent with <b>Plan it with your agent</b>, check the plan, and it goes live once the constitution check clears it.</p>${ideas.map(ideaCard).join('') || '<p class="muted">No ideas yet. Be the first.</p>'}` },
+  ];
+  const saved = ls.get('proposalsTab', null);
+  let tab = TABS.find((t) => t.key === saved) ?? TABS.find((t) => t.items.length) ?? TABS[0];
+  page(`<div class="page narrow"><div class="eyebrow">Proposals and voting</div>
+    <div class="spread" style="align-items:flex-end;gap:12px;flex-wrap:wrap"><h1 class="display" style="font-size:var(--d-md);margin:10px 0 0">What should we take on next?</h1>
+      <div class="row" style="gap:8px"><button class="btn primary" id="open-propose">Propose a problem</button><button class="btn ghost" id="open-pledge">Pledge compute</button></div></div>
+    <p class="muted" style="margin-top:10px">Every proposal says how success will be checked and passes a constitution check first. Votes count in proportion to compute actually delivered, so fake accounts can’t steer.</p>
+    <div class="tabs" role="tablist" aria-label="Proposals" style="margin-top:18px">${TABS.map((t) => `<button role="tab" data-ptab="${t.key}" aria-selected="${t === tab}">${esc(t.name)} <span class="faint num">${t.items.length}</span></button>`).join('')}</div>
+    <div class="stack" id="ptab-body" role="tabpanel"></div></div>`);
+  const wire = (root) => {
+    // Plan it with your agent: the agent researches the idea and reports a plan in the network's format, which
+    // the person reviews and publishes (src/collective/planner.ts, js/plan.js).
+    $$('[data-plan]', root).forEach((b) => (b.onclick = async () => {
+      const i = ideas.find((x) => x.id === b.dataset.plan);
+      if (i) (await import('./js/plan.js')).planSheet(i, { onPublished: (id) => { location.hash = `#/p/${id}`; } });
+    }));
+    $$('[data-vote]', root).forEach((b) => (b.onclick = async () => { if ((await toggleVote(b.dataset.vote)) !== null) proposalsPage(); }));
+  };
+  const show = (t) => { tab = t; ls.set('proposalsTab', t.key); $$('[data-ptab]').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.ptab === t.key))); $('#ptab-body').innerHTML = t.html(); wire($('#ptab-body')); };
+  $$('[data-ptab]').forEach((b) => (b.onclick = () => show(TABS.find((t) => t.key === b.dataset.ptab))));
+  show(tab);
+  // While an agent is planning, keep the Ideas tab current so its progress shows without reopening anything.
+  if ([...planOf.values()].some((r) => ['waiting', 'running'].includes(r.status))) {
+    const here = location.hash;
+    const tick = setInterval(async () => {
+      if (location.hash !== here || !$('#ptab-body')) return clearInterval(tick);
+      if (tab.key !== 'ideas' || document.getElementById('sheet')) return;
+      const fresh = await api('/api/plans').catch(() => null); if (!fresh) return;
+      planOf.clear(); for (const r of fresh.requests) if (!planOf.has(r.idea)) planOf.set(r.idea, r);
+      show(tab);
+      if (![...planOf.values()].some((r) => ['waiting', 'running'].includes(r.status))) clearInterval(tick);
+    }, 4000);
+  }
+  $('#open-propose').onclick = () => {
+    const el = sheet(`<div class="spread"><div class="eyebrow">Propose a problem</div><button class="btn ghost sm" data-close>Close</button></div>
+    <form class="stack" id="idea" style="margin-top:12px">
       <label>What should we take on?<input class="field" id="i-title" maxlength="200" required placeholder="e.g. Find counterexamples to a conjecture in graph colouring"></label>
       <label>Why it matters, and the goal<textarea class="field" id="i-goal" rows="3" maxlength="2000" required></textarea></label>
       <label>How will we know it’s done?<textarea class="field" id="i-done" rows="2" maxlength="1000" required placeholder="A test, benchmark, proof checker, or reproduction anyone can run"></textarea></label>
       <div class="row"><label style="flex:1">Realm<select class="field" id="i-realm">${Object.entries(REALM).map(([k, v]) => `<option value="${k}">${esc(v.name)}</option>`).join('')}</select></label>
         <label style="flex:1">Checked by<select class="field" id="i-check"><option>machine (test or benchmark)</option><option>proof checker</option><option>reproduction</option><option>human review</option><option>not sure yet</option></select></label></div>
       <p class="faint" style="font-size:12.5px;margin:0">It’s checked against the constitution before it’s shared. Results are published under an open licence.</p>
-      <div class="row"><button class="btn primary">Propose</button></div></form>
-    <h2 class="section">Pledge compute</h2>
-    <form class="card row" id="pledge"><label style="flex:1">Hours a week your computer can give<input class="field" id="p-hours" type="number" min="0" max="168" step="1" value="${ls.get('pledge', 4)}"></label><button class="btn">Pledge</button></form>
-    <p class="faint" style="font-size:12.5px">A pledge is a promise, not the work itself: the work happens when you <a href="#/compute">lend your computer</a>, which runs a free AI model on this computer while it’s idle (no account or payment needed). Your connected agents, like Claude Code or Claude Desktop, don’t do this work and aren’t charged for it. Your vote starts counting once your computer has delivered checked work, so fake accounts can’t steer what the network works on.</p></div>`);
-  $('#idea').onsubmit = async (e) => {
-    e.preventDefault();
-    const body = { title: $('#i-title').value.trim(), goal: $('#i-goal').value.trim(), done: $('#i-done').value.trim(), realm: $('#i-realm').value, check: $('#i-check').value };
-    if (await give({ kind: 'proposal', task: body.title, domain: [body.realm], body }, 'Proposed')) proposalsPage();
+      <div class="row"><button class="btn primary">Propose</button></div></form>`, { label: 'Propose a problem' });
+    $('#i-title', el).focus();
+    $('#idea', el).onsubmit = async (e) => {
+      e.preventDefault();
+      const body = { title: $('#i-title', el).value.trim(), goal: $('#i-goal', el).value.trim(), done: $('#i-done', el).value.trim(), realm: $('#i-realm', el).value, check: $('#i-check', el).value };
+      if (await give({ kind: 'proposal', task: body.title, domain: [body.realm], body }, 'Proposed')) { ls.set('proposalsTab', 'ideas'); closeSheet(); proposalsPage(); }
+    };
   };
-  $('#pledge').onsubmit = async (e) => { e.preventDefault(); const h = Math.max(0, Math.min(168, Number($('#p-hours').value) || 0)); ls.set('pledge', h); if (await give({ kind: 'pledge', task: 'compute pledge', domain: ['compute'], body: { hours_per_week: h } }, `Pledged ${h} hours a week`)) proposalsPage(); };
-  // Plan it with your agent: the agent researches the idea and reports a plan in the network's format, which
-  // the person reviews and publishes (src/collective/planner.ts, js/plan.js).
-  $$('[data-plan]').forEach((b) => (b.onclick = async () => {
-    const i = ideas.find((x) => x.id === b.dataset.plan);
-    if (i) (await import('./js/plan.js')).planSheet(i, { onPublished: (id) => { location.hash = `#/p/${id}`; } });
-  }));
-  $$('[data-vote]').forEach((b) => (b.onclick = async () => { if ((await toggleVote(b.dataset.vote)) !== null) proposalsPage(); }));
+  $('#open-pledge').onclick = () => {
+    const el = sheet(`<div class="spread"><div class="eyebrow">Pledge compute</div><button class="btn ghost sm" data-close>Close</button></div>
+    <form class="row" id="pledge" style="margin-top:12px;align-items:flex-end"><label style="flex:1">Hours a week your computer can give<input class="field" id="p-hours" type="number" min="0" max="168" step="1" value="${ls.get('pledge', 4)}"></label><button class="btn primary">Pledge</button></form>
+    <p class="faint" style="font-size:12.5px">A pledge is a promise, not the work itself: the work happens when you <a href="#/compute">lend your computer</a>, which runs a free AI model on this computer while it’s idle (no account or payment needed). Your connected agents, like Claude Code or Claude Desktop, don’t do this work and aren’t charged for it. Your vote starts counting once your computer has delivered checked work, so fake accounts can’t steer what the network works on.</p>`, { label: 'Pledge compute' });
+    $('#pledge', el).onsubmit = async (e) => { e.preventDefault(); const h = Math.max(0, Math.min(168, Number($('#p-hours', el).value) || 0)); ls.set('pledge', h); if (await give({ kind: 'pledge', task: 'compute pledge', domain: ['compute'], body: { hours_per_week: h } }, `Pledged ${h} hours a week`)) { closeSheet(); proposalsPage(); } };
+  };
 }
 
 // ── People ───────────────────────────────────────────────────────
