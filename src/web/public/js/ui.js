@@ -5,9 +5,15 @@ export const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 import { STATIC, staticApi } from './static.js';
 export { STATIC };
+/** Requests in flight, so a page can wait for the sections it fills a moment after drawing (app.js reveal()). */
+let inflight = 0;
+export const loading = () => inflight > 0;
 export async function api(p, init) {
-  if (STATIC) return staticApi(p, init);
-  const r = await fetch(p, init); const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || r.statusText); return j;
+  inflight++;
+  try {
+    if (STATIC) return await staticApi(p, init);
+    const r = await fetch(p, init); const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || r.statusText); return j;
+  } finally { inflight--; }
 }
 export const post = (p, b) => (STATIC ? Promise.resolve() : fetch(p, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(b) }).catch(() => {}));
 export const ls = {

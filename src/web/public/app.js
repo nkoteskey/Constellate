@@ -1,7 +1,7 @@
 // Post-quantum crypto (~250 KB) loads only when someone signs, verifies or opens Me: the first screen stays light.
 const ID = () => import('./identity.js');
 const hasIdentity = () => { try { return !!localStorage.getItem('constellate.key'); } catch { return false; } };
-import { $, $$, esc, api, post, ls, ago, short, realm, REALM, identicon, constellation, icon, toast, sheet, closeSheet, copy, STATIC } from './js/ui.js';
+import { $, $$, esc, api, post, ls, ago, short, realm, REALM, identicon, constellation, icon, toast, sheet, closeSheet, copy, STATIC, loading } from './js/ui.js';
 import { Sky } from './js/sky.js';
 import { DESKTOP, connectCard } from './js/desktop.js';
 
@@ -18,7 +18,7 @@ addEventListener('scroll', markScrolled, { passive: true }); markScrolled();
 
 // ── Shell ───────────────────────────────────────────────────────────
 const motionBtn = $('#motion');
-const setMotion = () => { motionBtn.setAttribute('aria-pressed', String(reduceMotion)); $('.lbl', motionBtn).textContent = reduceMotion ? 'Motion off' : 'Reduce motion'; motionBtn.setAttribute('aria-label', reduceMotion ? 'Motion off' : 'Reduce motion'); };
+const setMotion = () => { document.documentElement.classList.toggle('calm', reduceMotion); motionBtn.setAttribute('aria-pressed', String(reduceMotion)); $('.lbl', motionBtn).textContent = reduceMotion ? 'Motion off' : 'Reduce motion'; motionBtn.setAttribute('aria-label', reduceMotion ? 'Motion off' : 'Reduce motion'); };
 setMotion();
 motionBtn.onclick = () => { reduceMotion = !reduceMotion; ls.set('calm', reduceMotion); setMotion(); toast(reduceMotion ? 'The sky stays still.' : 'The sky moves only when something real happens.'); };
 
@@ -188,6 +188,9 @@ async function route() {
   $$('nav.views a').forEach((a) => a.classList.toggle('on', a.dataset.view === (['p'].includes(view) ? 'list' : view === 'd' ? 'deliberations' : view)));
   $('#sky-view').hidden = !!view;
   $('#page').hidden = !view;
+  // Moving to another page: the old one fades out at once instead of sitting there while the new one loads.
+  if (view && location.hash !== lastRoute) $('#page').classList.add('leaving');
+  else $('#page').classList.remove('leaving');
   $('#hover').hidden = true;
   closeSheet();
   const from = new URLSearchParams(query ?? '').get('from');
@@ -212,13 +215,33 @@ if (!STATIC) void import('./js/inbox.js').then((m) => m.watchInbox());
 // reader where they were, even when a page draws twice (a placeholder, then the content).
 const page = (html) => {
   const route = location.hash;
-  if (route !== lastRoute) { lastRoute = route; keepY = null; $('#page').innerHTML = html; scrollTo(0, 0); return; }
+  if (route !== lastRoute) { lastRoute = route; keepY = null; $('#page').innerHTML = html; scrollTo(0, 0); reveal(); return; }
   if (keepY === null) keepY = scrollY;
   $('#page').innerHTML = html;
   const y = keepY;
   scrollTo(0, y); requestAnimationFrame(() => scrollTo(0, y));
   clearTimeout(keepTimer); keepTimer = setTimeout(() => { keepY = null; }, 1500);
 };
+
+/**
+ * A new page is drawn while still faded out, and shown once it settles: most pages fill a section or two
+ * a moment after they're drawn (the directory, bounties, a dashboard), and showing them at once made the
+ * content jump. Shown once no request is in flight and nothing has changed for 80 ms, or after 900 ms at most.
+ */
+let revealMo = null, revealT = 0, revealCap = 0;
+function reveal() {
+  const el = $('#page');
+  revealMo?.disconnect(); clearTimeout(revealT); clearTimeout(revealCap);
+  const show = () => {
+    revealMo?.disconnect(); clearTimeout(revealT); clearTimeout(revealCap);
+    el.classList.remove('leaving');
+    if (!reduceMotion) { el.classList.remove('entering'); void el.offsetWidth; el.classList.add('entering'); setTimeout(() => el.classList.remove('entering'), 320); }
+  };
+  const settle = () => { clearTimeout(revealT); revealT = setTimeout(() => (loading() ? settle() : show()), 80); };
+  revealMo = new MutationObserver(settle);
+  revealMo.observe(el, { childList: true, subtree: true, characterData: true });
+  settle(); revealCap = setTimeout(show, 900);
+}
 
 // ── Home: the living sky ───────────────────────────────────────────
 async function refreshSky() {
