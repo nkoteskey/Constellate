@@ -67,6 +67,8 @@ async function dmSheet(to) {
 }
 
 // ── Follow and notify: problems, people and agents, realms ──────────
+/** Flip a Follow button in place: no re-render, so the page keeps its scroll position. */
+const setFollow = (btn, on) => { btn.setAttribute('aria-pressed', String(on)); btn.innerHTML = `${icon.follow}${on ? 'Following' : 'Follow'}`; };
 const follows = () => ({ problems: ls.get('follow', []), people: ls.get('followPeople', []), realms: Object.entries(interests).filter(([, v]) => v > 0).map(([k]) => k) });
 function notifyIfFollowed(ev) {
   if (!ls.get('notify', false) || typeof Notification === 'undefined' || Notification.permission !== 'granted' || document.visibilityState === 'visible') return;
@@ -479,7 +481,7 @@ async function problemPage(id) {
       <form id="ans" class="stack"><textarea class="field" id="ans-text" rows="4" maxlength="2000" required aria-label="Your answer"></textarea><div class="row"><button class="btn primary">Send answer</button></div></form>`, { label: 'Answer a call for help' });
     $('#ans', el).onsubmit = async (e) => { e.preventDefault(); const t = $('#ans-text', el).value.trim(); if (t && await give({ kind: 'answer', task: h.question.slice(0, 200), domain: [p.realm], body: { question: h.question, answer: t, proof: { type: 'citation', detail: 'answered by a person; checked by the requester' } }, refs: [h.id] }, 'Answer sent')) { closeSheet(); problemPage(id); } };
   }));
-  $('#follow').onclick = () => { const f = new Set(ls.get('follow', [])); f.has(id) ? f.delete(id) : f.add(id); ls.set('follow', [...f]); problemPage(id); };
+  $('#follow').onclick = (e) => { const f = new Set(ls.get('follow', [])); f.has(id) ? f.delete(id) : f.add(id); ls.set('follow', [...f]); setFollow(e.currentTarget, f.has(id)); toast(f.has(id) ? 'Following. You’ll hear when a step is verified.' : 'Unfollowed.'); };
   $('#share').onclick = async () => { const me = hasIdentity() ? (await ID()).identity().agentId.slice(0, 16) : 'friend'; post('/api/metrics/event', { type: 'invite', who: me }); copy(`${location.href.split('#')[0]}#/p/${id}?from=${me}`, 'Invite link copied. No account needed to open it'); };
   $('#embed').onclick = () => copy(`<iframe src="${new URL('embed.html', location.href).href.split('#')[0]}?p=${id}" width="420" height="170" style="border:0;border-radius:14px" title="${esc(p.title)} on Constellate"></iframe>`, 'Embed code copied');
   $('#chat-form').onsubmit = async (e) => { e.preventDefault(); const t = $('#chat-text').value.trim(); if (!t) return; if (await give({ kind: 'message', task: 'problem chat', domain: [p.realm], body: { channel: 'problem', text: t }, refs: [id] }, 'Posted')) problemPage(id); };
@@ -749,7 +751,7 @@ async function mePage(id) {
       if (await give({ kind: 'identity_link', task: 'link an x0x user identity', domain: ['identity'], body: { claim } }, 'Identity linked')) mePage();
     };
   } else {
-    $('#follow-p').onclick = () => { const s2 = new Set(ls.get('followPeople', [])); s2.has(who) ? s2.delete(who) : s2.add(who); ls.set('followPeople', [...s2]); toast(s2.has(who) ? 'Following. They’ll appear in your weekly digest.' : 'Unfollowed.'); mePage(id); };
+    $('#follow-p').onclick = (e) => { const s2 = new Set(ls.get('followPeople', [])); s2.has(who) ? s2.delete(who) : s2.add(who); ls.set('followPeople', [...s2]); setFollow(e.currentTarget, s2.has(who)); toast(s2.has(who) ? 'Following. They’ll appear in your weekly digest.' : 'Unfollowed.'); };
     $('#dm-p').onclick = () => dmSheet(me.agents[0]?.id ?? who);
   }
 }
