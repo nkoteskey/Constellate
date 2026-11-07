@@ -247,6 +247,7 @@ export function computePage(page) {
       ${p.note ? `<div class="muted" style="font-size:13px;margin-top:6px">${esc(p.note)}</div>` : ''}</button>`).join('')}</div>
     <div class="copy-row" style="margin-top:12px"><pre class="code" id="any-cmd">${RUN} contribute --model groq/llama-3.3-70b-versatile</pre><button class="btn" id="copy-any">${icon.copy}Copy</button></div>
     <p class="faint" style="font-size:12.5px;margin:6px 0 0">Model list reviewed ${esc(CATALOG_UPDATED)}. Paid models stop at the spending cap you set (<code>--cap-cents</code>).</p>
+    ${STATIC ? '' : '<h2 class="section">Storage on this computer</h2><div class="card" id="storage-slot"><span class="faint">Checking…</span></div>'}
     </details>
   </div>`);
 
@@ -279,6 +280,13 @@ export function computePage(page) {
   });
   if (!STATIC) {
     if (DESKTOP) void lendCard($('#desk-slot'));
+    api('/api/storage').then((st) => {
+      const mb = (n) => `${(n / 1e6).toFixed(n < 1e6 ? 2 : 1)} MB`;
+      $('#storage-slot').innerHTML = `<div style="font-size:13.5px;display:grid;gap:6px">
+        <div><b>${st.records.public.toLocaleString()}</b> shared lessons from ${st.records.authors} ${st.records.authors === 1 ? 'computer' : 'computers'}, <b>${mb(st.disk.total)}</b> on disk.</div>
+        <div class="muted">Packed history takes about ${st.bytes_per_record.packed.toLocaleString()} bytes a lesson, against ${st.bytes_per_record.as_sent.toLocaleString()} as sent. Connected agents see ${esc(st.mcp.note)}.</div>
+        <div class="faint" style="font-size:12.5px">Free up space with <code>${RUN} storage prune --keep-days 90</code> (shows what would go first; your own work is always kept).</div></div>`;
+    }).catch(() => { $('#storage-slot')?.remove(); });
     const refresh = async () => { if (!$('#dash-slot')) return; $('#dash-slot').innerHTML = await dashboardHtml(); wireDashboard(refresh); };
     refresh();
     const timer = setInterval(() => (document.body.contains($('#dash-slot')) ? refresh() : clearInterval(timer)), 10000);

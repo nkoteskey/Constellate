@@ -30,6 +30,7 @@ export class FakeDaemon {
   private server?: Server;
   private subs: Sub[] = [];
   private sse = new Set<ServerResponse>();
+  private directSse = new Set<ServerResponse>();
   private joinedStores = new Set<string>();
   url = '';
 
@@ -47,6 +48,7 @@ export class FakeDaemon {
   }
   async stop() {
     for (const s of this.sse) s.end();
+    for (const s of this.directSse) s.end();
     this.mesh.daemons.delete(this);
     await new Promise<void>((r) => (this.server ? this.server.close(() => r()) : r()));
   }
@@ -106,6 +108,22 @@ export class FakeDaemon {
       return this.json(res, 200, { ok: true, subscription_id: id });
     }
     if (m === 'DELETE' && p.startsWith('/subscribe/')) { this.subs = this.subs.filter((s) => s.id !== p.slice(11)); return this.json(res, 200, { ok: true }); }
+    // Direct messages (x0x ≥0.38): delivered to the recipient's /direct/events stream, flat frames.
+    if (m === 'POST' && p === '/direct/send') {
+      const b = await this.body(req);
+      const to = [...this.mesh.daemons].find((d) => d.agentId === b.agent_id && !this.mesh.partitioned.has(d));
+      if (!to) return this.json(res, 404, { ok: false, error: 'recipient_key_unavailable' });
+      const frame = JSON.stringify({ sender: this.agentId, machine_id: this.agentId, payload: b.payload, received_at: new Date().toISOString(), verified: true });
+      for (const s of to.directSse) s.write(`data: ${frame}\n\n`);
+      return this.json(res, 200, { ok: true });
+    }
+    if (m === 'GET' && p.startsWith('/direct/events')) {
+      res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' });
+      res.write(': connected\n\n');
+      this.directSse.add(res);
+      req.on('close', () => this.directSse.delete(res));
+      return;
+    }
     if (m === 'GET' && p === '/events') {
       res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' });
       res.write(': connected\n\n');

@@ -2,6 +2,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { decodeCanonical } from '../core/canonical.js';
 import { ActivityLog } from '../hub/activity.js';
+import { openBundle, isBundle } from '../store/bundle.js';
 import { Profiles, profileProblem, ProfileBody } from '../collab/profiles.js';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -297,9 +298,9 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
 
   // Calls for help on a problem: steps still waiting, and questions agents posted mid-task.
   web.route('GET', /^\/api\/problems\/([0-9a-f]{64})\/help$/, (_r, m) => hub.node.store.referencing(m[1], 'help_request').map((h) => {
-    const b = h.rec.body as { question: string; needs?: string; verifier?: string };
+    const b = h.rec.body as { question: string; needs?: string; verifier?: string; bounty?: number };
     const answers = hub.node.store.referencing(h.rec.id, 'answer');
-    return { id: h.rec.id, question: b.question, needs: b.needs ?? 'any', at: h.rec.created, who: h.rec.agent_id, answers: answers.length, answered_by_people: answers.filter(isHuman).length };
+    return { id: h.rec.id, question: b.question, needs: b.needs ?? 'any', bounty: b.bounty ?? 0, at: h.rec.created, who: h.rec.agent_id, answers: answers.length, answered_by_people: answers.filter(isHuman).length };
   }));
 
   // Ideas from people: not yet a problem (that needs checkable steps), but voted on and visible.
@@ -335,6 +336,35 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
     const p = scrub({ context: rec.context, body: readableBody(rec) }, hub.node.privacy);
     if (!p.ok) return new HttpReply(400, { error: 'blocked by privacy check', findings: p.findings });
     try { return { published: await profiles.publishPerson(rec) }; } catch (e) { return new HttpReply(400, { error: (e as Error).message }); }
+  });
+
+  // Bounties (docs/BOUNTIES.md): anyone sees the open ones; only this computer posts, lists its own and picks answers,
+  // because the money comes from this computer's balance.
+  const onThisComputer = (req: { socket: { remoteAddress?: string } }) => /^(127\.|::1$|::ffff:127\.)/.test(req.socket.remoteAddress ?? '');
+  const withAnswers = (b: { id: string }) => ({ ...b, answer_list: hub.node.store.referencing(b.id, 'answer').map((a) => ({ id: a.rec.id, by: a.rec.agent_id, human: isHuman(a), at: a.rec.created, answer: String((a.rec.body as { answer?: string }).answer ?? '').slice(0, 1200) })) });
+  web.route('GET', /^\/api\/bounties$/, (req) => ({
+    bounties: hub.bounties.list({ limit: 30 }),
+    paid: hub.bounties.list({ state: 'paid', limit: 5 }),
+    ...(onThisComputer(req) ? { balance: hub.bounties.spendable(), can_post: !!hub.economy?.rail.release, network: hub.economy?.rail.network ?? null, me: hub.node.agentId } : {}),
+  }));
+  web.route('GET', /^\/api\/bounties\/mine$/, (req) => onThisComputer(req) ? { bounties: hub.bounties.list({ mine: true, state: 'all', limit: 30 }).map(withAnswers), balance: hub.bounties.spendable() } : new HttpReply(403, { error: 'only on this computer' }));
+  web.route('POST', /^\/api\/bounties$/, async (req, _m, _u, body) => {
+    if (!onThisComputer(req)) return new HttpReply(403, { error: 'bounties are posted from the computer whose balance pays them' });
+    const j = await body() as { question?: string; amount?: number; usd?: number; accept?: 'check' | 'asker'; verifier?: string; check?: Record<string, unknown>; days?: number; domain?: string[] };
+    const amount = j.amount ?? Math.round(Number(j.usd ?? 0) * 1e6);
+    try { return await hub.bounties.post({ question: String(j.question ?? ''), amount, accept: j.accept, verifier: j.verifier, check: j.check, days: j.days, domain: Array.isArray(j.domain) && j.domain.length ? j.domain.map(String).slice(0, 12) : ['general'] }); }
+    catch (e) { return new HttpReply(400, { error: (e as Error).message }); }
+  });
+  web.route('POST', /^\/api\/bounties\/([0-9a-f]{64})\/award$/, async (req, m, _u, body) => {
+    if (!onThisComputer(req)) return new HttpReply(403, { error: 'only the asker\'s computer picks the answer' });
+    const j = await body() as { answer?: string };
+    try { return withAnswers(await hub.bounties.award(m[1], String(j.answer ?? ''))); } catch (e) { return new HttpReply(400, { error: (e as Error).message }); }
+  });
+
+  // Storage on THIS computer: what it holds, on disk and per record (docs/STORAGE.md).
+  web.route('GET', /^\/api\/storage$/, (req) => {
+    if (!/^(127\.|::1$|::ffff:127\.)/.test(req.socket.remoteAddress ?? '')) return new HttpReply(403, { error: 'only on this computer' });
+    return hub.storage.status();
   });
 
   // What the agents connected on THIS computer have done (from agent-activity.jsonl). Answers only this computer.
@@ -514,8 +544,10 @@ function starterOperators(): Set<string> {
     const home = process.env.CONSTELLATE_HOME ?? join(homedir(), '.constellate');
     const marker = JSON.parse(readFileSync(join(home, 'starter-imported'), 'utf8')) as { file?: string };
     if (marker.file && existsSync(marker.file)) {
-      const snap = decodeCanonical<{ records: SignedRecord[] }>(new Uint8Array(readFileSync(marker.file)));
-      for (const r of snap.records.slice(0, 2000)) { const v = verifyRecord(r); if (v.ok) starterOps.add(v.operatorId); }
+      const bytes = new Uint8Array(readFileSync(marker.file));
+      const recs = isBundle(bytes) ? (({ roots, records }) => [...roots, ...records])(openBundle(bytes)) : decodeCanonical<{ records: SignedRecord[] }>(bytes).records;
+      const roots = new Map(recs.filter((r) => r.kind === 'batch_root').map((r) => [r.id, r]));
+      for (const r of recs.slice(0, 2500)) { const v = verifyRecord(r, { root: (id) => roots.get(id) }); if (v.ok) starterOps.add(v.operatorId); }
     }
   } catch { /* no starter library on this install */ }
   return starterOps;

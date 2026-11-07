@@ -22,7 +22,12 @@ const { exportSnapshot } = await load('seed/snapshot.js');
 const hub = new Hub({ signer: LocalSigner.generate(), store: new RecordStore(), preview: false });
 const report = await new IssueSeeder(hub, json('plain-lessons.json')).seed(json('saorsa-labs.json'));
 const sleep = await new Consolidator(hub, undefined, { written: json('cluster-summaries.json') }).sleep();
-const bytes = exportSnapshot(hub.node.store);
+// One signature over the whole library (a batch root), so the bundle needn't carry 1,158 of them (docs/STORAGE.md).
+const { merkle, signRecord } = await load('core/record.js');
+const ids = hub.node.store.all().map((s) => s.rec.id);
+const m = merkle(ids);
+const root = await signRecord({ kind: 'batch_root', context: { task: 'batch', domain: ['storage'], environment: '' }, body: { root: m.root, count: m.proofs.size } }, hub.node.signer);
+const bytes = exportSnapshot(hub.node.store, [{ root, ids }]);
 mkdirSync(dirname(out), { recursive: true });
 writeFileSync(out, bytes);
 console.log(`starter library: ${report.failures} failures, ${report.answers} fixes, ${sleep.summarised} summaries (${hub.node.store.all().length} signed records, ${(bytes.length / 1e6).toFixed(1)} MB) → ${out}`);

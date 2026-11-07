@@ -9,7 +9,7 @@ import { LocalArchive } from '../src/store/archive.js';
 export const until = async (f: () => boolean, ms = 3000) => { const t = Date.now(); while (!f()) { if (Date.now() - t > ms) throw new Error('timeout'); await new Promise((r) => setTimeout(r, 10)); } };
 
 export async function connect(hub: Hub) {
-  const server = createMcpServer(hub);
+  const server = createMcpServer(hub, { mode: "full" }); // the gates exercise every tool; agents get the lean set by default
   const [a, b] = InMemoryTransport.createLinkedPair();
   await server.connect(a);
   const client = new Client({ name: 'test', version: '0' });

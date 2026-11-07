@@ -1,4 +1,5 @@
-import { mkdirSync, readdirSync, readFileSync, writeFileSync, renameSync, existsSync, rmSync } from 'node:fs';
+import { mkdirSync, readdirSync, readFileSync, writeFileSync, renameSync, existsSync, rmSync, statSync } from 'node:fs';
+import { openBundle, makeBundle, Batch } from './bundle.js';
 import { join } from 'node:path';
 import { canonicalBytes, decodeCanonical } from '../core/canonical.js';
 import { RecordKind, SignedRecord, verifyRecord } from '../core/record.js';
@@ -18,23 +19,36 @@ export class RecordStore {
 
   constructor(private readonly dir?: string) {
     if (dir) {
+      // Compact segments first (public history packed by compact()), then single files. Within each,
+      // batch roots and signed records go before records that lean on a batch root.
+      mkdirSync(join(dir, 'segments'), { recursive: true });
+      try { for (const id of JSON.parse(readFileSync(join(dir, 'segments', 'removed.json'), 'utf8')) as string[]) this.removed.add(id); } catch { /* none removed */ }
+      for (const f of readdirSync(join(dir, 'segments')).filter((x) => x.endsWith('.bundle')).sort()) {
+        try {
+          const { roots, records } = openBundle(readFileSync(join(dir, 'segments', f)));
+          for (const r of [...roots, ...records]) if (!this.removed.has(r.id)) this.add(r, 'public', false, `segments/${f}`);
+        } catch { /* a damaged segment is skipped, never fatal */ }
+      }
       for (const v of ['public', 'private'] as const) {
         mkdirSync(join(dir, v), { recursive: true });
-        for (const f of readdirSync(join(dir, v))) {
-          if (!f.endsWith('.cbor')) continue;
-          const rec = decodeCanonical<SignedRecord>(readFileSync(join(dir, v, f)));
-          this.add(rec, v, false);
-        }
+        const recs = readdirSync(join(dir, v)).filter((f) => f.endsWith('.cbor')).map((f) => decodeCanonical<SignedRecord>(readFileSync(join(dir, v, f))));
+        for (const rec of recs.sort((a, b) => Number(!a.signature) - Number(!b.signature))) this.add(rec, v, false);
       }
     }
   }
 
+  /** Where each record lives on disk when it's packed in a segment (so compaction and pruning know). */
+  private segmentOf = new Map<string, string>();
+  /** Ids pruned from segments (segments are immutable, so removal is remembered instead). */
+  private removed = new Set<string>();
+
   onAdd(cb: (s: StoredRecord) => void) { this.listeners.add(cb); return () => this.listeners.delete(cb); }
 
   /** Returns the stored entry, or null if the record failed verification. */
-  add(rec: SignedRecord, visibility: Visibility = 'public', persist = true): StoredRecord | null {
-    const v = verifyRecord(rec);
+  add(rec: SignedRecord, visibility: Visibility = 'public', persist = true, segment?: string): StoredRecord | null {
+    const v = verifyRecord(rec, { root: (id) => this.byId.get(id)?.rec });
     if (!v.ok) return null;
+    if (segment) this.segmentOf.set(rec.id, segment);
     const existing = this.byId.get(rec.id);
     if (existing) {
       if (existing.visibility === 'private' && visibility === 'public') this.setVisibility(rec.id, 'public');
@@ -64,6 +78,36 @@ export class RecordStore {
     this.byId.delete(id);
     for (const r of s.rec.refs) this.byRef.get(r)?.delete(id);
     if (this.dir) rmSync(join(this.dir, s.visibility, `${id}.cbor`), { force: true });
+    if (this.dir && this.segmentOf.has(id)) {
+      this.removed.add(id); this.segmentOf.delete(id);
+      writeFileSync(join(this.dir, 'segments', 'removed.json'), JSON.stringify([...this.removed]));
+    }
+  }
+
+  /**
+   * Pack loose public record files into one compact segment (keys once, binary, batch proofs) and
+   * delete the files. Private records stay as they are. Returns what moved and the bytes before/after.
+   */
+  compact(batches: Batch[] = []): { records: number; before: number; after: number; segment: string | null } {
+    if (!this.dir) return { records: 0, before: 0, after: 0, segment: null };
+    const loose = this.all().filter((s) => s.visibility === 'public' && !this.segmentOf.has(s.rec.id) && existsSync(join(this.dir!, 'public', `${s.rec.id}.cbor`)));
+    if (!loose.length) return { records: 0, before: 0, after: 0, segment: null };
+    const before = loose.reduce((n, s) => n + statSync(join(this.dir!, 'public', `${s.rec.id}.cbor`)).size, 0);
+    const need = new Set(loose.map((s) => s.rec.id));
+    const bytes = makeBundle(loose.map((s) => s.rec), batches.filter((b) => b.ids.some((id) => need.has(id))).map((b) => ({ root: b.root, ids: b.ids })));
+    const name = `${new Date().toISOString().replace(/[:.]/g, '-')}.bundle`;
+    const tmp = join(this.dir, 'segments', `${name}.tmp`);
+    writeFileSync(tmp, bytes);
+    renameSync(tmp, join(this.dir, 'segments', name)); // the segment is complete before any file goes
+    for (const s of loose) { this.segmentOf.set(s.rec.id, `segments/${name}`); rmSync(join(this.dir, 'public', `${s.rec.id}.cbor`), { force: true }); }
+    return { records: loose.length, before, after: bytes.length, segment: name };
+  }
+
+  /** Bytes on disk, split by where they live. */
+  diskUsage(): { loose: number; segments: number; private: number } {
+    if (!this.dir) return { loose: 0, segments: 0, private: 0 };
+    const sum = (sub: string, ext: string) => { try { return readdirSync(join(this.dir!, sub)).filter((f) => f.endsWith(ext)).reduce((n, f) => n + statSync(join(this.dir!, sub, f)).size, 0); } catch { return 0; } };
+    return { loose: sum('public', '.cbor'), segments: sum('segments', '.bundle'), private: sum('private', '.cbor') };
   }
 
   get(id: string) { return this.byId.get(id); }

@@ -33,4 +33,5 @@ already public. Closed projects read locally and never write.
 
 - Develop on a branch; never push secrets. Keys live in the encrypted vault (`constellate keys`).
 - Real money and paid storage are off unless the owner turns them on (docs/MAINNET.md).
+- Storage and cost (bundles, batch roots, catch-up, lean agent tools): docs/STORAGE.md. Live gossip keeps a full signature on every record; only history drops them, behind a signed batch root.
 - Our npm package is `constellate-mcp`. The bare name `constellate` belongs to an unrelated project.

@@ -36,6 +36,9 @@ const USAGE = `Constellate — where humans and agents gather into something gre
       [--model PROVIDER/MODEL]  a model for the plain-language guide, the constitution's model
                                 review, sleep summaries and debate re-runs (local open models are free)
   constellate autonomi status | approve   Check the Autonomi daemon, its wallet and budget; one-time token approval
+  constellate autonomi quote [BYTES]     Price a typical upload on Autonomi (free to ask; nothing is paid)
+  constellate storage status | compact | prune --keep-days N [--yes]
+                         What this computer stores and costs; pack history; drop old records (dry run unless --yes)
   constellate keys set PROVIDER | list | remove PROVIDER
                          Store API keys encrypted on this device (typed at a hidden prompt, never on the command line)
   constellate demo       The human app on a simulated demo network (no x0x needed)
@@ -75,6 +78,35 @@ Lend your computer instead: node "${cli}" models, then node "${cli}" contribute`
     return;
   }
   if (cmd === 'keys') return keys(argv.slice(1));
+  if (cmd === 'storage') {
+    const hub = await Hub.fromEnv();
+    try {
+      const sub = argv[1] ?? 'status';
+      if (sub === 'status') console.log(JSON.stringify(hub.storage.status(), null, 2));
+      else if (sub === 'compact') console.log(JSON.stringify(await hub.storage.compact(), null, 2));
+      else if (sub === 'prune') {
+        const i = argv.indexOf('--keep-days'); const keepDays = Number(i > 0 ? argv[i + 1] : NaN);
+        if (!(keepDays > 0)) throw new Error('say how long to keep records: --keep-days N');
+        const r = hub.storage.prune({ keepDays, apply: argv.includes('--yes') });
+        console.log(JSON.stringify(r, null, 2));
+        if (!r.applied) console.log(`Dry run: nothing removed. Add --yes to drop these ${r.records} records (your own records, verdicts, skills and summaries are always kept).`);
+      } else throw new Error(`unknown storage command: ${sub}`);
+    } finally { await hub.close(); }
+    return;
+  }
+  if (cmd === 'autonomi' && argv[1] === 'quote') {
+    // Pricing is free: ask antd what a typical upload would cost. Nothing is paid and no wallet is needed.
+    const url = (process.env.ANTD_URL ?? 'http://127.0.0.1:8082').replace(/\/$/, '');
+    const bytes = Math.max(1, Number(argv[2] ?? 250_000));
+    const data = Buffer.alloc(bytes, 0x5a).toString('base64');
+    const r = await fetch(`${url}/v1/data/cost`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ data, payment_mode: 0 }) }).catch((e) => { throw new Error(`no Autonomi daemon at ${url} (${(e as Error).message}); start antd or set ANTD_URL`); });
+    const j = (await r.json().catch(() => ({}))) as { cost?: string; error?: string };
+    if (!r.ok) throw new Error(`autonomi ${r.status}: ${j.error ?? r.statusText}`);
+    const atto = BigInt(j.cost ?? '0');
+    const perMb = (atto * 1_000_000n) / BigInt(bytes);
+    console.log(JSON.stringify({ bytes, cost_atto_ant: atto.toString(), per_mb_atto_ant: perMb.toString(), per_mb_ant: Number(perMb) / 1e18, note: 'A checkpoint is one bundle of what this computer published since the last one (docs/STORAGE.md).' }, null, 2));
+    return;
+  }
   if (cmd === 'autonomi') {
     const { autonomiFromEnv } = await import('./store/autonomi.js');
     const a = autonomiFromEnv({ ...process.env, CONSTELLATE_ARCHIVE: 'autonomi' });
@@ -88,7 +120,12 @@ Lend your computer instead: node "${cli}" models, then node "${cli}" contribute`
     // Money: the testnet ledger unless the owner turns real payments on (docs/MAINNET.md).
     const funding = fundingConfig(process.env, vault());
     const credits = funding ? new CreditLedger(join(process.env.CONSTELLATE_HOME ?? join(homedir(), '.constellate'), `credits-${funding.mode}.jsonl`), { live: funding.mode === 'live' }) : null;
-    const economy = hub.attachRail(credits ?? new TestnetLedger());
+    // Without real money switched on, a persistent play-money ledger, so bounties and payments can be tried
+    // safely and survive a restart. Each new identity starts with $20 of play money.
+    const play = credits ? null : new CreditLedger(join(process.env.CONSTELLATE_HOME ?? join(homedir(), '.constellate'), 'credits-play.jsonl'), { play: true });
+    play?.deposit(hub.node.agentId, 20_000_000, `play-starter:${hub.node.agentId}`, 'play', 'starting play money');
+    const economy = hub.attachRail(credits ?? play ?? new TestnetLedger());
+    hub.bounties.watch();
     const spec = flag(argv, '--model');
     const model = spec ? runnerFromSpec(spec, { vault: vault() }) : undefined;
     if (model) hub.collective.constitution.attachReviewer(model);
@@ -102,7 +139,13 @@ Lend your computer instead: node "${cli}" models, then node "${cli}" contribute`
     new Consolidator(hub, model).schedule(); // "sleep" every 6 hours: distil related lessons into summaries
     if (model) { const { Deliberation } = await import('./collective/deliberation.js'); new Deliberation(hub).scheduleReruns(model); } // debates revisited as models change
     if (model) console.log(`Model: ${model.id} (guide, constitution review, summaries, debate re-runs)`);
-    hub.x0x?.directEvents((m) => hub.people.receive(m.sender, m.payload)); // incoming direct messages, for the app's inbox
+    // Incoming direct messages: history sync between computers, otherwise a person's message for the app's inbox.
+    hub.x0x?.directEvents((m) => { if (!hub.sync.handle(m.sender, m.payload)) hub.people.receive(m.sender, m.payload); });
+    // Catch up: gossip has no replay, so ask a few online peers for what this computer missed (docs/STORAGE.md).
+    if (hub.x0x) setTimeout(() => void hub.x0x!.presenceOnline().then((ids) => hub.sync.request(ids)).catch(() => {}), 15_000).unref();
+    // Pack history compactly once a day (keys once, binary, batch proofs); loose files stay until then.
+    const pack = () => void hub.storage.compact().catch((e) => console.error(`storage: ${(e as Error).message}`));
+    setTimeout(pack, 60_000).unref(); setInterval(pack, 24 * 3600_000).unref();
     console.log(`Constellate is open at ${web.url}`);
     return;
   }

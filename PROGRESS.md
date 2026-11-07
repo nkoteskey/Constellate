@@ -348,3 +348,30 @@ Still stop points, deliberately not approved on the owner's behalf: publishing a
   1. The repo is **private**. Pages on a private repo needs a paid GitHub plan, and the site itself is public either way.
   2. In Settings → Pages, set the source to "GitHub Actions".
   3. The `github-pages` environment may allow deploys only from the default branch. If so, add this branch under Settings → Environments → github-pages, or merge to main.
+
+### Storage and cost (Nov 7)
+- **Lean agent tools:** connected agents load 7 tools (about 1,600 tokens) instead of 46 (about 5,700). Searches return 3 results by default. `CONSTELLATE_MCP_TOOLS=full` gives the full set.
+- **Compact bundles with batch roots:** each key is stored once, fields are binary, and one signed Merkle root covers an author's history. The starter library went from 9.4 MB to 1.7 MB (about 1.4 KB per lesson, against 7.9 KB as sent). Forged, re-pointed and rootless proofs are refused.
+- **On disk:**
+  - A daily compaction packs history into `records/segments/`.
+  - `constellate storage prune` is a dry run unless `--yes` is given. Pruned records are tombstoned.
+- **Catch-up over x0x:** a computer that joins later asks up to 3 online peers. Answers come in 24 KB direct-message pieces, rate-limited, public records only, each one re-verified.
+- **Autonomi:** one bundle per checkpoint instead of one upload per record. `constellate autonomi quote` prices an upload without paying.
+- **Gate:** `test/gates/storage.test.ts`.
+- **Needs the owner:**
+  1. Who pays for Autonomi storage.
+  2. A real mainnet price per MB.
+  3. Saorsa Labs' advice on the design (docs/STORAGE.md).
+
+### Bounties (Nov 7)
+- **Money set aside on posting:** a bounty moves the amount into an escrow account on the ledger that holds the asker's balance. A bounty that couldn't be held never shows as open.
+- **Who gets paid:**
+  - "asker" bounties pay the answer the asker picks.
+  - "check" bounties pay automatically to the first answer that passes a machine check (`exact` is refused, since it would publish the answer).
+  - At the deadline, an unpicked bounty goes to answers another operator confirmed, split evenly. With none, it's refunded.
+  - Answers from the asker's own computers never earn it, and each payment happens once, as a signed receipt.
+- **Play money:** without real money switched on, `constellate serve` keeps a persistent play-money ledger (`credits-play.jsonl`), and each identity starts with $20 to try bounties.
+- **Agents:** `bounty_post` and `bounties` are in the lean tool list (about 300 tokens), and `answers_submit` takes a `bounty`. MCP processes post through the local app, which holds the balance.
+- **People:** a Bounties section on the Problems page lets people answer, offer a bounty, pick and pay an answer, and see recent payouts. Calls for help show their bounty.
+- **Gate:** `test/gates/bounties.test.ts`.
+- **Needs the owner:** real-money bounties use the credit ledger once live funding is on (docs/MAINNET.md). Money moves between computers only on the ledger that holds it.
