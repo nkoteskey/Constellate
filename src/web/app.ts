@@ -2,6 +2,8 @@ import { readFileSync, existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { decodeCanonical } from '../core/canonical.js';
 import { ActivityLog } from '../hub/activity.js';
+import { X0xError, directSendProblem } from '../x0x/client.js';
+import { Planner } from '../collective/planner.js';
 import { openBundle, isBundle } from '../store/bundle.js';
 import { Profiles, profileProblem, ProfileBody } from '../collab/profiles.js';
 import { join, dirname } from 'node:path';
@@ -286,14 +288,15 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
   }
 
   // Direct messages: private, never records. Over x0x when a daemon is running; a labelled mailbox on the demo network.
-  web.route('GET', /^\/api\/dm\/([0-9a-f]{64})$/, (_r, m) => ({ messages: hub.people.conversations(m[1]), via: hub.x0x ? 'x0x' : process.env.CONSTELLATE_DEMO === '1' ? 'demo' : 'none' }));
+  web.route('GET', /^\/api\/dm\/([0-9a-f]{64})$/, (req, m) => ({ messages: hub.people.conversations(m[1], { onThisComputer: /^(127\.|::1$|::ffff:127\.)/.test(req.socket.remoteAddress ?? '') }), via: hub.x0x ? 'x0x' : process.env.CONSTELLATE_DEMO === '1' ? 'demo' : 'none' }));
+  web.route('GET', /^\/api\/inbox$/, (req) => /^(127\.|::1$|::ffff:127\.)/.test(req.socket.remoteAddress ?? '') ? { threads: hub.people.inbox(), via: hub.x0x ? 'x0x' : 'none' } : new HttpReply(403, { error: 'only on this computer' }));
   web.route('POST', /^\/api\/dm$/, async (_r, _m, _u, body) => {
     const j = await body() as { to?: string; from?: string; text?: string };
     if (!/^[0-9a-f]{64}$/.test(j.to ?? '') || !j.text?.trim()) return new HttpReply(400, { error: 'say who it is for and what to say' });
     const p = scrub({ context: { task: 'dm', domain: [], environment: '' }, body: { text: j.text } }, hub.node.privacy);
     if (!p.ok) return new HttpReply(400, { error: 'blocked by privacy check', findings: p.findings });
     try { return await hub.people.dm(j.to!, j.text, { from: /^[0-9a-f]{64}$/.test(j.from ?? '') ? j.from : undefined }); }
-    catch (e) { return new HttpReply(503, { error: (e as Error).message }); }
+    catch (e) { return new HttpReply(503, { error: e instanceof X0xError ? directSendProblem(e) : (e as Error).message }); }
   });
 
   // Calls for help on a problem: steps still waiting, and questions agents posted mid-task.
@@ -322,9 +325,16 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
   web.route('GET', /^\/api\/directory$/, async () => {
     const [list, online] = await Promise.all([profiles.list(), profiles.online()]);
     const count = (id: string) => hub.node.store.all().filter((s) => s.operatorId === id && s.visibility === 'public').length;
+    // A person's profile is published by the computer (x0x agent) they use, so the two belong together: the
+    // person's card names their computer, and that computer doesn't get a card of its own.
+    const hosts = new Set(list.filter((p) => p.kind === 'person').map((p) => p.host));
+    const agentCard = new Map(list.filter((p) => p.kind === 'agent').map((p) => [p.id, p]));
     return {
       via: profiles.networked ? 'x0x' : 'local',
-      profiles: list.map((p) => ({ ...p, online: online.has(p.host), contributions: count(p.id), this_computer: p.host === hub.node.agentId })),
+      profiles: list.map((p) => ({
+        ...p, online: online.has(p.host), contributions: count(p.id), this_computer: p.host === hub.node.agentId,
+        ...(p.kind === 'person' ? { machine: { id: p.host, handle: agentCard.get(p.host)?.handle ?? null, online: online.has(p.host), this_computer: p.host === hub.node.agentId } } : { attached: hosts.has(p.id) }),
+      })),
     };
   });
   web.route('POST', /^\/api\/profile$/, async (req, _m, _u, body) => {
@@ -377,6 +387,19 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
     const j = await body() as { amount?: number; note?: string };
     try { const r = await hub.fund.withdraw(Number(j.amount ?? 0), String(j.note ?? '')); return { withdrawn: Number(j.amount), receipt: r.id }; } catch (e) { return new HttpReply(400, { error: (e as Error).message }); }
   });
+
+  // Planning an idea with an agent (src/collective/planner.ts): started and reviewed only on this computer.
+  const planner = hub.usePlanner(new Planner(hub, opts.guideModel));
+  const local = (req: { socket: { remoteAddress?: string } }) => /^(127\.|::1$|::ffff:127\.)/.test(req.socket.remoteAddress ?? '');
+  const deny = () => new HttpReply(403, { error: 'planning runs on the computer that owns the agents' });
+  const tryIt = async <T>(f: () => Promise<T> | T) => { try { return await f(); } catch (e) { return new HttpReply(400, { error: (e as Error).message }); } };
+  web.route('GET', /^\/api\/plans$/, (req, _m, url) => local(req) ? { options: planner.options(), requests: planner.list(url.searchParams.get('idea') ?? undefined) } : deny());
+  web.route('GET', /^\/api\/plans\/pending$/, (req) => local(req) ? planner.pending().map((r) => ({ id: r.id, title: r.title, brief: planner.brief(r.id) })) : deny());
+  web.route('POST', /^\/api\/plans$/, async (req, _m, _u, body) => { if (!local(req)) return deny(); const j = await body() as { idea?: string; via?: 'claude_code' | 'model' | 'any_agent' }; return tryIt(() => planner.start(String(j.idea ?? ''), j.via ?? 'any_agent')); });
+  web.route('GET', /^\/api\/plans\/([0-9a-f]{12})$/, (req, m) => local(req) ? (planner.get(m[1]) ?? new HttpReply(404, { error: 'unknown planning request' })) : deny());
+  web.route('POST', /^\/api\/plans\/([0-9a-f]{12})\/report$/, async (req, m, _u, body) => { if (!local(req)) return deny(); const j = await body() as { report?: unknown; agent?: string }; return tryIt(() => planner.report(m[1], j.report, j.agent)); });
+  web.route('POST', /^\/api\/plans\/([0-9a-f]{12})\/publish$/, async (req, m) => local(req) ? tryIt(async () => ({ problem: await planner.publish(m[1]) })) : deny());
+  web.route('POST', /^\/api\/plans\/([0-9a-f]{12})\/discard$/, async (req, m) => local(req) ? tryIt(() => planner.discard(m[1])) : deny());
 
   // Storage on THIS computer: what it holds, on disk and per record (docs/STORAGE.md).
   web.route('GET', /^\/api\/storage$/, (req) => {

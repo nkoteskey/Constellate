@@ -20,6 +20,8 @@ export class FakeMesh {
   readonly groups = new Map<string, { name: string; preset: string; owner: string; description?: string; messages: { msg_id: string; sender: string; body: string; timestamp: string }[] }>();
   readonly taskLists = new Map<string, { name: string; tasks: Map<string, { id: string; title: string; description: string | null; state: string; claimed_by: string | null; completed_by: string | null }> }>();
   partitioned = new Set<FakeDaemon>();
+  /** Like real x0x: direct messages to an agent this daemon has never seen are refused until it looks them up. */
+  strangers = false;
 }
 
 type Sub = { id: string; topic: string };
@@ -31,6 +33,8 @@ export class FakeDaemon {
   private subs: Sub[] = [];
   private sse = new Set<ServerResponse>();
   private directSse = new Set<ServerResponse>();
+  /** Agents this daemon holds a contact card for (see /agents/find). */
+  readonly known = new Set<string>();
   private joinedStores = new Set<string>();
   url = '';
 
@@ -109,10 +113,22 @@ export class FakeDaemon {
     }
     if (m === 'DELETE' && p.startsWith('/subscribe/')) { this.subs = this.subs.filter((s) => s.id !== p.slice(11)); return this.json(res, 200, { ok: true }); }
     // Direct messages (x0x ≥0.38): delivered to the recipient's /direct/events stream, flat frames.
+    // Like real x0x: a direct message only goes to an agent this daemon has a contact card for. Strangers
+    // become known by looking them up (POST /agents/find) or by hearing from them first.
+    if (m === 'POST' && p.startsWith('/agents/find/')) {
+      const id = p.slice('/agents/find/'.length);
+      if ([...this.mesh.daemons].some((d) => d.agentId === id && !this.mesh.partitioned.has(d))) this.known.add(id);
+      return this.json(res, 200, { ok: true });
+    }
+    if (m === 'GET' && p.startsWith('/agents/discovered/')) {
+      const id = p.slice('/agents/discovered/'.length);
+      return this.known.has(id) ? this.json(res, 200, { ok: true, agent_id: id }) : this.json(res, 404, { ok: false, error: 'not_found' });
+    }
     if (m === 'POST' && p === '/direct/send') {
       const b = await this.body(req);
       const to = [...this.mesh.daemons].find((d) => d.agentId === b.agent_id && !this.mesh.partitioned.has(d));
-      if (!to) return this.json(res, 404, { ok: false, error: 'recipient_key_unavailable' });
+      if (!to || (this.mesh.strangers && !this.known.has(b.agent_id))) return this.json(res, 404, { ok: false, error: 'recipient_key_unavailable', detail: 'no contact card for this agent' });
+      to.known.add(this.agentId);
       const frame = JSON.stringify({ sender: this.agentId, machine_id: this.agentId, payload: b.payload, received_at: new Date().toISOString(), verified: true });
       for (const s of to.directSse) s.write(`data: ${frame}\n\n`);
       return this.json(res, 200, { ok: true });

@@ -117,7 +117,7 @@ describe('storage: smaller, still verifiable, and shared with late joiners', () 
       return t;
     };
     const lean = await list(), full = await list('full');
-    expect(lean.map((t) => t.name).sort()).toEqual(['answers_lookup', 'answers_submit', 'bounties', 'bounty_post', 'failures_report', 'failures_search', 'skills_find']);
+    expect(lean.map((t) => t.name).sort()).toEqual(['answers_lookup', 'answers_submit', 'bounties', 'bounty_post', 'failures_report', 'failures_search', 'plan_report', 'skills_find']);
     expect(full.length).toBeGreaterThan(40);
     expect(JSON.stringify(lean).length).toBeLessThan(JSON.stringify(full).length / 3);
   });

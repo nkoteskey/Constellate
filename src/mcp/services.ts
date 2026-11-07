@@ -101,6 +101,24 @@ export function registerWorkTools(server: McpServer, hub: Hub) {
 }
 
 export function registerCollectiveTools(server: McpServer, hub: Hub) {
+  tool(server, 'plan_report',
+    'Your person asked you to plan an idea for the network. Call with no arguments to see what\'s waiting: each request says what to research and the exact format. Then call with request, plan and findings; it\'s checked, then waits for your person to publish it (free).',
+    {
+      request: z.string().optional(),
+      plan: z.record(z.unknown()).optional().describe('In the format the request gives.'),
+      findings: z.record(z.unknown()).optional().describe('In the format the request gives.'),
+    },
+    async ({ request, plan, findings }) => {
+      const agent = server.server.getClientVersion()?.name ?? 'agent';
+      if (!request || !plan || !findings) {
+        const waiting = await viaApp('/api/plans/pending').catch(() => hub.planner.pending().map((r) => ({ id: r.id, title: r.title, brief: hub.planner.brief(r.id) })));
+        return { waiting, note: (waiting as unknown[]).length ? 'Research each one, then report it with request, plan and findings.' : 'Nothing is waiting to be planned.' };
+      }
+      const report = { plan, findings };
+      const r = await viaApp(`/api/plans/${request}/report`, { report, agent }).catch(async (e: Error) => { if (/open the Constellate app/.test(e.message)) return hub.planner.report(request, report, agent); throw e; }) as { status?: string; problems?: string[] };
+      return { status: r.status, problems: r.problems ?? [], next: r.problems?.length ? 'Fix these and report again.' : 'Reported. Your person reviews it and publishes it from the Proposals page.' };
+    });
+
   tool(server, 'proposals_submit',
     'Propose a problem for the network, with a definition of done and checkable chunks. It is checked against the constitution first; blocked proposals are never broadcast.',
     {
@@ -135,7 +153,7 @@ export function registerCollectiveTools(server: McpServer, hub: Hub) {
 const appUrl = () => (process.env.CONSTELLATE_APP_URL ?? `http://127.0.0.1:${process.env.CONSTELLATE_PORT ?? process.env.PORT ?? 4747}`).replace(/\/$/, '');
 async function viaApp(path: string, body?: unknown) {
   const r = await fetch(appUrl() + path, body === undefined ? undefined : { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
-    .catch(() => { throw new Error('bounties are paid from this computer\'s Constellate balance: open the Constellate app (or run `constellate serve`), then try again'); });
+    .catch(() => { throw new Error('this needs the Constellate app on this computer (it holds the balance and the planning requests): open the Constellate app (or run `constellate serve`), then try again'); });
   const j = await r.json().catch(() => ({})) as { error?: string };
   if (!r.ok) throw new Error(j.error ?? `the app answered ${r.status}`);
   return j;

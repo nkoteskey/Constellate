@@ -81,9 +81,14 @@ writeFileSync(join(home, '.config', 'Claude', 'claude_desktop_config.json'), JSO
     // A public profile, hosted by this computer's x0x agent in the open directory (real x0xd in CI).
     await win.fill('#pf-handle', 'e2e-tester');
     await win.fill('#pf-about', 'Checks Lean proofs at night');
-    await win.click('#prof-form button');
-    await win.waitForFunction(() => /Live on the x0x network|Saved on this computer/.test(document.querySelector('#pf-out')?.textContent ?? ''), null, { timeout: 20_000 });
-    assert.match(await win.textContent('#pf-out'), /Live on the x0x network/);
+    await win.click('#prof-form button.btn.primary');
+    // Once published, the form gives way to the card others see, with an Edit button.
+    await win.waitForSelector('#prof-slot #pf-edit', { timeout: 20_000 });
+    const shown = await win.textContent('#prof-slot');
+    assert.match(shown, /how others see you on the x0x network/);
+    assert.match(shown, /@e2e-tester/);
+    assert.doesNotMatch(shown, /Saved on this computer/);
+    assert.equal(await win.$('#prof-slot #pf-handle'), null, 'no form fields once published');
     const dir = await win.evaluate(async () => (await (await fetch('/api/directory')).json()));
     assert.ok(dir.profiles.some((p) => p.handle === 'e2e-tester' && p.this_computer), 'profile listed in the x0x directory');
     const groups = await win.evaluate(async () => (await (await fetch('/api/x0x/groups')).json()));

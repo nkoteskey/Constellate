@@ -29,6 +29,7 @@ import { Bounties } from '../economy/bounties.js';
 import { StorageFund } from '../economy/fund.js';
 import { Keeper } from './keeper.js';
 import { Pages } from '../graph/pages.js';
+import { Planner } from '../collective/planner.js';
 import { PaymentRail } from '../economy/rail.js';
 import { ScrubOptions } from '../privacy/scrub.js';
 import { OperatorClaim } from '../core/operator.js';
@@ -86,6 +87,10 @@ export class Hub {
   get bounties() { return (this._bounties ??= new Bounties(this)); }
   private _fund?: StorageFund;
   get fund() { return (this._fund ??= new StorageFund(this)); }
+  private _planner?: Planner;
+  /** Planning ideas with an agent (src/collective/planner.ts). The app attaches its model with usePlanner. */
+  get planner() { return (this._planner ??= new Planner(this)); }
+  usePlanner(p: Planner) { this._planner = p; return p; }
   private _pages?: Pages;
   /** Topic pages, the session map and dreaming (docs/MEMORY.md). */
   get pages() { return (this._pages ??= new Pages(this)); }
