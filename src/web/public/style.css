@@ -460,3 +460,8 @@ label.inline-check input { margin: 0; width: 16px; height: 16px; accent-color: v
 .machine-line { display: flex; align-items: center; gap: 7px; margin-top: 8px; font-size: 12.5px; color: var(--fg-2); }
 .machine-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--fg-2); opacity: .5; flex: none; }
 .machine-dot.on { background: var(--ok, #6fe3a5); opacity: 1; box-shadow: 0 0 8px var(--ok, #6fe3a5); }
+
+/* Planning with an agent: its activity log, and the status line on an idea's card. */
+.plan-log { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; font-size: 13.5px; }
+.plan-log li { display: grid; grid-template-columns: 7.5em 1fr; gap: 8px; }
+.plan-chip { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }

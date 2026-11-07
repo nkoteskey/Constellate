@@ -742,7 +742,9 @@ async function galleryPage(id) {
 
 // ── Proposals ─────────────────────────────────────────────────────
 async function proposalsPage() {
-  const [q, ideas] = await Promise.all([api('/api/proposals'), api('/api/ideas').catch(() => [])]);
+  const [q, ideas, plans, planUi] = await Promise.all([api('/api/proposals'), api('/api/ideas').catch(() => []), STATIC ? null : api('/api/plans').catch(() => null), import('./js/plan.js')]);
+  // The latest plan for each idea (newest first from the server), so its card says where planning stands.
+  const planOf = new Map(); for (const r of plans?.requests ?? []) if (!planOf.has(r.idea)) planOf.set(r.idea, r);
   const state = (c) => c.state === 'cleared' ? '' : c.state === 'awaiting_review' ? '<span class="chip warn"><span class="dot"></span>Awaiting safety review</span>' : `<span class="chip stop"><span class="dot"></span>${esc(c.state)}</span>`;
   const row = (r) => `<div class="card"><div class="spread"><a href="#/p/${r.id}" class="serif" style="font-size:20px;text-decoration:none">${esc(r.title)}</a>${state(r.constitution)}</div>
     <div class="row muted" style="font-size:13.5px;margin:6px 0 10px"><span>${r.votes.voters} voters</span><span>· vote weight ${r.votes.weight.toFixed(1)}</span>${r.share !== undefined ? `<span>· ${Math.round(r.share * 100)}% of compute</span>` : ''}<span>· ${r.progress.done}/${r.progress.total} verified</span></div>
@@ -750,7 +752,7 @@ async function proposalsPage() {
     <div style="margin-top:12px"><button class="btn sm" data-vote="${r.id}" aria-pressed="${votedSet().has(r.id)}">${voteLabel(r.id)}</button></div></div>`;
   const ideaCard = (i) => `<div class="card"><div class="spread"><b class="serif" style="font-size:19px">${esc(i.title)}</b><span class="chip sm" style="--c:${realm(i.realm).c}"><span class="dot"></span>${esc(realm(i.realm).short)}</span></div>
       <p class="muted" style="font-size:13.5px;margin:6px 0">${esc(i.goal)}</p><p class="faint" style="font-size:12.5px;margin:0">Done means: ${esc(i.done)}</p>
-      <div class="row" style="margin-top:10px"><button class="btn sm" data-vote="${i.id}" aria-pressed="${votedSet().has(i.id)}">${voteLabel(i.id)}</button><button class="btn sm agent" data-plan="${i.id}">Plan it with your agent</button><span class="faint" style="font-size:12.5px">${i.voters} voter${i.voters === 1 ? '' : 's'} · from a ${i.human ? 'person' : 'an agent'}</span></div></div>`;
+      <div class="row" style="margin-top:10px"><button class="btn sm" data-vote="${i.id}" aria-pressed="${votedSet().has(i.id)}">${voteLabel(i.id)}</button><button class="btn sm agent" data-plan="${i.id}">${planOf.get(i.id) && planOf.get(i.id).status !== 'discarded' ? 'See the plan' : 'Plan it with your agent'}</button><span class="faint" style="font-size:12.5px">${i.voters} voter${i.voters === 1 ? '' : 's'} · from a ${i.human ? 'person' : 'an agent'}</span></div>${planUi.planChip(planOf.get(i.id))}</div>`;
   // Three short lists behind tabs instead of one long page; proposing and pledging open in a panel from the top.
   const TABS = [
     { key: 'active', name: 'Being worked on', items: q.active, html: () => q.active.map(row).join('') || '<p class="muted">Nothing yet.</p>' },
@@ -777,6 +779,18 @@ async function proposalsPage() {
   const show = (t) => { tab = t; ls.set('proposalsTab', t.key); $$('[data-ptab]').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.ptab === t.key))); $('#ptab-body').innerHTML = t.html(); wire($('#ptab-body')); };
   $$('[data-ptab]').forEach((b) => (b.onclick = () => show(TABS.find((t) => t.key === b.dataset.ptab))));
   show(tab);
+  // While an agent is planning, keep the Ideas tab current so its progress shows without reopening anything.
+  if ([...planOf.values()].some((r) => ['waiting', 'running'].includes(r.status))) {
+    const here = location.hash;
+    const tick = setInterval(async () => {
+      if (location.hash !== here || !$('#ptab-body')) return clearInterval(tick);
+      if (tab.key !== 'ideas' || document.getElementById('sheet')) return;
+      const fresh = await api('/api/plans').catch(() => null); if (!fresh) return;
+      planOf.clear(); for (const r of fresh.requests) if (!planOf.has(r.idea)) planOf.set(r.idea, r);
+      show(tab);
+      if (![...planOf.values()].some((r) => ['waiting', 'running'].includes(r.status))) clearInterval(tick);
+    }, 4000);
+  }
   $('#open-propose').onclick = () => {
     const el = sheet(`<div class="spread"><div class="eyebrow">Propose a problem</div><button class="btn ghost sm" data-close>Close</button></div>
     <form class="stack" id="idea" style="margin-top:12px">

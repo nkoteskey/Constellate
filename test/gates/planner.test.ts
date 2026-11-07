@@ -43,7 +43,7 @@ describe('plan it with your agent', () => {
       expect(bad.problems!.join(' ')).toMatch(/"vibes" isn't a registered check.*used twice/);
       await expect(p.publish(r.id)).rejects.toThrow(/fix these first/);
       const ok = await p.report(r.id, good, 'claude-code');
-      expect(ok).toMatchObject({ status: 'reported', problems: [], agent: 'claude-code' });
+      expect(ok).toMatchObject({ status: 'reported', problems: [], agent: 'Claude Code' });
       expect(hub.problems.list()).toHaveLength(0); // nothing goes live on the agent's say-so
       const id = await p.publish(r.id);
       expect(hub.problems.get(id)).toBeTruthy();
@@ -79,7 +79,7 @@ describe('plan it with your agent', () => {
       expect(waiting.waiting[0].brief).toContain('Research first');
       const done = await call({ request: r.id, ...good });
       expect(done).toMatchObject({ status: 'reported', problems: [] });
-      expect(hub.planner.get(r.id)?.agent).toBe('cursor');
+      expect(hub.planner.get(r.id)?.agent).toBe('Cursor'); // the MCP client's name, as people know it
       expect((await call({})).waiting).toEqual([]);
       await client.close();
     } finally { delete process.env.CONSTELLATE_HOME; delete process.env.CONSTELLATE_APP_URL; }
@@ -103,6 +103,48 @@ describe('plan it with your agent', () => {
       expect(args[args.indexOf('--allowedTools') + 1].split(',')).toEqual(['mcp__constellate__plan_report', 'mcp__constellate__failures_search', 'mcp__constellate__answers_lookup', 'mcp__constellate__skills_find']);
       expect(JSON.parse(args[args.indexOf('--mcp-config') + 1]).mcpServers.constellate.args.at(-1)).toBe('mcp');
       expect(hub.planner.get(r.id)).toMatchObject({ status: 'failed', error: 'Claude Code finished without reporting a plan' });
+      expect(args.slice(args.indexOf('--output-format'), args.indexOf('--output-format') + 3)).toEqual(['--output-format', 'stream-json', '--verbose']);
     } finally { delete process.env.CONSTELLATE_HOME; delete process.env.CONSTELLATE_CLAUDE; }
+  });
+
+  it('the person can see what actually happened: who picked the request up, each search, and how it ended', async () => {
+    const { hub, idea, home } = await withIdea();
+    process.env.CONSTELLATE_APP_URL = 'http://127.0.0.1:9';
+    try {
+      // Claude Desktop (MCP client name "claude-ai") reads the waiting request, then reports.
+      const r = await hub.planner.start(idea, 'any_agent');
+      expect(hub.planner.get(r.id)!.log![0].text).toMatch(/check Constellate for planning requests/);
+      const server = createMcpServer(hub);
+      const [a, b] = InMemoryTransport.createLinkedPair();
+      const client = new Client({ name: 'claude-ai', version: '1' });
+      await Promise.all([server.connect(a), client.connect(b)]);
+      await client.callTool({ name: 'plan_report', arguments: {} });
+      expect(hub.planner.get(r.id)!.log!.map((l) => l.text)).toContain('Claude Desktop picked this up and is researching it.');
+      await client.callTool({ name: 'plan_report', arguments: { request: r.id, ...good } });
+      expect(hub.planner.get(r.id)!.log!.at(-1)!.text).toMatch(/^Claude Desktop reported a plan: 2 steps, 1 related item found\. Ready for you to review\.$/);
+      await client.close();
+
+      // Claude Code streams its progress; each Constellate tool it uses becomes a line.
+      const fake = join(home, 'claude');
+      const lines = [
+        { type: 'system', subtype: 'init', model: 'claude-sonnet' },
+        { type: 'assistant', message: { content: [{ type: 'tool_use', name: 'mcp__constellate__failures_search', input: { query: 'Ramsey lower bounds' } }] } },
+        { type: 'assistant', message: { content: [{ type: 'text', text: 'thinking' }, { type: 'tool_use', name: 'mcp__constellate__answers_lookup', input: { question: 'best known R(5,5) lower bound' } }] } },
+        { type: 'result', duration_ms: 3200, total_cost_usd: 0.04 },
+      ];
+      writeFileSync(fake, `#!/usr/bin/env node\nfor (const l of ${JSON.stringify(lines.map((x) => JSON.stringify(x)))}) console.log(l);\n`);
+      chmodSync(fake, 0o755);
+      process.env.CONSTELLATE_CLAUDE = fake;
+      const c = await hub.planner.start(idea, 'claude_code');
+      for (let i = 0; i < 100 && hub.planner.get(c.id)?.status === 'running'; i++) await wait(30);
+      expect(hub.planner.get(c.id)!.log!.map((l) => l.text)).toEqual([
+        'Starting Claude Code on this computer…',
+        'Claude Code started (claude-sonnet) with Constellate connected.',
+        'Searched what already failed: “Ramsey lower bounds”',
+        'Looked for solved answers: “best known R(5,5) lower bound”',
+        'Claude Code finished in 3 s (about $0.04 of your Claude usage).',
+        'Stopped: Claude Code finished without reporting a plan',
+      ]);
+    } finally { delete process.env.CONSTELLATE_HOME; delete process.env.CONSTELLATE_APP_URL; delete process.env.CONSTELLATE_CLAUDE; }
   });
 });

@@ -1,3 +1,4 @@
+import { agentName } from '../collective/planner.js';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { Hub } from '../hub/hub.js';
@@ -111,7 +112,8 @@ export function registerCollectiveTools(server: McpServer, hub: Hub) {
     async ({ request, plan, findings }) => {
       const agent = server.server.getClientVersion()?.name ?? 'agent';
       if (!request || !plan || !findings) {
-        const waiting = await viaApp('/api/plans/pending').catch(() => hub.planner.pending().map((r) => ({ id: r.id, title: r.title, brief: hub.planner.brief(r.id) })));
+        // Telling the app who asked lets the person see which agent picked their request up.
+        const waiting = await viaApp(`/api/plans/pending?agent=${encodeURIComponent(agent)}`).catch(() => { const list = hub.planner.pending().map((r) => ({ id: r.id, title: r.title, brief: hub.planner.brief(r.id) })); hub.planner.pickedUp(agentName(agent)); return list; });
         return { waiting, note: (waiting as unknown[]).length ? 'Research each one, then report it with request, plan and findings.' : 'Nothing is waiting to be planned.' };
       }
       const report = { plan, findings };

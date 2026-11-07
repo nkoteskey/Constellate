@@ -259,6 +259,16 @@ Real money, **ready and off by default** (docs/MAINNET.md):
   - Entries for the awesome lists are ready in `distribution/LISTINGS.md`.
   - These listings need the owner's own accounts.
 
+### Seeing what a planning agent actually did (Nov 7)
+- **Activity log:** each planning request keeps a log of what happened, with times. It covers who picked the request up (shown by app name, such as "Claude Desktop", rather than the MCP client name), each Constellate search Claude Code ran (from its `stream-json` output), how long the run took and what it cost, the plan arriving, and why a run stopped.
+- **On the Proposals page:** the idea's card shows the plan's status and its latest step. It updates every few seconds while an agent is working. The plan's popup shows the full log, and says that "Being worked on" changes only after the plan is published.
+- **Claude Code from the desktop app:** it's now found in Homebrew, npm, Volta and Bun install folders, and it starts with a PATH that includes Node. Apps opened from the Dock don't get the terminal's PATH.
+- A request a connected agent picks up now counts as in progress.
+
+### Smoother pages (Nov 7)
+- The old page fades out on click. The new one is drawn hidden and fades in once no request is in flight and it has stopped changing (at most 0.9 s). Reduce motion turns the fades off.
+- Measured with a 300 ms delay on every request, the layout shift is now 0 on People (was 0.47) and Problems (was 0.08), and 0.065 on Lend your computer (was 0.08).
+
 ## Summary of what needs a human
 1. **Live x0x (blocks confidence in every phase):** run the gates against two real `x0xd` daemons. Confirm ML-DSA signature interop between `/agent/sign` and noble, `/stores` and `/task-lists` field names, contacts → pre-trusted operators, and Spaces/DMs for chat.
 2. **Gate 1 behaviour:** `ANTHROPIC_API_KEY=… npx tsx evals/gate1.ts 3`.
