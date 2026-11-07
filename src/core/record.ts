@@ -31,6 +31,8 @@ export const RECORD_KINDS = [
   'challenge', 'gallery', 'piece', 'curation', 'identity_link',
   // money: where a contributor wants their earnings paid (an EVM address, signed by them)
   'payout_address',
+  // people and agents: a public profile in the x0x directory (handle, what they do, what they're open to)
+  'profile',
 ] as const;
 export type RecordKind = (typeof RECORD_KINDS)[number];
 

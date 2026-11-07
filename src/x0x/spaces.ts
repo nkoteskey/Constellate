@@ -19,7 +19,11 @@ export class ProblemSpaces {
     if (!this.hub.x0x) return null;
     const known = this.ids.get(problemId);
     if (known) return known;
-    const id = await this.hub.x0x.createSpace(`constellate-${problemId.slice(0, 16)}`, 'public_open').catch(() => '');
+    // Named so x0x's public directory can find it by word ("constellate", and the problem's own words).
+    const b = this.hub.problems.get(problemId)?.rec.body as { title?: string; hook?: string } | undefined;
+    const name = `Constellate · ${(b?.hook || b?.title || problemId.slice(0, 16)).slice(0, 60)}`;
+    const description = `A Constellate problem${b?.title ? `: ${b.title}` : ''}. Agents and people work on it in steps a machine can check. Join to follow along, or help: https://nkoteskey.github.io/Constellate/#/p/${problemId}`;
+    const id = await this.hub.x0x.createSpace(name, 'public_open', description.slice(0, 400)).catch(() => '');
     if (id) this.ids.set(problemId, id);
     return id || null;
   }

@@ -2,6 +2,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { decodeCanonical } from '../core/canonical.js';
 import { ActivityLog } from '../hub/activity.js';
+import { Profiles, profileProblem, ProfileBody } from '../collab/profiles.js';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { HttpReply, RawReply, StreamReply, WebServer } from './server.js';
@@ -302,6 +303,40 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
   }));
 
   // Ideas from people: not yet a problem (that needs checkable steps), but voted on and visible.
+  // Out in the open on x0x: public groups other agents and people have listed (signed group cards). We subscribe to
+  // a few tags once and read what arrives; nothing is joined or sent until the person chooses to.
+  const WATCH = [['tag', 'ai'], ['tag', 'agents'], ['tag', 'llm'], ['tag', 'code-review'], ['tag', 'research'], ['tag', 'science'], ['tag', 'x0x'], ['name', 'constellate'], ['name', 'agents'], ['name', 'swarm']] as const;
+  let watching: Promise<unknown> | null = null;
+  web.route('GET', /^\/api\/x0x\/groups$/, async () => {
+    if (!hub.x0x) return { via: 'none', groups: [] };
+    watching ??= Promise.allSettled(WATCH.map(([k, v]) => hub.x0x!.discoverSubscribe(k, v)));
+    await watching;
+    const groups = await hub.x0x.discoverGroups().catch(() => []);
+    return { via: 'x0x', watching: WATCH.map(([k, v]) => `${k}:${v}`), groups: groups.sort((a, b) => b.members - a.members || b.updated - a.updated).slice(0, 60).map((g) => ({ ...g, ours: /^constellate\b/i.test(g.name) })) };
+  });
+
+  // Profiles: an open x0x directory of who's who (handles, what they do, what they're open to), plus who's online.
+  const profiles = new Profiles(hub);
+  if (hub.x0x) void profiles.publishAgent({ open_to: { messages: true, invites: true, reviews: true } }).catch(() => {}); // this computer, listed
+  web.route('GET', /^\/api\/directory$/, async () => {
+    const [list, online] = await Promise.all([profiles.list(), profiles.online()]);
+    const count = (id: string) => hub.node.store.all().filter((s) => s.operatorId === id && s.visibility === 'public').length;
+    return {
+      via: profiles.networked ? 'x0x' : 'local',
+      profiles: list.map((p) => ({ ...p, online: online.has(p.host), contributions: count(p.id), this_computer: p.host === hub.node.agentId })),
+    };
+  });
+  web.route('POST', /^\/api\/profile$/, async (req, _m, _u, body) => {
+    if (!/^(127\.|::1$|::ffff:127\.)/.test(req.socket.remoteAddress ?? '')) return new HttpReply(403, { error: 'only on this computer' });
+    const rec = (await body()) as SignedRecord;
+    if (!verifyRecord(rec).ok || rec.kind !== 'profile') return new HttpReply(400, { error: 'not a signed profile' });
+    const bad = profileProblem(rec.body as Partial<ProfileBody>);
+    if (bad) return new HttpReply(400, { error: bad });
+    const p = scrub({ context: rec.context, body: readableBody(rec) }, hub.node.privacy);
+    if (!p.ok) return new HttpReply(400, { error: 'blocked by privacy check', findings: p.findings });
+    try { return { published: await profiles.publishPerson(rec) }; } catch (e) { return new HttpReply(400, { error: (e as Error).message }); }
+  });
+
   // What the agents connected on THIS computer have done (from agent-activity.jsonl). Answers only this computer.
   const agentLog = new ActivityLog();
   web.route('GET', /^\/api\/agents\/activity$/, (req) => {
