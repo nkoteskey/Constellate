@@ -80,7 +80,7 @@ export class Ledger {
     return this.rank('answer', question, opts.domain, opts.environment, opts.limit ?? 3).map(({ s, t, env }) => {
       const b = s.rec.body as AnswerBody;
       return {
-        id: s.rec.id, question: b.question, answer: b.answer, headline: (b as { headline?: string }).headline, proof: b.proof, environment: s.rec.context.environment, env_match: round(env),
+        id: s.rec.id, question: b.question, answer: b.answer, headline: (b as { headline?: string }).headline, proof: b.proof, source: s.rec.evidence[0] ?? null, environment: s.rec.context.environment, env_match: round(env),
         weight: round(t.weight), confirmations: t.confirmations, contradictions: t.contradictions, age_days: Math.floor(ageDays(s)), fixes: s.rec.refs,
         neighbours: this.graph?.neighbours(s.rec.id, 3) ?? [],
       };
@@ -106,7 +106,7 @@ const round = (n: number) => Math.round(n * 100) / 100;
 /** Which projects a distilled topic comes from, and its newest lesson's date: "x0x · Sep 2026" tells a reader what it's about. */
 export function topicContext(store: { get(id: string): StoredRecord | undefined }, members: string[]) {
   const envs = members.map((id) => store.get(id)?.rec.context.environment ?? '');
-  const projects = [...new Set(envs.map((e) => e.match(/^[\w.-]+\/([\w.-]+)/)?.[1]).filter((x): x is string => !!x))];
+  const projects = [...new Set(envs.map((e) => e.match(/^[\w.-]+\/([\w.-]+)/)?.[1] ?? (e.match(/^(\w+) \([^)]+\): AI-generated paper/)?.[1] ? `${e.match(/^(\w+) /)![1]} papers` : undefined)).filter((x): x is string => !!x))];
   const dates = envs.map((e) => e.match(/(\d{4}-\d{2}-\d{2})/)?.[1]).filter((x): x is string => !!x).sort();
   return { projects, latest: dates.at(-1) ?? null };
 }

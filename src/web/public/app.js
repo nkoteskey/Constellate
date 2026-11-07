@@ -318,11 +318,11 @@ async function search(q) {
       <div class="spread"><span class="kind failed">Failed before</span><span class="faint" style="font-size:12px">${f.confirmations ? `${f.confirmations} confirmed · ` : ''}${esc(f.environment)}</span></div>
       <div style="margin-top:4px"><button class="claim" data-rec="${f.id}">${hl(f.approach, q)}</button></div>
       <div class="muted" style="font-size:13.5px">${hl(f.error_summary, q)}</div>${f.applies_when ? `<div class="faint" style="font-size:12.5px;margin-top:2px">Applies when: ${esc(f.applies_when)}</div>` : ''}
-      ${f.fixes.map((x) => `<div class="fix"><span class="kind fixed">What fixed it</span>${fixBody(x, q)}<div class="meta spread"><span>${trustLabel(x)}</span><button class="btn ghost sm" data-helped="${x.id}" data-domain="${esc((x.domain ?? []).join(','))}" aria-label="This fix helped me">This helped</button></div></div>`).join('')}
+      ${f.fixes.map((x) => `<div class="fix"><span class="kind fixed">${paperSource(x) ? 'What the paper found worked' : 'What fixed it'}</span>${fixBody(x, q)}<div class="meta spread"><span>${trustLabel(x)}</span><button class="btn ghost sm" data-helped="${x.id}" data-domain="${esc((x.domain ?? []).join(','))}" aria-label="This fix helped me">This helped</button></div></div>`).join('')}
       ${related(f.neighbours, f.fixes.map((x) => x.id))}
     </div>`).join('');
   const seen = new Set(r.failures.flatMap((f) => f.fixes.map((x) => x.id)));
-  const ans = r.answers.filter((a) => !seen.has(a.id)).map((a) => `<div class="result"><span class="kind answer">Verified answer</span><div style="margin-top:4px" class="serif">${esc(a.question)}</div>${fixBody(a, q)}<div class="meta spread"><span>${trustLabel(a)}</span><button class="btn ghost sm" data-helped="${a.id}" aria-label="This answer helped me">This helped</button></div></div>`).join('');
+  const ans = r.answers.filter((a) => !seen.has(a.id)).map((a) => `<div class="result"><span class="kind answer">${a.confirmations || /merged pull request/.test(a.proof?.detail ?? '') ? 'Verified answer' : paperSource(a) ? 'Reported finding' : 'Answer'}</span><div style="margin-top:4px" class="serif">${esc(a.question)}</div>${fixBody(a, q)}<div class="meta spread"><span>${trustLabel(a)}</span><button class="btn ghost sm" data-helped="${a.id}" aria-label="This answer helped me">This helped</button></div></div>`).join('');
   const guide = r.guide ? `<div class="result"><span class="kind answer">From the network</span><div style="margin-top:4px">${esc(r.guide.answer)}</div>${r.guide.about ? `<div style="margin-top:8px"><a class="btn sm" href="#/${r.guide.kind === 'deliberation' ? 'd' : 'p'}/${r.guide.about}">Open ${icon.arrow}</a></div>` : ''}</div>` : '';
   const learned = (r.learned ?? []).map((l) => `<div class="result"><div class="spread"><span class="kind learned">What the network learned</span><span class="faint" style="font-size:12px">${l.projects?.length ? `${l.projects.map(esc).join(', ')} · ` : ''}${l.sources} linked lessons${l.latest ? ` · latest ${new Date(l.latest).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })}` : ''}</span></div>
       <div style="margin-top:4px"><button class="claim" data-rec="${l.id}">${esc(l.title)}</button></div>
@@ -369,8 +369,12 @@ function paperOf(rec) {
   return m ? { source: m[1], org: m[2], url: rec.evidence?.[0] ?? null } : null;
 }
 
+// Findings from research papers are credited to their source and labelled for what they are.
+const paperSource = (x) => /AI-generated paper \(([^)]+)\)/.exec(x.proof?.detail ?? '')?.[1] ?? null;
 function trustLabel(x) {
   if (x.confirmations) return `${x.confirmations} independent confirmation${x.confirmations === 1 ? '' : 's'}`;
+  const paper = paperSource(x);
+  if (paper) return `<span class="chip sm">Self-reported</span> <span class="faint">· in a ${esc(paper)} paper, not yet reproduced${x.source ? ` · <a href="${esc(x.source)}" target="_blank" rel="noopener">the paper</a>` : ''}</span>`;
   if (/merged pull request/.test(x.proof?.detail ?? '')) return '<span class="chip ok sm"><span class="dot"></span>Fix merged upstream</span> <span class="faint">· not yet re-checked here</span>';
   return '<span class="faint">Not yet confirmed by anyone else</span>';
 }
