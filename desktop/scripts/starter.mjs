@@ -1,14 +1,15 @@
-// Builds the desktop app's starter library: Saorsa Labs' public issues and the fixes that closed
-// them (already redacted of personal details, see data/seed), plus the reviewed summaries that
-// group them, signed by a one-off seed identity. On first run the app imports it, each record
-// re-verified, so a new install opens on real lessons instead of an empty page.
+// Builds the desktop app's starter library, signed by a one-off seed identity:
+//   - Saorsa Labs' public issues and the fixes that closed them (redacted of personal details, see data/seed);
+//   - negative results and findings from ScientistTwo's AI-generated research papers (Google Cloud AI Research);
+//   - the topic pages that group them, and the featured problem and debate.
+// On first run the app imports it, each record re-verified, so a new install opens on real lessons.
 //   node desktop/scripts/starter.mjs <out-file>        (needs `npm run build` first)
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const ROOT = resolve(import.meta.dirname, '..', '..');
-const out = resolve(process.argv[2] ?? join(ROOT, 'desktop', 'stage', 'starter', 'saorsa-labs.cbor'));
+const out = resolve(process.argv[2] ?? join(ROOT, 'desktop', 'stage', 'starter', 'starter.cbor'));
 const load = (p) => import(pathToFileURL(join(ROOT, 'dist', p)).href);
 const json = (f) => JSON.parse(readFileSync(join(ROOT, 'data', 'seed', f), 'utf8'));
 

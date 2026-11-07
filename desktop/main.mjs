@@ -16,7 +16,7 @@ const PORT = Number(process.env.CONSTELLATE_PORT ?? 4747);
 const APP_URL = `http://127.0.0.1:${PORT}`;
 const DASH_URL = 'http://127.0.0.1:4748';
 // The starter library bundled with the app (stage/starter in a packaged build; desktop/stage/starter when run from source).
-const STARTER = [join(HERE, 'starter', 'saorsa-labs.cbor'), join(HERE, 'stage', 'starter', 'saorsa-labs.cbor')].find((f) => existsSync(f));
+const STARTER = [join(HERE, 'starter', 'starter.cbor'), join(HERE, 'stage', 'starter', 'starter.cbor')].find((f) => existsSync(f));
 const ICON = join(HERE, 'build', process.platform === 'darwin' ? 'trayTemplate.png' : 'tray.png');
 
 if (!app.requestSingleInstanceLock()) app.quit();
