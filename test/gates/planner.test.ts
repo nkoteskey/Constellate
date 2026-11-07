@@ -89,7 +89,8 @@ describe('plan it with your agent', () => {
     const { hub, idea, home } = await withIdea();
     const fake = join(home, 'claude');
     const argsFile = join(home, 'args.json');
-    writeFileSync(fake, `#!/usr/bin/env node\nrequire('fs').writeFileSync(${JSON.stringify(argsFile)}, JSON.stringify(process.argv.slice(2)));\n`);
+    const envFile = join(home, 'env.json');
+    writeFileSync(fake, `#!/usr/bin/env node\nrequire('fs').writeFileSync(${JSON.stringify(argsFile)}, JSON.stringify(process.argv.slice(2)));\nrequire('fs').writeFileSync(${JSON.stringify(envFile)}, JSON.stringify({ MCP_TIMEOUT: process.env.MCP_TIMEOUT }));\n`);
     chmodSync(fake, 0o755);
     process.env.CONSTELLATE_CLAUDE = fake;
     try {
@@ -100,6 +101,9 @@ describe('plan it with your agent', () => {
       expect(args[0]).toBe('-p');
       expect(args[1]).toContain(`request "${r.id}"`);
       expect(args).toContain('--strict-mcp-config');
+      // Claude Code's own tools are off, so only Constellate's are left, and its server gets time to connect.
+      expect(args[args.indexOf('--tools') + 1]).toBe('');
+      expect(JSON.parse(readFileSync(envFile, 'utf8')).MCP_TIMEOUT).toBe(process.env.MCP_TIMEOUT || '120000');
       expect(args[args.indexOf('--allowedTools') + 1].split(',')).toEqual(['mcp__constellate__plan_report', 'mcp__constellate__failures_search', 'mcp__constellate__answers_lookup', 'mcp__constellate__skills_find']);
       expect(JSON.parse(args[args.indexOf('--mcp-config') + 1]).mcpServers.constellate.args.at(-1)).toBe('mcp');
       expect(hub.planner.get(r.id)).toMatchObject({ status: 'failed', error: 'Claude Code finished without reporting a plan.' });

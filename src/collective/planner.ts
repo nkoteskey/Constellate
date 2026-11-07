@@ -184,7 +184,9 @@ If plan_report isn't available or keeps failing, end your reply with the same { 
 
   /**
    * Claude Code on this computer, started headless with Constellate connected. It researches with Constellate's
-   * tools and reports through plan_report, which comes back to this app. Only Constellate's own tools are allowed.
+   * tools and reports through plan_report, which comes back to this app. Only Constellate's own tools are allowed:
+   * `--tools ""` turns off Claude Code's built-in tools (shell, files, web), which the person's own Claude Code
+   * permission settings would otherwise let it use.
    */
   private runClaudeCode(id: string) {
     const bin = claudeBinary();
@@ -194,7 +196,10 @@ If plan_report isn't available or keeps failing, end your reply with the same { 
     const allowed = ['plan_report', 'failures_search', 'answers_lookup', 'skills_find'].map((t) => `mcp__constellate__${t}`).join(',');
     // Apps opened from the Dock get a bare PATH, and `claude` is a Node script: give it the usual places Node lives.
     const PATH = [dirname(bin), ...EXTRA_BIN_DIRS, process.env.PATH ?? ''].filter(Boolean).join(delimiter);
-    const child = spawn(bin, ['-p', this.brief(id), '--mcp-config', JSON.stringify(mcp), '--strict-mcp-config', '--allowedTools', allowed, '--output-format', 'stream-json', '--verbose'], { stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, PATH } });
+    // Constellate's server can take longer than Claude Code's 30 s default to answer on a slow or busy computer
+    // (an Intel build running under Rosetta took 22–42 s): give it two minutes unless the person set their own.
+    const MCP_TIMEOUT = process.env.MCP_TIMEOUT || '120000';
+    const child = spawn(bin, ['-p', this.brief(id), '--mcp-config', JSON.stringify(mcp), '--strict-mcp-config', '--tools', '', '--allowedTools', allowed, '--output-format', 'stream-json', '--verbose'], { stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, PATH, MCP_TIMEOUT } });
     let err = '';
     child.stderr.on('data', (d) => { err = (err + d).slice(-4000); });
     // Its progress, streamed as JSON lines: say when it starts, each Constellate tool it uses, and how it ended.
@@ -218,7 +223,8 @@ If plan_report isn't available or keeps failing, end your reply with the same { 
       }
     });
     let lastText = '';
-    const timer = setTimeout(() => child.kill(), 15 * 60_000);
+    let timedOut = false;
+    const timer = setTimeout(() => { timedOut = true; child.kill(); }, 15 * 60_000);
     this.runs.set(id, { kill: () => child.kill() });
     child.on('error', (e) => { clearTimeout(timer); this.fail(id, `Claude Code couldn’t start: ${e.message}`); });
     child.on('close', async (code) => {
@@ -231,7 +237,7 @@ If plan_report isn't available or keeps failing, end your reply with the same { 
       }
       if (this.get(id)?.status !== 'running') return;
       const said = lastText.trim() ? ` Its last words: “${lastText.trim().replace(/\s+/g, ' ').slice(0, 240)}”` : '';
-      this.fail(id, code === 0 ? `Claude Code finished without reporting a plan.${said}` : `Claude Code stopped (${code}): ${err.trim().slice(-300) || 'no error output'}${said}`);
+      this.fail(id, timedOut ? `Claude Code ran for 15 minutes without reporting a plan, so it was stopped.${said}` : code === 0 ? `Claude Code finished without reporting a plan.${said}` : `Claude Code stopped (${code}): ${err.trim().slice(-300) || 'no error output'}${said}`);
     });
   }
 }
