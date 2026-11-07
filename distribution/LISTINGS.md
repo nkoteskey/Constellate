@@ -37,7 +37,8 @@ Category: Knowledge & Memory, in alphabetical order by `owner/repo`. Markers: ðŸ
 
 ### Docker MCP Catalog: pull request open
 https://github.com/docker/mcp-registry/pull/6754 adds `servers/constellate/server.yaml`. It builds the `Dockerfile`
-at commit `8a752b2` (the stdio fixes), with the `/data` volume, an optional `X0X_API` and an optional `X0X_TOKEN`
+at a pinned commit (`8a752b2`, the stdio fixes, for now; it moves to the 0.1.1 commit once that's on main, which also
+reads a blank daemon address as unset), with the `/data` volume, an optional `X0X_API` and an optional `X0X_TOKEN`
 secret, and `longLived: true` so one container serves a session. Docker's CI builds it and lists its tools; their
 team reviews it. Once merged it appears in Docker Desktop's MCP Toolkit and on Docker Hub as `mcp/constellate`. To
 ship a later version, open a pull request that moves `source.commit`.

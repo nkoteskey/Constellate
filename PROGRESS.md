@@ -277,7 +277,7 @@ Real money, **ready and off by default** (docs/MAINNET.md):
 - `test/gates/mcp_stdio.test.ts` starts the server the way clients do and covers all three. Each part fails without its fix.
 - **Fixed: a blank `X0X_API` or `X0X_TOKEN` counted as set.** A launcher may pass an optional field it left empty as `X0X_API=""` instead of leaving it out. The server then tried the address "" and only worked offline by accident. Blank now means unset, so it uses the default daemon address (`test/unit/x0x_client.test.ts`).
 - **Version 0.1.1** carries these fixes (package, MCP server, registry entry and agent card).
-- **Docker MCP Catalog:** pull request docker/mcp-registry#6754 adds `servers/constellate/server.yaml`, built from the `Dockerfile` at commit 8a752b2 (the stdio fixes), with the `/data` volume and an optional daemon address and token. Docker's team reviews it.
+- **Docker MCP Catalog:** pull request docker/mcp-registry#6754 adds `servers/constellate/server.yaml`, built from the `Dockerfile` at a pinned commit (8a752b2 for now; it moves to the 0.1.1 commit once that's on main), with the `/data` volume and an optional daemon address and token. Docker's team reviews it.
 
 ## Summary of what needs a human
 1. **Live x0x (blocks confidence in every phase):** run the gates against two real `x0xd` daemons. Confirm ML-DSA signature interop between `/agent/sign` and noble, `/stores` and `/task-lists` field names, contacts → pre-trusted operators, and Spaces/DMs for chat.
