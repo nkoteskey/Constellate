@@ -12,6 +12,8 @@ import { TrustModel } from '../services/trust.js';
 import { Reputation } from '../services/reputation.js';
 import { CtxInput, toContext } from '../services/ledger.js';
 import { LiveState } from './livestate.js';
+import { Storage } from './storage.js';
+import { HistorySync } from './sync.js';
 import { Problems } from '../work/problems.js';
 import { Collective } from '../collective/collective.js';
 import { Skills } from '../economy/skills.js';
@@ -68,6 +70,12 @@ export class Hub {
   private _people?: People;
   get people() { return (this._people ??= new People(this)); }
   readonly metrics = new Metrics(this);
+  private _storage?: Storage;
+  /** Storage and its cost: status, compaction, history bundles, opt-in pruning (docs/STORAGE.md). */
+  get storage() { return (this._storage ??= new Storage(this)); }
+  private _sync?: HistorySync;
+  /** Catching up from peers over x0x direct messages (gossip has no replay). */
+  get sync() { return (this._sync ??= new HistorySync(this)); }
   private _collab?: Collab;
   get collab() { return (this._collab ??= new Collab(this)); }
   private _board?: Board;
@@ -83,7 +91,7 @@ export class Hub {
     this.trust = this.reputation;
     this.graph = new KnowledgeGraph(this.node.store, this.trust, { now: o.now });
     this.ledger = new Ledger(this.node, this.trust, this.graph);
-    this.live = new LiveState(this.node, this.archive, this.x0x);
+    this.live = new LiveState(this.node, this.archive, this.x0x, () => this.storage);
     this.problems = new Problems(this);
     this.memory = new PrivateMemory(this.archive, o.memoryKey ?? MemoryKey.generate());
   }

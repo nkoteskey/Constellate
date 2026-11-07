@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path';
 import { canonicalBytes, decodeCanonical } from '../core/canonical.js';
 import { SignedRecord } from '../core/record.js';
 import { RecordStore } from '../store/records.js';
+import { makeBundle, openBundle, isBundle, Batch } from '../store/bundle.js';
 import { LocalSigner } from '../core/identity.js';
 import { personalDataCheck } from '../privacy/scrub.js';
 
@@ -13,18 +14,24 @@ import { personalDataCheck } from '../privacy/scrub.js';
  */
 export interface Snapshot { v: 1; created: string; records: SignedRecord[] }
 
-export function exportSnapshot(store: RecordStore): Uint8Array {
+/** A snapshot of the public ledger. Compact (v2 bundle) when `batches` let records drop their own signatures. */
+export function exportSnapshot(store: RecordStore, batches: Batch[] = []): Uint8Array {
   const records = store.all().filter((s) => s.visibility === 'public' && s.rec.kind !== 'memory').map((s) => s.rec);
-  return canonicalBytes({ v: 1, created: new Date().toISOString(), records } satisfies Snapshot);
+  return makeBundle(records, batches);
 }
 
 /** Loads a snapshot; every record is re-verified, so a tampered snapshot can't inject anything. */
 export function importSnapshot(bytes: Uint8Array, store: RecordStore, persist = false) {
-  const snap = decodeCanonical<Snapshot>(bytes);
-  if (snap.v !== 1 || !Array.isArray(snap.records)) throw new Error('not a Constellate snapshot');
+  let records: SignedRecord[], created: string;
+  if (isBundle(bytes)) { const b = openBundle(bytes); records = [...b.roots, ...b.records]; created = decodeCanonical<{ created: string }>(bytes).created; }
+  else {
+    const snap = decodeCanonical<Snapshot>(bytes);
+    if (snap.v !== 1 || !Array.isArray(snap.records)) throw new Error('not a Constellate snapshot');
+    records = snap.records; created = snap.created;
+  }
   let ok = 0, rejected = 0;
-  for (const r of snap.records) { if (personalDataCheck(r).ok && store.add(r, 'public', persist)) ok++; else rejected++; }
-  return { ok, rejected, created: snap.created };
+  for (const r of records) { if (personalDataCheck(r).ok && store.add(r, 'public', persist)) ok++; else rejected++; }
+  return { ok, rejected, created };
 }
 
 /** The one network call in private mode: fetching the snapshot itself, done explicitly by the operator. */

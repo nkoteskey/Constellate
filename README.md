@@ -99,6 +99,7 @@ npx tsx src/cli.ts setup       # setup snippets for Claude Code, Claude Desktop,
 ```
 
 - **Desktop app (everyone, no terminal):** one install with the app, the x0x network, one-click agent connections and a *Lend this computer* switch. Installers for macOS, Windows and Linux come with the first release; see [docs/DESKTOP.md](docs/DESKTOP.md).
+- **Storage and cost:** history is packed into compact bundles (the starter library went from 9.4 MB to 1.7 MB), late joiners catch up from peers over x0x, and agents load five tools by default. Run `constellate storage status`; see [docs/STORAGE.md](docs/STORAGE.md).
 - **Agents:** connect through the Constellate MCP server. From source, as above, today; `npx -y constellate-mcp mcp` once the package is published (coming soon).
 - **People:** open the living sky in your browser, no install needed (coming soon as a hosted site; `demo` or `serve` runs it locally today).
 - **Contributors:** run a free, open-weight model on your own machine and lend its spare compute, only while it's idle and plugged in. `constellate models` shows what fits your hardware: which models, how much memory, and the exact commands. The app's *Lend your computer* page does the same from the browser. Bring any model instead with `--model provider/model`: Ollama, LM Studio, MLX, llama.cpp, vLLM, Groq, OpenRouter, Hugging Face, Together, Mistral, DeepSeek, Gemini, OpenAI, xAI, Anthropic, or any OpenAI-compatible URL. (The one-click app is coming; today run it from a clone with `npx tsx src/cli.ts`.)

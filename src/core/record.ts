@@ -33,6 +33,9 @@ export const RECORD_KINDS = [
   'payout_address',
   // people and agents: a public profile in the x0x directory (handle, what they do, what they're open to)
   'profile',
+  // storage: one signature over many of an author's records (a Merkle root of their ids), so archives and
+  // catch-up bundles needn't carry a 3.3 KB signature per record (docs/STORAGE.md)
+  'batch_root',
 ] as const;
 export type RecordKind = (typeof RECORD_KINDS)[number];
 
@@ -59,7 +62,39 @@ export interface RecordCore<B = Record<string, unknown>> {
 
 export interface SignedRecord<B = Record<string, unknown>> extends RecordCore<B> {
   id: string; // sha256 of canonical(core): content hash of the record
-  signature: string; // base64 ML-DSA-65 over the id, under RECORD_SIGN_CONTEXT
+  signature: string; // base64 ML-DSA-65 over the id, under RECORD_SIGN_CONTEXT ('' when covered by a batch root)
+  /** Instead of its own signature: covered by the author's batch_root record (Merkle proof of this id). */
+  batch?: BatchProof;
+}
+
+/** Where a record sits in its author's batch: the root record's id, the leaf index and the sibling hashes. */
+export interface BatchProof { root: string; i: number; path: string[] }
+
+/** Merkle tree over record ids (sorted), domain-separated leaves and nodes. */
+const leafHash = (id: string) => sha256Hex(new Uint8Array([0, ...fromHex(id)]));
+const nodeHash = (a: string, b: string) => sha256Hex(new Uint8Array([1, ...fromHex(a), ...fromHex(b)]));
+export function merkle(ids: string[]): { root: string; proofs: Map<string, { i: number; path: string[] }> } {
+  const leaves = [...new Set(ids)].sort();
+  if (!leaves.length) throw new Error('nothing to batch');
+  let level = leaves.map(leafHash);
+  const paths = leaves.map(() => [] as string[]);
+  let pos = leaves.map((_, i) => i);
+  while (level.length > 1) {
+    const next: string[] = [];
+    for (let k = 0; k < level.length; k += 2) next.push(k + 1 < level.length ? nodeHash(level[k], level[k + 1]) : level[k]);
+    leaves.forEach((_, j) => { const p = pos[j]; const sib = p % 2 ? p - 1 : p + 1; if (sib < level.length) paths[j].push(level[sib]); pos[j] = Math.floor(p / 2); });
+    level = next;
+  }
+  return { root: level[0], proofs: new Map(leaves.map((id, j) => [id, { i: j, path: paths[j] }])) };
+}
+export function merkleRootFrom(id: string, i: number, path: string[], count: number): string {
+  let h = leafHash(id), p = i, width = count, k = 0;
+  while (width > 1) {
+    const last = p === width - 1 && width % 2 === 1; // promoted without a sibling at this level
+    if (!last) { const sib = path[k++]; if (sib === undefined) return ''; h = p % 2 ? nodeHash(sib, h) : nodeHash(h, sib); }
+    p = Math.floor(p / 2); width = Math.ceil(width / 2);
+  }
+  return k === path.length ? h : '';
 }
 
 export interface Draft<B = Record<string, unknown>> {
@@ -99,8 +134,9 @@ export async function signRecord<B>(draft: Draft<B>, signer: Signer, operator?: 
 
 export type VerifyResult = { ok: true; operatorId: string } | { ok: false; reason: string };
 
-/** Distrust by default: a record is only accepted if every check passes. */
-export function verifyRecord(rec: unknown): VerifyResult {
+/** Distrust by default: a record is only accepted if every check passes. A record covered by a batch root
+ *  verifies only when `root` can supply that root record (same author, signed, and the proof leads to it). */
+export function verifyRecord(rec: unknown, opts: { root?: (id: string) => SignedRecord<unknown> | undefined } = {}): VerifyResult {
   if (!rec || typeof rec !== 'object') return { ok: false, reason: 'not an object' };
   const r = rec as SignedRecord<unknown>;
   if (r.v !== 1) return { ok: false, reason: 'unsupported version' };
@@ -113,9 +149,18 @@ export function verifyRecord(rec: unknown): VerifyResult {
   try { pk = fromB64(r.author); } catch { return { ok: false, reason: 'bad author key' }; }
   if (pk.length !== PUBLIC_KEY_BYTES) return { ok: false, reason: 'bad author key length' };
   if (peerIdFromPublicKey(pk) !== r.agent_id) return { ok: false, reason: 'agent_id does not match author key' };
-  const { id, signature, ...core } = r;
+  const { id, signature, batch, ...core } = r;
   if (recordId(core as RecordCore<unknown>) !== id) return { ok: false, reason: 'id is not the content hash' };
-  if (!verifyExternal(pk, RECORD_SIGN_CONTEXT, fromHex(id), fromB64(signature))) return { ok: false, reason: 'bad signature' };
+  if (signature) {
+    if (!verifyExternal(pk, RECORD_SIGN_CONTEXT, fromHex(id), fromB64(signature))) return { ok: false, reason: 'bad signature' };
+  } else {
+    // Covered by the author's batch root: the root is a normally signed record over a Merkle root of ids.
+    if (!batch || typeof batch.root !== 'string' || !Number.isInteger(batch.i) || !Array.isArray(batch.path)) return { ok: false, reason: 'no signature' };
+    const root = opts.root?.(batch.root) as SignedRecord<{ root: string; count: number }> | undefined;
+    if (!root) return { ok: false, reason: 'batch root unknown' };
+    if (root.kind !== 'batch_root' || root.agent_id !== r.agent_id || !root.signature || !verifyRecord(root).ok) return { ok: false, reason: 'bad batch root' };
+    if (merkleRootFrom(id, batch.i, batch.path, root.body.count) !== root.body.root) return { ok: false, reason: 'not in the batch' };
+  }
   let operatorId = r.agent_id;
   if (r.operator) {
     const op = verifyOperatorClaim(r.operator, pk);

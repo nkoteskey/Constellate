@@ -143,6 +143,8 @@ const isPqKeyOrSig = (v: unknown) => [1952, 3309].includes(b64Bytes(v));
  * are set aside. Everything else is checked.
  */
 export function readableBody(rec: { kind?: string; body?: unknown }): unknown {
+  // A batch root is a hash and a count: nothing anyone reads, and the hash would look like a secret.
+  if (rec.kind === 'batch_root' && rec.body && typeof rec.body === 'object') { const { root: _r, ...rest } = rec.body as Record<string, unknown>; return rest; }
   if (rec.kind === 'profile' && rec.body && typeof rec.body === 'object') {
     // A profile's GitHub proof is a public gist address (its id looks like a token); the handle is still checked.
     const b = { ...(rec.body as Record<string, unknown>) };

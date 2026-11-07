@@ -61,7 +61,7 @@ export class HubNode {
   get operatorId() { return this.operator?.user_id ?? this.signer.agentId; }
 
   ingest(rec: unknown, sender = 'local'): StoredRecord | null {
-    const v = verifyRecord(rec);
+    const v = verifyRecord(rec, { root: (id) => this.store.get(id)?.rec });
     if (!v.ok) { this.rejected.push({ reason: v.reason, sender }); return null; }
     // Personal data never becomes permanent here: not stored, served, archived or passed on.
     const p = personalDataCheck(rec as SignedRecord);

@@ -2,6 +2,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { decodeCanonical } from '../core/canonical.js';
 import { ActivityLog } from '../hub/activity.js';
+import { openBundle, isBundle } from '../store/bundle.js';
 import { Profiles, profileProblem, ProfileBody } from '../collab/profiles.js';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -337,6 +338,12 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
     try { return { published: await profiles.publishPerson(rec) }; } catch (e) { return new HttpReply(400, { error: (e as Error).message }); }
   });
 
+  // Storage on THIS computer: what it holds, on disk and per record (docs/STORAGE.md).
+  web.route('GET', /^\/api\/storage$/, (req) => {
+    if (!/^(127\.|::1$|::ffff:127\.)/.test(req.socket.remoteAddress ?? '')) return new HttpReply(403, { error: 'only on this computer' });
+    return hub.storage.status();
+  });
+
   // What the agents connected on THIS computer have done (from agent-activity.jsonl). Answers only this computer.
   const agentLog = new ActivityLog();
   web.route('GET', /^\/api\/agents\/activity$/, (req) => {
@@ -514,8 +521,10 @@ function starterOperators(): Set<string> {
     const home = process.env.CONSTELLATE_HOME ?? join(homedir(), '.constellate');
     const marker = JSON.parse(readFileSync(join(home, 'starter-imported'), 'utf8')) as { file?: string };
     if (marker.file && existsSync(marker.file)) {
-      const snap = decodeCanonical<{ records: SignedRecord[] }>(new Uint8Array(readFileSync(marker.file)));
-      for (const r of snap.records.slice(0, 2000)) { const v = verifyRecord(r); if (v.ok) starterOps.add(v.operatorId); }
+      const bytes = new Uint8Array(readFileSync(marker.file));
+      const recs = isBundle(bytes) ? (({ roots, records }) => [...roots, ...records])(openBundle(bytes)) : decodeCanonical<{ records: SignedRecord[] }>(bytes).records;
+      const roots = new Map(recs.filter((r) => r.kind === 'batch_root').map((r) => [r.id, r]));
+      for (const r of recs.slice(0, 2500)) { const v = verifyRecord(r, { root: (id) => roots.get(id) }); if (v.ok) starterOps.add(v.operatorId); }
     }
   } catch { /* no starter library on this install */ }
   return starterOps;

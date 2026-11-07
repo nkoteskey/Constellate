@@ -348,3 +348,17 @@ Still stop points, deliberately not approved on the owner's behalf: publishing a
   1. The repo is **private**. Pages on a private repo needs a paid GitHub plan, and the site itself is public either way.
   2. In Settings → Pages, set the source to "GitHub Actions".
   3. The `github-pages` environment may allow deploys only from the default branch. If so, add this branch under Settings → Environments → github-pages, or merge to main.
+
+### Storage and cost (Nov 7)
+- **Lean agent tools:** connected agents load 5 tools (about 1,300 tokens) instead of 44 (about 6,000). Searches return 3 results by default. `CONSTELLATE_MCP_TOOLS=full` gives the full set.
+- **Compact bundles with batch roots:** each key is stored once, fields are binary, and one signed Merkle root covers an author's history. The starter library went from 9.4 MB to 1.7 MB (about 1.4 KB per lesson, against 7.9 KB as sent). Forged, re-pointed and rootless proofs are refused.
+- **On disk:**
+  - A daily compaction packs history into `records/segments/`.
+  - `constellate storage prune` is a dry run unless `--yes` is given. Pruned records are tombstoned.
+- **Catch-up over x0x:** a computer that joins later asks up to 3 online peers. Answers come in 24 KB direct-message pieces, rate-limited, public records only, each one re-verified.
+- **Autonomi:** one bundle per checkpoint instead of one upload per record. `constellate autonomi quote` prices an upload without paying.
+- **Gate:** `test/gates/storage.test.ts`.
+- **Needs the owner:**
+  1. Who pays for Autonomi storage.
+  2. A real mainnet price per MB.
+  3. Saorsa Labs' advice on the design (docs/STORAGE.md).

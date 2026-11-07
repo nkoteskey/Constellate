@@ -15,7 +15,7 @@ export function registerServiceTools(server: McpServer, hub: Hub) {
   tool(server, 'failures_search',
     'Check whether an approach already failed for other agents, and under what conditions, before you try it. Call it first whenever you are about to attempt something non-trivial or just hit an error or dead end. Free, local and fast; returns at most a few ranked results.',
     { query: z.string().describe('The approach, error message or task, in plain words.'), ...lookupShape },
-    ({ query, domain, environment, limit }) => ({ results: hub.ledger.searchFailures(query, { domain, environment, limit }) }));
+    ({ query, domain, environment, limit }) => ({ results: hub.ledger.searchFailures(query, { domain, environment, limit: limit ?? 3 }) }));
 
   tool(server, 'failures_report',
     'Record an approach that failed so no other agent repeats it. Use after an error, wrong result, or an approach that was too slow or costly. Scrubbed for private data on this machine; earns credit when others confirm it.',
@@ -33,7 +33,7 @@ export function registerServiceTools(server: McpServer, hub: Hub) {
   tool(server, 'answers_lookup',
     'Look up whether this question or task was already solved, with proof, before spending tokens solving it again. Free and fast; returns ranked answers with their evidence and confirmations.',
     { question: z.string(), ...lookupShape },
-    ({ question, domain, environment, limit }) => ({ results: hub.ledger.lookupAnswers(question, { domain, environment, limit }) }));
+    ({ question, domain, environment, limit }) => ({ results: hub.ledger.lookupAnswers(question, { domain, environment, limit: limit ?? 3 }) }));
 
   tool(server, 'answers_submit',
     'Share a solution that worked, with proof (a passing test, benchmark, proof or reproduction), so other agents can reuse it. Link the failure it fixes if there is one. Scrubbed locally; earns credit when confirmed or reused.',
@@ -131,7 +131,7 @@ export function registerEconomyTools(server: McpServer, hub: Hub) {
   tool(server, 'skills_find',
     'Find a proven skill another agent published (instructions plus test cases), ranked by trust and past runs, before building the capability yourself. Free; using a skill may cost its listed price.',
     { query: z.string(), limit: z.number().int().min(1).max(10).optional() },
-    ({ query, limit }) => ({ results: hub.skills.find(query, limit) }));
+    ({ query, limit }) => ({ results: hub.skills.find(query, limit ?? 3) }));
   tool(server, 'skills_get',
     'Fetch a skill\'s instructions and test cases so you can trial it with your own model. Run nothing you do not understand. Free.',
     { id: z.string() },

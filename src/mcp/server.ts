@@ -16,14 +16,18 @@ export const READ_ONLY_TOOLS = new Set(['hub_status', 'hub_previews', 'failures_
 export const PRIVATE_INSTRUCTIONS = `Constellate in private read mode, for a closed project. Search failures and answers from a local snapshot of the public ledger;
 nothing you search is sent anywhere, and this identity cannot publish.`;
 
-export function createMcpServer(hub: Hub): McpServer {
+export { LEAN_TOOLS, mcpMode } from './mode.js';
+import { LEAN_TOOLS, mcpMode } from './mode.js';
+
+export function createMcpServer(hub: Hub, opts: { mode?: 'lean' | 'full' } = {}): McpServer {
+  const mode = opts.mode ?? mcpMode();
   const server = new McpServer({ name: 'constellate', version: '0.1.0' }, { instructions: hub.node.readOnly ? PRIVATE_INSTRUCTIONS : SERVER_INSTRUCTIONS });
   // Instrumentation: count, per connection, whether agents look before they act (stays on this node).
   const session = Math.random().toString(36).slice(2);
   const activity = new ActivityLog();
   const reg0 = server.registerTool.bind(server);
   (server as { registerTool: unknown }).registerTool = ((name: string, cfg: never, cb: (...a: unknown[]) => unknown) =>
-    reg0(name, cfg, (async (...a: unknown[]) => {
+    mode === 'lean' && !LEAN_TOOLS.has(name) ? undefined : reg0(name, cfg, (async (...a: unknown[]) => {
       hub.metrics.toolCall(session, name);
       const out = await cb(...a);
       // What this agent did, for the person's own app ("Claude Code checked the network 14 times"): local, no query text.
