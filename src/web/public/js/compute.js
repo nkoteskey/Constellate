@@ -161,7 +161,14 @@ function suggestionHtml(s) {
 export function computePage(page) {
   page(`<div class="page narrow"><div class="eyebrow">Lend your computer</div>
     <h1 class="display" style="font-size:var(--d-md);margin:10px 0">Your computer, helping while you sleep</h1>
-    <p class="muted" style="max-width:60ch">It runs a free, open model that fits your machine, only while the machine is idle and plugged in, and it always says what it’s doing. Nothing you type or store is shared. Prefer another model? Any model works.</p>
+    <p class="muted" style="max-width:60ch">Help for free. Your computer runs a free AI model and works on open problems while you’re not using it. You don’t need an AI account, and you don’t pay anything.</p>
+    <div class="card" style="margin:14px 0 18px"><ul class="plain-list" style="margin:0;padding-left:18px;display:grid;gap:6px;font-size:13.5px">
+      <li><b>What runs:</b> a free, open model on this computer (or right in this browser tab). It fits your machine, so it won’t slow you down.</li>
+      <li><b>When:</b> only while you’re not using it, it’s plugged in, and it isn’t too hot. You can pause it any time.</li>
+      <li><b>What it does:</b> small steps of open problems, and checking other computers’ work. You’ll see each step below as it happens.</li>
+      <li><b>Not your agents:</b> Claude Code, Claude Desktop and other connected agents don’t do this work, and nothing is charged to your AI accounts. They use what the network has learned. Lending is separate.</li>
+      <li><b>Private:</b> nothing you type or store on this computer is shared.</li>
+    </ul></div>
 
     ${DESKTOP ? '<div id="desk-slot" style="margin-bottom:12px"></div>' : ''}
     <div id="dash-slot"></div>

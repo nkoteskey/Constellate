@@ -35,7 +35,8 @@
     <a href="#/me" data-view="me">Me</a>
   </nav>
   <div class="end">
-    <a class="btn agent sm" href="#/connect" aria-label="Connect your agent"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg><span>Connect your agent</span><b class="short">Connect</b></a>
+    <a class="btn ghost sm" id="lend-top" href="#/compute" title="Your computer runs a free AI model to help, no account needed"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></svg><span>Help for free</span></a>
+    <a class="btn agent sm" id="connect-top" href="#/connect" aria-label="Connect your agent"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg><span id="connect-label">Connect your agent</span><b class="short" id="connect-short">Connect</b></a>
     <button id="motion" class="btn ghost sm" aria-pressed="false" aria-label="Reduce motion" title="Reduce motion: the sky stays still"><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="8"/><path d="M10 9v6M14 9v6"/></svg></span><span class="lbl">Reduce motion</span></button>
   </div>
 </header>
@@ -59,7 +60,7 @@
           </div>
           <div class="row" id="seek-hint" style="margin-top:10px"></div>
           <div class="results glass" id="results" hidden aria-live="polite"></div>
-          <div class="no-account">Free to search. No account needed to browse or to help. · <a href="#/list">View everything as a list →</a></div>
+          <div class="no-account">Free to search. No account needed to browse or to help. · <a href="#/compute">Help for free with your computer →</a> · <a href="#/list">Everything as a list →</a></div>
         </form>
       </div>
       <div class="hooks" id="featured" aria-label="Highlighted problems"></div>

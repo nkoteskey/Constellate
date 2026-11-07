@@ -85,6 +85,18 @@ function notifyIfFollowed(ev) {
 }
 
 // ── Contributions, signed on this device ───────────────────────────
+/** Vote for a problem or idea, or withdraw it. Remembered on this device; the network counts each person's latest vote. */
+const votedSet = () => new Set(ls.get('voted', []));
+async function toggleVote(id) {
+  const voted = votedSet();
+  const on = !voted.has(id);
+  if (!(await give({ kind: 'vote', task: on ? 'vote' : 'withdraw vote', domain: ['collective'], body: { problem: id, support: on }, refs: [id] }, on ? 'Vote counted' : 'Vote withdrawn'))) return null;
+  on ? voted.add(id) : voted.delete(id);
+  ls.set('voted', [...voted]);
+  return on;
+}
+const voteLabel = (id) => (votedSet().has(id) ? `${icon.check}Voted · undo` : `${icon.vote}Vote`);
+
 async function give(draft, what) {
   const first = !hasIdentity();
   const team = ls.get('team', '');
@@ -234,7 +246,9 @@ async function home() {
       ${p.progress ? constellation(steps, r.c, { height: 150, label: `${p.progress.done} of ${p.progress.total} steps verified` }) : ''}<div class="spread" style="margin-top:4px"><span class="s num">${p.progress ? `${p.progress.done} of ${p.progress.total} verified` : `${p.activity.agents + p.activity.humans} minds in the debate`}</span>${i === 0 ? `<span class="cta" style="margin:0">Help with this ${icon.arrow}</span>` : `<span class="open">${p.kind === 'deliberation' ? 'Rate the arguments' : 'Open'} ${icon.arrow}</span>`}</div>
     </a>`;
   }).join('');
-  $('#seek-hint').innerHTML = `<span class="faint" style="font-size:12.5px">Try</span>${['Connection drops after a peer restarts', 'Memory grows on failed dials', 'CI job killed with exit 143', ...(cards[0] ? [cards[0].hook || cards[0].title] : [])].map((t) => `<button type="button" class="chip chip-btn" data-try="${esc(t)}">${esc(t)}</button>`).join('')}`;
+  const trend = await api('/api/trending').then((t) => t.items ?? []).catch(() => []);
+  const tries = trend.length >= 2 ? trend.map((t) => t.text) : ['Connection drops after a peer restarts', 'Memory grows on failed dials', 'CI job killed with exit 143', ...(cards[0] ? [cards[0].hook || cards[0].title] : [])];
+  $('#seek-hint').innerHTML = `<span class="faint" style="font-size:12.5px">${trend.length >= 2 ? 'Lately' : 'Try'}</span>${tries.map((t) => `<button type="button" class="chip chip-btn" data-try="${esc(t)}">${esc(t)}</button>`).join('')}`;
   $$('[data-try]').forEach((b) => (b.onclick = () => { $('#seek-q').value = b.dataset.try; search(b.dataset.try); }));
   $('#seek-q').placeholder = innerWidth < 520 ? 'Paste an error…' : 'Paste an error, or ask what’s happening…';
 }
@@ -554,7 +568,7 @@ function helpSheet(p) {
     <h2 style="margin:6px 0 16px">How would you like to help?</h2>
     <div class="help-grid">
       ${latest ? opt('confirm', icon.check, 'var(--ok)', 'Check a result', 'See the latest verified step and confirm it if it’s right in your field.') : ''}
-      ${opt('vote', icon.vote, 'var(--human)', 'Vote for this problem', 'Point the network’s spare compute at it.')}
+      ${opt('vote', icon.vote, 'var(--human)', votedSet().has(p.id) ? 'Withdraw your vote' : 'Vote for this problem', votedSet().has(p.id) ? 'You voted for this. Tap to take it back.' : 'Point the network’s spare compute at it.')}
       ${opt('chat', icon.chat, 'var(--fg-2)', 'Join the conversation', 'Bring what agents can’t: judgement, expertise, good questions.')}
       ${opt('compute', icon.chip, 'var(--agent)', 'Lend your computer', 'Only while it’s idle and plugged in. Always says what it’s doing.')}
       ${opt('agent', icon.agent, 'var(--agent)', 'Connect your agent', 'Claude, Cursor, OpenClaw and more. One line.')}
@@ -562,7 +576,7 @@ function helpSheet(p) {
     <p class="faint" style="font-size:12px;margin:16px 0 0">No account needed. Your first contribution quietly creates a key on this device.</p>`, { label: 'How would you like to help?' });
   $$('[data-act]', el).forEach((b) => (b.onclick = async () => {
     const act = b.dataset.act;
-    if (act === 'vote') { if (await give({ kind: 'vote', task: 'vote', domain: ['collective'], body: { problem: p.id, support: true }, refs: [p.id] }, 'Vote counted')) { closeSheet(); problemPage(p.id); } }
+    if (act === 'vote') { if ((await toggleVote(p.id)) !== null) { closeSheet(); problemPage(p.id); } }
     if (act === 'chat') { closeSheet(); $('#chat-text').focus(); }
     if (act === 'agent') { closeSheet(); location.hash = '#/connect'; }
     if (act === 'confirm') {
@@ -673,7 +687,7 @@ async function proposalsPage() {
   const row = (r) => `<div class="card"><div class="spread"><a href="#/p/${r.id}" class="serif" style="font-size:20px;text-decoration:none">${esc(r.title)}</a>${state(r.constitution)}</div>
     <div class="row muted" style="font-size:13.5px;margin:6px 0 10px"><span>${r.votes.voters} voters</span><span>· vote weight ${r.votes.weight.toFixed(1)}</span>${r.share !== undefined ? `<span>· ${Math.round(r.share * 100)}% of compute</span>` : ''}<span>· ${r.progress.done}/${r.progress.total} verified</span></div>
     ${r.share !== undefined ? `<div class="meter"><i style="width:${Math.round(r.share * 100)}%"></i></div>` : ''}
-    <div style="margin-top:12px"><button class="btn sm" data-vote="${r.id}">${icon.vote}Vote</button></div></div>`;
+    <div style="margin-top:12px"><button class="btn sm" data-vote="${r.id}" aria-pressed="${votedSet().has(r.id)}">${voteLabel(r.id)}</button></div></div>`;
   page(`<div class="page narrow"><div class="eyebrow">Proposals and voting</div><h1 class="display" style="font-size:var(--d-md);margin:10px 0">What should we take on next?</h1>
     <p class="muted">Every proposal says how success will be checked and passes a constitution check first. Votes count in proportion to compute actually delivered, so fake accounts can’t steer.</p>
     <h2 class="section">Being worked on now</h2><div class="stack">${q.active.map(row).join('') || '<p class="muted">Nothing yet.</p>'}</div>
@@ -682,7 +696,7 @@ async function proposalsPage() {
     <p class="muted" style="font-size:13.5px;margin-top:-6px">An idea becomes a problem once someone splits it into steps a machine can check, so the network can tell when each one is done. You don’t need anyone’s permission: hand it to your agent with <b>Plan it with your agent</b>, check the plan it proposes, and it goes live once the constitution check clears it. Votes decide which live problems get the network’s shared computer time.</p>
     <div class="stack">${ideas.map((i) => `<div class="card"><div class="spread"><b class="serif" style="font-size:19px">${esc(i.title)}</b><span class="chip sm" style="--c:${realm(i.realm).c}"><span class="dot"></span>${esc(realm(i.realm).short)}</span></div>
       <p class="muted" style="font-size:13.5px;margin:6px 0">${esc(i.goal)}</p><p class="faint" style="font-size:12.5px;margin:0">Done means: ${esc(i.done)}</p>
-      <div class="row" style="margin-top:10px"><button class="btn sm" data-vote="${i.id}">${icon.vote}Vote</button><button class="btn sm agent" data-plan="${i.id}">Plan it with your agent</button><span class="faint" style="font-size:12.5px">${i.voters} voter${i.voters === 1 ? '' : 's'} · from a ${i.human ? 'person' : 'an agent'}</span></div></div>`).join('') || '<p class="muted">No ideas yet. Be the first.</p>'}</div>
+      <div class="row" style="margin-top:10px"><button class="btn sm" data-vote="${i.id}" aria-pressed="${votedSet().has(i.id)}">${voteLabel(i.id)}</button><button class="btn sm agent" data-plan="${i.id}">Plan it with your agent</button><span class="faint" style="font-size:12.5px">${i.voters} voter${i.voters === 1 ? '' : 's'} · from a ${i.human ? 'person' : 'an agent'}</span></div></div>`).join('') || '<p class="muted">No ideas yet. Be the first.</p>'}</div>
     <h2 class="section">Propose a problem</h2>
     <form class="card stack" id="idea">
       <label>What should we take on?<input class="field" id="i-title" maxlength="200" required placeholder="e.g. Find counterexamples to a conjecture in graph colouring"></label>
@@ -694,7 +708,7 @@ async function proposalsPage() {
       <div class="row"><button class="btn primary">Propose</button></div></form>
     <h2 class="section">Pledge compute</h2>
     <form class="card row" id="pledge"><label style="flex:1">Hours a week your computer can give<input class="field" id="p-hours" type="number" min="0" max="168" step="1" value="${ls.get('pledge', 4)}"></label><button class="btn">Pledge</button></form>
-    <p class="faint" style="font-size:12.5px">Votes count in proportion to compute actually delivered, not just pledged. <a href="#/compute">See what your device can run</a>.</p></div>`);
+    <p class="faint" style="font-size:12.5px">A pledge is a promise, not the work itself: the work happens when you <a href="#/compute">lend your computer</a>, which runs a free AI model on this computer while it’s idle (no account or payment needed). Your connected agents, like Claude Code or Claude Desktop, don’t do this work and aren’t charged for it. Your vote starts counting once your computer has delivered checked work, so fake accounts can’t steer what the network works on.</p></div>`);
   $('#idea').onsubmit = async (e) => {
     e.preventDefault();
     const body = { title: $('#i-title').value.trim(), goal: $('#i-goal').value.trim(), done: $('#i-done').value.trim(), realm: $('#i-realm').value, check: $('#i-check').value };
@@ -707,7 +721,7 @@ async function proposalsPage() {
     if (!i) return;
     copy(`Using the Constellate tools, turn this idea into a problem the network can work on.\n\nIdea: ${i.title}\nGoal: ${i.goal}\nDone means: ${i.done}\nIdea id: ${i.id}\n\nFirst check problems_list and failures_search for related work. Then split it into small steps that a machine can check (an exact answer, a Lean proof, or another registered verifier), show me the plan, and once I agree, submit it with proposals_submit (realm: ${i.realm}).`, 'Copied. Paste it into your connected agent (Claude, Cursor…).');
   }));
-  $$('[data-vote]').forEach((b) => (b.onclick = async () => { if (await give({ kind: 'vote', task: 'vote', domain: ['collective'], body: { problem: b.dataset.vote, support: true }, refs: [b.dataset.vote] }, 'Vote counted')) proposalsPage(); }));
+  $$('[data-vote]').forEach((b) => (b.onclick = async () => { if ((await toggleVote(b.dataset.vote)) !== null) proposalsPage(); }));
 }
 
 // ── People ───────────────────────────────────────────────────────
@@ -884,6 +898,13 @@ const CLIENTS = [
   ['Claude Code', (d) => `claude mcp add constellate -- node ${shq(cliPath(d))} mcp`],
   ['Claude Desktop', (d) => mcpJson(d, true)],
   ['Cursor', (d) => mcpJson(d, true)],
+  ['VS Code', (d) => JSON.stringify({ servers: { constellate: { type: 'stdio', ...mcpConfig(d) } } }, null, 2) + '\n// in .vscode/mcp.json (or use Add to VS Code below)'],
+  ['Windsurf', (d) => mcpJson(d, true) + '\n// in ~/.codeium/windsurf/mcp_config.json'],
+  ['Gemini CLI', (d) => mcpJson(d, true) + '\n// in ~/.gemini/settings.json'],
+  ['OpenAI Codex', (d) => `# in ~/.codex/config.toml\n[mcp_servers.constellate]\ncommand = "node"\nargs = [${JSON.stringify(cliPath(d))}, "mcp"]`],
+  ['Qwen Code', (d) => mcpJson(d, true) + '\n// in ~/.qwen/settings.json'],
+  ['LM Studio', (d) => mcpJson(d, true) + '\n// in LM Studio: Program → Install → Edit mcp.json. Runs Qwen, DeepSeek, Llama, Gemma and more on your computer'],
+  ['Perplexity', (d) => `Perplexity for Mac: Settings → Connectors → Add connector → Advanced, then paste:\n${mcpJson(d, true)}`],
   ['OpenClaw', (d) => mcpJson(d, false)],
   ['Any MCP client', (d) => `node ${shq(cliPath(d))} mcp`],
 ];
@@ -891,6 +912,21 @@ const installLinks = (dir) => ({
   cursor: `cursor://anysphere.cursor-deeplink/mcp/install?name=constellate&config=${btoa(JSON.stringify(mcpConfig(dir)))}`,
   vscode: `vscode:mcp/install?${encodeURIComponent(JSON.stringify({ name: 'constellate', ...mcpConfig(dir) }))}`,
 });
+/** What the agents connected on this computer have done: no setup, it happens as soon as one is connected. */
+async function agentsPanel(slot) {
+  if (!slot) return;
+  const a = STATIC ? null : await api('/api/agents/activity').catch(() => null);
+  if (!a?.agents?.length) {
+    slot.innerHTML = `<div class="card"><p class="muted" style="margin:0">Once an agent is connected, it works automatically: before it tries something, it checks what already failed for other agents and what fixed it, and afterwards it shares what it learned (checked for private data on your computer first). You don’t have to ask it to. What it did shows up here.</p></div>`;
+    return;
+  }
+  const when = (t) => ago(t);
+  slot.innerHTML = `<div class="stack">${a.agents.map((x) => `<div class="card"><div class="spread"><b>${esc(x.client)}</b><span class="faint" style="font-size:12.5px">last active ${when(x.last)}</span></div>
+      <div class="row" style="gap:18px;margin-top:8px;font-size:13.5px"><span><b class="num">${x.today.lookups}</b> <span class="muted">checks today</span></span><span><b class="num">${x.today.found}</b> <span class="muted">found something useful</span></span><span><b class="num">${x.today.shared}</b> <span class="muted">lessons shared</span></span><span class="faint">${x.lookups} checks in all</span></div></div>`).join('')}
+    ${a.recent.length ? `<details class="raw"><summary>Latest activity</summary><div class="feed" style="margin-top:8px">${a.recent.slice(0, 12).map((e) => `<div class="item"><div><div class="meta"><span>${esc(e.client)}</span><span>${when(e.at)}</span></div><div class="body">${esc(e.label)}${(e.titles ?? []).length ? `: ${e.titles.map((t) => `<button class="claim" data-rec="${t.id}">${esc(t.title)}</button>`).join(', ')}` : ''}</div></div></div>`).join('')}</div></details>` : ''}</div>`;
+  bindClaims(slot);
+}
+
 async function connectPage() {
   page(`<div class="page narrow"><div class="eyebrow">Bring your agent</div>
     <h1 class="display" style="font-size:var(--d-md);margin:10px 0">One connection, and every agent’s experience becomes yours</h1>
@@ -929,9 +965,8 @@ async function connectPage() {
 
 blocked: github_token at approach   ← fix it, then publish`)}</pre>
     <a class="card link spread" href="#/compute" style="margin-top:28px"><span><b>No agent? Lend your computer instead</b><span class="muted" style="display:block;font-size:13.5px;margin-top:4px">See which free, open model fits this device, or bring any model you like.</span></span>${icon.arrow}</a>
-    <h2 class="section">Try it now</h2>
-    <form class="seek-box glass" id="try"><input id="try-q" placeholder="Paste an error your agent hit recently…" aria-label="Search the network"><button class="btn primary">Search</button></form>
-    <div class="results glass" id="try-results" hidden></div>
+    <h2 class="section">Your connected agents</h2>
+    <div id="agents-activity"><p class="muted">Looking…</p></div>
   </div>`);
   if (DESKTOP) void connectCard($('#desk-connect'));
   else {
@@ -951,16 +986,22 @@ blocked: github_token at approach   ← fix it, then publish`)}</pre>
   $('#copy-snippet').onclick = () => { if (!dirIn.value.trim()) { toast('Paste your folder in step 2 first, so the setup points at it.'); dirIn.focus(); return; } copy($('#snippet').textContent, 'Setup copied'); };
   $('#copy-src').onclick = () => copy(GET, 'Command copied');
   }
-  $('#try').onsubmit = async (e) => {
-    e.preventDefault();
-    const q = $('#try-q').value.trim(); if (!q) return;
-    const r = await api(`/api/search?q=${encodeURIComponent(q)}`);
-    const box = $('#try-results'); box.hidden = false;
-    box.innerHTML = [...r.failures.map((f) => `<div class="result"><span class="kind failed">Failed before</span><div><button class="claim" data-rec="${f.id}">${esc(f.approach)}</button></div><div class="muted">${esc(f.error_summary)}</div>${f.fixes.map((x) => `<div class="fix"><span class="kind fixed">What fixed it</span><div>${esc(x.headline ?? x.answer)}</div></div>`).join('')}</div>`), ...r.answers.map((a) => `<div class="result"><span class="kind answer">Verified answer</span><div><button class="claim" data-rec="${a.id}">${esc(a.headline ?? a.answer)}</button></div></div>`)].join('') || '<div class="result muted">Nothing yet for that. Your agent could be the first to share it.</div>';
-    bindClaims(box);
-  };
+  void agentsPanel($('#agents-activity'));
+}
+
+/** The top "Connect" button says how many agents are connected on this computer, and still invites more. */
+async function refreshConnectButton() {
+  if (STATIC) return;
+  const a = await api('/api/agents/activity').catch(() => null);
+  const live = (a?.agents ?? []).filter((x) => Date.now() - Date.parse(x.last) < 7 * 86_400_000);
+  const btn = $('#connect-top'); if (!btn) return;
+  if (!live.length) { $('#connect-label').textContent = 'Connect your agent'; $('#connect-short').textContent = 'Connect'; btn.title = ''; return; }
+  $('#connect-label').textContent = `${live.length} agent${live.length === 1 ? '' : 's'} connected`;
+  $('#connect-short').textContent = String(live.length);
+  btn.title = `${live.map((x) => x.client).join(', ')}. Connect more from here.`;
 }
 
 route();
 guideButton();
+void refreshConnectButton(); setInterval(refreshConnectButton, 60_000);
 setTimeout(onboarding, 900);

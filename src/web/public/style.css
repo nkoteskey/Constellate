@@ -425,3 +425,5 @@ select.field { width: 100%; background: rgba(0,0,0,.28); color: var(--fg); borde
 
 .who-dot { position: relative; display: inline-flex; }
 .who-dot.online::after { content: ""; position: absolute; right: 0; bottom: 0; width: 8px; height: 8px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 0 2px var(--bg, #05070d); }
+
+@media (max-width: 720px) { #lend-top span { display: none; } #lend-top { padding: 7px 10px; } }

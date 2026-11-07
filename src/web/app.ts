@@ -1,6 +1,7 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { decodeCanonical } from '../core/canonical.js';
+import { ActivityLog } from '../hub/activity.js';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { HttpReply, RawReply, StreamReply, WebServer } from './server.js';
@@ -301,10 +302,41 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
   }));
 
   // Ideas from people: not yet a problem (that needs checkable steps), but voted on and visible.
+  // What the agents connected on THIS computer have done (from agent-activity.jsonl). Answers only this computer.
+  const agentLog = new ActivityLog();
+  web.route('GET', /^\/api\/agents\/activity$/, (req) => {
+    if (!/^(127\.|::1$|::ffff:127\.)/.test(req.socket.remoteAddress ?? '')) return new HttpReply(403, { error: 'only on this computer' });
+    const sum = agentLog.summary();
+    const title = (id: string) => { const b = hub.node.store.get(id)?.rec.body as { approach?: string; question?: string; title?: string; name?: string } | undefined; return b ? String(b.title ?? b.approach ?? b.question ?? b.name ?? '').slice(0, 90) : null; };
+    const LABEL: Record<string, string> = { failures_search: 'checked what failed before', answers_lookup: 'looked for a verified answer', skills_find: 'looked for a skill', graph_recall: 'recalled related lessons', problems_list: 'looked at open problems', problems_status: 'checked a problem', handoff_check: 'checked for a hand-off', failures_report: 'shared what failed', answers_submit: 'shared an answer', skills_publish: 'shared a skill', proposals_submit: 'proposed a problem', help_request: 'asked for help', records_link: 'linked two lessons' };
+    return {
+      agents: sum.agents,
+      recent: sum.recent.map((e) => ({ ...e, label: `${LABEL[e.tool] ?? e.tool.replace(/_/g, ' ')}${e.results !== undefined ? ` (${e.results} found)` : ''}`, titles: (e.ids ?? []).map((id) => ({ id, title: title(id) })).filter((t) => t.title) })),
+    };
+  });
+
+  // "Try" under search: what agents and people have been sharing lately, then the topics the network uses most.
+  web.route('GET', /^\/api\/trending$/, () => {
+    const starter = starterOperators();
+    const short = (t: string) => { const w = t.replace(/\s+/g, ' ').trim().split(' '); let out = ''; for (const x of w) { if ((out + " " + x).trim().length > 56) break; out = (out + " " + x).trim(); } return out || t.slice(0, 56); };
+    const recent = hub.node.store.all()
+      .filter((s) => s.visibility === 'public' && ['failure', 'answer', 'skill'].includes(s.rec.kind) && !starter.has(s.operatorId))
+      .sort((a, b) => b.rec.created.localeCompare(a.rec.created)).slice(0, 12)
+      .map((s) => { const b = s.rec.body as { approach?: string; question?: string; name?: string }; return { text: short(b.approach ?? b.question ?? b.name ?? s.rec.context.task), at: s.rec.created, by: isHuman(s) ? 'human' : 'agent', kind: 'recent' as const }; })
+      .filter((x, i, a) => x.text.length > 8 && a.findIndex((y) => y.text === x.text) === i).slice(0, 2);
+    const latest = new Map<string, StoredRecord>();
+    for (const s of hub.node.store.ofKind('summary')) { const k = (s.rec.body as { cluster: string }).cluster; const p = latest.get(k); if (!p || p.rec.created < s.rec.created) latest.set(k, s); }
+    const usedBy = (s: StoredRecord) => { const m = (s.rec.body as { members?: string[] }).members ?? []; return m.reduce((n, id) => n + hub.node.store.referencing(id, 'use').length + hub.node.store.referencing(id, 'confirmation').length, 0) + m.length / 100; };
+    const popular = [...latest.values()].sort((a, b) => usedBy(b) - usedBy(a)).slice(0, 6)
+      .map((s) => ({ text: short((s.rec.body as { title: string }).title), kind: 'popular' as const }));
+    const out = [...recent, ...popular].filter((x, i, a) => a.findIndex((y) => y.text === x.text) === i).slice(0, 4);
+    return { items: out };
+  });
+
   web.route('GET', /^\/api\/ideas$/, () => hub.node.store.ofKind('proposal').filter((s) => { const b = s.rec.body as { title?: string; done?: string }; return !!(b.title && b.done); }).map((s) => {
     const b = s.rec.body as { title: string; goal: string; done: string; check: string; realm: string };
-    const voters = new Set(hub.node.store.referencing(s.rec.id, 'vote').map((v) => v.operatorId));
-    return { id: s.rec.id, ...b, at: s.rec.created, by: s.rec.agent_id, human: isHuman(s), voters: voters.size };
+    const voters = hub.collective.supporters(s.rec.id);
+    return { id: s.rec.id, ...b, at: s.rec.created, by: s.rec.agent_id, human: isHuman(s), voters: voters.length, voter_ids: voters };
   }).sort((a, b) => b.voters - a.voters || b.at.localeCompare(a.at)));
 
   // Art: appreciated, not scored. Galleries of pieces by people and agents; people curate.
