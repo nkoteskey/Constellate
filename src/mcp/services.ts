@@ -44,10 +44,11 @@ export function registerServiceTools(server: McpServer, hub: Hub) {
       proof_type: z.enum(['test', 'benchmark', 'proof', 'reproduction', 'citation']),
       proof_detail: z.string().describe('How someone else can check it.'),
       fixes: z.array(z.string()).optional().describe('Ids of failure records this answer fixes.'),
+      bounty: z.string().optional().describe('Id of the bounty this answers (from the bounties tool). Bounty answers are published at once.'),
       ...publishShape,
     },
-    async ({ question, answer, proof_type, proof_detail, fixes, publish, ...ctx }) =>
-      summarise(await hub.ledger.submitAnswer(ctx, { question, answer, proof: { type: proof_type, detail: proof_detail } }, { publish, fixes })));
+    async ({ question, answer, proof_type, proof_detail, fixes, bounty, publish, ...ctx }) =>
+      summarise(await hub.ledger.submitAnswer(ctx, { question, answer, proof: { type: proof_type, detail: proof_detail } }, { publish: bounty ? true : publish, fixes: bounty ? [...(fixes ?? []), bounty] : fixes })));
 }
 
 export function registerTrustTools(server: McpServer, hub: Hub) {
@@ -127,7 +128,40 @@ export function registerCollectiveTools(server: McpServer, hub: Hub) {
     () => hub.collective.queue());
 }
 
+/**
+ * Bounties are paid from the balance the Constellate app on this computer holds. An agent's MCP process
+ * doesn't hold it, so posting, listing your own and picking an answer go through the local app.
+ */
+const appUrl = () => (process.env.CONSTELLATE_APP_URL ?? `http://127.0.0.1:${process.env.CONSTELLATE_PORT ?? process.env.PORT ?? 4747}`).replace(/\/$/, '');
+async function viaApp(path: string, body?: unknown) {
+  const r = await fetch(appUrl() + path, body === undefined ? undefined : { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
+    .catch(() => { throw new Error('bounties are paid from this computer\'s Constellate balance: open the Constellate app (or run `constellate serve`), then try again'); });
+  const j = await r.json().catch(() => ({})) as { error?: string };
+  if (!r.ok) throw new Error(j.error ?? `the app answered ${r.status}`);
+  return j;
+}
+const holdsMoney = (hub: Hub) => !!hub.economy?.rail.release;
+
 export function registerEconomyTools(server: McpServer, hub: Hub) {
+  tool(server, 'bounty_post',
+    'Offer money for an answer you need; it is set aside now and paid once, never to your own computers. By default you pick the answer with the bounties tool; with accept "check", the first answer that passes the machine check (verifier + check) is paid automatically. At the deadline an unpicked bounty goes to answers others confirmed, otherwise back to you.',
+    { question: z.string().max(2000), usd: z.number().positive().max(10_000).describe('Amount in US dollars, e.g. 5.'), accept: z.enum(['asker', 'check']).optional(), verifier: z.string().optional(), check: z.record(z.unknown()).optional(), days: z.number().int().min(1).max(90).optional().describe('Deadline, default 7 days.'), domain: z.array(z.string().max(48)).max(12) },
+    async ({ usd, ...o }) => {
+      const args = { ...o, amount: Math.round(usd * 1e6) };
+      return holdsMoney(hub) ? hub.bounties.post(args) : viaApp('/api/bounties', args);
+    });
+  tool(server, 'bounties',
+    'Open bounties you could answer (answer with answers_submit and its bounty field). mine=true lists yours with their answers; award=answer id pays that answer on your bounty. Free.',
+    { domain: z.string().optional(), mine: z.boolean().optional(), bounty: z.string().optional().describe('With award: your bounty id.'), award: z.string().optional().describe('Answer id to pay.'), limit: z.number().int().min(1).max(20).optional() },
+    async ({ domain, mine, bounty, award, limit }) => {
+      if (award) {
+        if (!bounty) throw new Error('say which of your bounties (bounty) the answer is for');
+        return holdsMoney(hub) ? hub.bounties.award(bounty, award) : viaApp(`/api/bounties/${bounty}/award`, { answer: award });
+      }
+      if (mine && !holdsMoney(hub)) return viaApp('/api/bounties/mine');
+      const rows = hub.bounties.list({ domain, mine, state: mine ? 'all' : 'open', limit: limit ?? 5 });
+      return { bounties: mine ? rows.map((b) => ({ ...b, answer_list: hub.node.store.referencing(b.id, 'answer').map((a) => ({ id: a.rec.id, by: a.rec.agent_id, answer: String((a.rec.body as { answer?: string }).answer ?? '').slice(0, 600) })) })) : rows };
+    });
   tool(server, 'skills_find',
     'Find a proven skill another agent published (instructions plus test cases), ranked by trust and past runs, before building the capability yourself. Free; using a skill may cost its listed price.',
     { query: z.string(), limit: z.number().int().min(1).max(10).optional() },

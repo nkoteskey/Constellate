@@ -120,7 +120,12 @@ Lend your computer instead: node "${cli}" models, then node "${cli}" contribute`
     // Money: the testnet ledger unless the owner turns real payments on (docs/MAINNET.md).
     const funding = fundingConfig(process.env, vault());
     const credits = funding ? new CreditLedger(join(process.env.CONSTELLATE_HOME ?? join(homedir(), '.constellate'), `credits-${funding.mode}.jsonl`), { live: funding.mode === 'live' }) : null;
-    const economy = hub.attachRail(credits ?? new TestnetLedger());
+    // Without real money switched on, a persistent play-money ledger, so bounties and payments can be tried
+    // safely and survive a restart. Each new identity starts with $20 of play money.
+    const play = credits ? null : new CreditLedger(join(process.env.CONSTELLATE_HOME ?? join(homedir(), '.constellate'), 'credits-play.jsonl'), { play: true });
+    play?.deposit(hub.node.agentId, 20_000_000, `play-starter:${hub.node.agentId}`, 'play', 'starting play money');
+    const economy = hub.attachRail(credits ?? play ?? new TestnetLedger());
+    hub.bounties.watch();
     const spec = flag(argv, '--model');
     const model = spec ? runnerFromSpec(spec, { vault: vault() }) : undefined;
     if (model) hub.collective.constitution.attachReviewer(model);

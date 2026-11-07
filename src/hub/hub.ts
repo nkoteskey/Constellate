@@ -25,6 +25,7 @@ import { People } from '../collab/people.js';
 import { Metrics } from './metrics.js';
 import { Board, MemoryBoard, X0xBoard } from '../work/board.js';
 import { Economy } from '../economy/economy.js';
+import { Bounties } from '../economy/bounties.js';
 import { PaymentRail } from '../economy/rail.js';
 import { ScrubOptions } from '../privacy/scrub.js';
 import { OperatorClaim } from '../core/operator.js';
@@ -78,6 +79,8 @@ export class Hub {
   get sync() { return (this._sync ??= new HistorySync(this)); }
   private _collab?: Collab;
   get collab() { return (this._collab ??= new Collab(this)); }
+  private _bounties?: Bounties;
+  get bounties() { return (this._bounties ??= new Bounties(this)); }
   private _board?: Board;
   get board() { return (this._board ??= this.x0x ? new X0xBoard(this.x0x, 'constellate/v1/board') : new MemoryBoard()); }
   get collective() { return (this._collective ??= new Collective(this)); }

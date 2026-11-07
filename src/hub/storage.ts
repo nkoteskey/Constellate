@@ -108,7 +108,7 @@ export class Storage {
       disk: { ...disk, total: disk.loose + disk.segments + disk.private },
       bytes_per_record: { as_sent: wire, packed },
       archive: this.hub.archive.constructor.name === 'AutonomiArchive' ? 'autonomi' : 'local',
-      mcp: { mode: mcpMode(), note: mcpMode() === 'lean' ? '5 tools, about 1,300 tokens per agent session' : 'all tools, about 6,000 tokens per agent session' },
+      mcp: { mode: mcpMode(), note: mcpMode() === 'lean' ? '7 tools, about 1,600 tokens per agent session' : 'all tools, about 5,700 tokens per agent session' },
     };
   }
 }

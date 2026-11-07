@@ -130,7 +130,7 @@ async function setContribute(on) {
 
 // ── What the app can see and do (only from the local app, never from other sites) ──
 function status() {
-  const entry = mcpEntry({ execPath: process.execPath, cliPath: CLI, x0xDataDir: x0x.dataDir, starter: STARTER });
+  const entry = mcpEntry({ execPath: process.execPath, cliPath: CLI, x0xDataDir: x0x.dataDir, starter: STARTER, appUrl: APP_URL });
   const agents = Object.fromEntries(Object.entries(agentConfigs()).map(([id, a]) => [id, { name: a.name, present: a.present, connection: connection(a.file, entry) }]));
   return {
     version: app.getVersion(), platform: process.platform,
@@ -163,7 +163,7 @@ handle('desktop:connectAgent', async (_e, id) => {
     detail: `This adds Constellate to ${a.name}'s settings file:\n${a.file}\n\nA copy of the file as it is now is kept next to it. Restart ${a.name} afterwards.`,
   });
   if (response !== 0) return { ok: false, cancelled: true };
-  try { const backup = connect(a.file, mcpEntry({ execPath: process.execPath, cliPath: CLI, x0xDataDir: x0x.dataDir, starter: STARTER })); return { ok: true, backup }; }
+  try { const backup = connect(a.file, mcpEntry({ execPath: process.execPath, cliPath: CLI, x0xDataDir: x0x.dataDir, starter: STARTER, appUrl: APP_URL })); return { ok: true, backup }; }
   catch (err) { return { ok: false, error: err.message }; }
 });
 // One-click x0x link: this computer's x0x agent vouches for the person's browser key. The daemon signs the

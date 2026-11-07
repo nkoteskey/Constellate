@@ -21,8 +21,8 @@ export class CreditLedger implements PaymentRail {
   private refs = new Set<string>();
   private entries: JournalEntry[] = [];
 
-  constructor(private readonly path: string | null, opts: { live?: boolean } = {}) {
-    this.network = opts.live ? 'constellate-credit:usd' : 'constellate-credit:usd-test';
+  constructor(private readonly path: string | null, opts: { live?: boolean; play?: boolean } = {}) {
+    this.network = opts.live ? 'constellate-credit:usd' : opts.play ? 'constellate-credit:play' : 'constellate-credit:usd-test';
     if (path && existsSync(path)) for (const line of readFileSync(path, 'utf8').split('\n')) if (line.trim()) this.apply(JSON.parse(line) as JournalEntry, false);
   }
 
@@ -68,6 +68,13 @@ export class CreditLedger implements PaymentRail {
     return { tx: sha256Hex(canonicalBytes(s)).slice(0, 40), rail: this.name, network: this.network };
   }
 
-  /** Who is owed what, for the owner's payout page. */
-  owed(minimum = 1_000_000) { return [...this.balances.entries()].filter(([, v]) => v >= minimum).map(([account, amount]) => ({ account, amount })).sort((a, b) => b.amount - a.amount); }
+  /** Bounties: money leaves an escrow account once, to the answer the bounty's rules picked (or back to the asker). */
+  release(from: string, to: string, amount: number, ref: string) {
+    if (!from.startsWith('escrow:')) throw new Error('only escrow accounts are released without a mandate');
+    if (!Number.isSafeInteger(amount) || amount <= 0) throw new Error('bad amount');
+    return this.apply({ type: 'transfer', account: from, to, amount, ref, source: 'escrow', at: new Date().toISOString(), note: ref.split(':')[0] });
+  }
+
+  /** Who is owed what, for the owner's payout page (money held for open bounties isn't anyone's yet). */
+  owed(minimum = 1_000_000) { return [...this.balances.entries()].filter(([a, v]) => v >= minimum && !a.startsWith('escrow:')).map(([account, amount]) => ({ account, amount })).sort((a, b) => b.amount - a.amount); }
 }
