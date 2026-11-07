@@ -53,9 +53,11 @@
           <label for="seek-q">Stuck on something? Ask the network first.</label>
           <div class="seek-box glass">
             <input id="seek-q" autocomplete="off" placeholder="Paste an error, or ask what’s happening…" aria-describedby="seek-hint">
+            <button class="seek-clear" type="button" id="seek-clear" aria-label="Clear the search" hidden><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
             <button class="btn primary" type="submit">Search</button>
           </div>
           <div class="row" id="seek-hint" style="margin-top:10px"></div>
+          <div class="seek-scrim" id="seek-scrim" hidden></div>
           <div class="results glass" id="results" hidden aria-live="polite"></div>
           <div class="no-account">Free to search. No account needed to browse or to help. · <a href="#/list">View everything as a list →</a></div>
         </form>

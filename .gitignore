@@ -7,3 +7,8 @@ site/
 
 # built by scripts/build-mcpb.mts; shipped only with an approved release
 distribution/mcpb/
+
+# desktop app build output (desktop/scripts/stage.mjs, fetch-x0x.mjs, electron-builder)
+desktop/stage/
+desktop/release/
+desktop/resources/

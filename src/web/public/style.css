@@ -127,12 +127,16 @@ input.field:focus { outline: none; border-color: rgba(124,196,255,.5); box-shado
 
 /* ── shell ─────────────────────────────────────────────────────── */
 .top { position: fixed; inset: 0 0 auto 0; z-index: 20; display: flex; align-items: center; gap: 18px; padding: 14px 22px; background: linear-gradient(rgba(5,7,13,.92), rgba(5,7,13,0)); }
+/* Once the page scrolls, the bar turns solid and frosted so text passing behind it never muddles the tabs. */
+/* The frost lives on a layer behind the bar: a blur on .top itself would pin the phone's fixed tab bar to the header. */
+.top::before { content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none; opacity: 0; background: rgba(6,8,15,.86); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); box-shadow: 0 1px 0 var(--line); transition: opacity var(--t-fast); }
+.scrolled .top::before { opacity: 1; }
 .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; }
 .logo { width: 30px; height: 30px; overflow: visible; }
 .logo .meet { filter: drop-shadow(0 0 3px rgba(255,255,255,.55)); transition: filter var(--t-slow) var(--ease); }
 .logo.pulse .meet { filter: drop-shadow(0 0 10px #fff) drop-shadow(0 0 22px rgba(255,255,255,.6)); }
 .wordmark { letter-spacing: .32em; font-weight: 300; font-size: 13px; text-transform: uppercase; }
-nav.views { display: flex; gap: 2px; margin: 0 auto; padding: 4px; border-radius: var(--r-pill); background: rgba(255,255,255,.03); border: 1px solid var(--line); }
+nav.views { display: flex; gap: 2px; margin: 0 auto; padding: 4px; border-radius: var(--r-pill); background: rgba(12,15,26,.82); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); border: 1px solid var(--line); }
 nav.views a { text-decoration: none; color: var(--muted); padding: 7px 14px; border-radius: var(--r-pill); font-size: var(--t-sm); font-weight: 500; transition: color var(--t-fast), background var(--t-fast); }
 nav.views a:hover { color: var(--fg); }
 nav.views a.on { color: var(--fg); background: var(--surface-3); }
@@ -155,7 +159,20 @@ nav.views a.on { color: var(--fg); background: var(--surface-3); }
 .seek-box input:focus { outline: none; }
 .seek-box:focus-within { border-color: rgba(124,196,255,.45); box-shadow: 0 0 0 4px rgba(124,196,255,.08); }
 .results { margin-top: 10px; max-height: min(56vh, 520px); overflow-y: auto; padding: 8px; border-radius: var(--r-lg); background: rgba(12,15,26,.94); }
-.seek .results { position: absolute; left: 0; right: 0; top: 100%; z-index: 10; box-shadow: var(--shadow); }
+.seek .results { position: absolute; left: 0; right: 0; top: 100%; z-index: 10; box-shadow: var(--shadow); overscroll-behavior: contain; }
+/* Search focus: the page behind the results dims and blurs, so results never sit on top of busy text. */
+.seek-scrim { position: fixed; inset: 0; z-index: -1; background: rgba(4,6,12,.62); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); animation: fade var(--t-fast) var(--ease); }
+.seeking .seek { z-index: 12; }
+/* Results sit right under the box (top set from the box in JS); the suggestions underneath fade out without moving anything. */
+.seeking #seek-hint, .seeking .no-account { visibility: hidden; }
+@media (max-width: 720px) { .seeking #seek-hint, .seeking .no-account { display: none; } }
+.hero, .seek { min-width: 0; }
+.results { overflow-wrap: anywhere; min-width: 0; }
+.results-head { position: sticky; top: -8px; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: -8px -8px 6px; padding: 10px 12px 8px 16px; font-size: var(--t-sm); color: var(--fg-2); background: rgba(12,15,26,.97); border-bottom: 1px solid var(--line); border-radius: var(--r-lg) var(--r-lg) 0 0; }
+.results-head b { color: var(--fg); font-weight: 600; }
+.seek-clear { all: unset; cursor: pointer; display: inline-grid; place-items: center; width: 34px; height: 34px; align-self: center; border-radius: 50%; color: var(--muted); }
+.seek-clear:hover, .seek-clear:focus-visible { color: var(--fg); background: var(--surface-2); }
+.seek-clear:focus-visible { outline: 2px solid rgba(124,196,255,.6); }
 .result { padding: 12px 12px; border-radius: var(--r-md); }
 .result + .result { border-top: 1px solid var(--line); border-radius: 0; }
 .result .kind { font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase; font-weight: 600; }

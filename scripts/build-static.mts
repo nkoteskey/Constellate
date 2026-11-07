@@ -11,6 +11,7 @@ import { WebServer } from '../src/web/server.js';
 import { registerAppRoutes } from '../src/web/app.js';
 import { registerEconomyRoutes } from '../src/economy/routes.js';
 import type { StoredRecord } from '../src/store/records.js';
+import { topicContext } from '../src/services/ledger.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const out = resolve(process.argv[2] ?? join(root, 'site'));
@@ -68,7 +69,7 @@ const latest = new Map<string, StoredRecord>();
 for (const s of store.ofKind('summary')) { const k = (s.rec.body as { cluster: string }).cluster; const p = latest.get(k); if (!p || p.rec.created < s.rec.created) latest.set(k, s); }
 const learned = [...latest.values()].map((s) => {
   const b = s.rec.body as { title: string; summary: string; members: string[]; realms: string[] };
-  return { id: s.rec.id, title: b.title, summary: b.summary, sources: b.members.length, realms: b.realms, domain: s.rec.context.domain, members: b.members.slice(0, 5) };
+  return { id: s.rec.id, title: b.title, summary: b.summary, sources: b.members.length, realms: b.realms, domain: s.rec.context.domain, members: b.members.slice(0, 5), ...topicContext(store, b.members) };
 });
 const skills = store.ofKind('skill').map((s) => { const b = s.rec.body as { name: string; description: string; capabilities: string[] }; return { id: s.rec.id, name: b.name, description: b.description, capabilities: b.capabilities, source: s.rec.evidence[0] ?? null }; });
 write('api/ledger.json', { built: new Date().toISOString(), records: ledger, learned, skills });

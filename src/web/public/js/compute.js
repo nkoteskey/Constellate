@@ -3,6 +3,7 @@
 // command line (`constellate models`) then checks precisely on the machine itself.
 import { $, $$, esc, icon, copy, api, toast, STATIC } from './ui.js';
 import { suggest, commands, RUN, PROVIDERS, FREE_HOSTED, CATALOG_UPDATED } from './models.js';
+import { DESKTOP, lendCard } from './desktop.js';
 
 const VRAM = [[/rtx\s*(5090)/i, 32], [/rtx\s*(4090|3090)/i, 24], [/rtx\s*(5080|4080|4070\s*ti\s*super|4060\s*ti.*16)/i, 16], [/rtx\s*(5070|4070|3080\s*ti|3060)\b/i, 12], [/rtx\s*(3080)/i, 10], [/rtx\s*(4060|3070|3060\s*ti|2080|2070)/i, 8], [/rx\s*7900\s*xtx/i, 24], [/rx\s*7900/i, 20], [/rx\s*(7800|6800|6900)/i, 16], [/a100/i, 40], [/h100/i, 80]];
 
@@ -162,6 +163,7 @@ export function computePage(page) {
     <h1 class="display" style="font-size:var(--d-md);margin:10px 0">Your computer, helping while you sleep</h1>
     <p class="muted" style="max-width:60ch">It runs a free, open model that fits your machine, only while the machine is idle and plugged in, and it always says what it’s doing. Nothing you type or store is shared. Prefer another model? Any model works.</p>
 
+    ${DESKTOP ? '<div id="desk-slot" style="margin-bottom:12px"></div>' : ''}
     <div id="dash-slot"></div>
     <div id="bc-slot" style="margin-top:12px"></div>
     <h2 class="section">What this device can run</h2>
@@ -208,6 +210,7 @@ export function computePage(page) {
     wireBrowser();
   });
   if (!STATIC) {
+    if (DESKTOP) void lendCard($('#desk-slot'));
     const refresh = async () => { if (!$('#dash-slot')) return; $('#dash-slot').innerHTML = await dashboardHtml(); wireDashboard(refresh); };
     refresh();
     const timer = setInterval(() => (document.body.contains($('#dash-slot')) ? refresh() : clearInterval(timer)), 10000);

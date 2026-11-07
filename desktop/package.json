@@ -1,0 +1,16 @@
+{
+  "name": "constellate-desktop",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Constellate for your desktop: the app, the x0x network and lending your computer, in one install.",
+  "main": "main.mjs",
+  "type": "module",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --config builder.config.cjs"
+  },
+  "devDependencies": {
+    "electron": "44.9.3",
+    "electron-builder": "26.18.0"
+  }
+}

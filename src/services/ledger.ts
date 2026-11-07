@@ -96,9 +96,17 @@ export class Ledger {
     const rel = bm25(query, docs.map((s) => { const b = s.rec.body as { title: string; summary: string }; return { id: s.rec.id, text: `${b.title} ${b.summary} ${s.rec.context.domain.join(' ')}`, tags: s.rec.context.domain }; }));
     return docs.filter((s) => rel.has(s.rec.id)).sort((a, b) => rel.get(b.rec.id)! - rel.get(a.rec.id)!).slice(0, opts.limit ?? 2).map((s) => {
       const b = s.rec.body as { title: string; summary: string; members: string[]; realms: string[] };
-      return { id: s.rec.id, title: b.title, summary: b.summary, sources: b.members.length, realms: b.realms, domain: s.rec.context.domain, members: b.members.slice(0, 5) };
+      return { id: s.rec.id, title: b.title, summary: b.summary, sources: b.members.length, realms: b.realms, domain: s.rec.context.domain, members: b.members.slice(0, 5), ...topicContext(this.node.store, b.members) };
     });
   }
 }
 
 const round = (n: number) => Math.round(n * 100) / 100;
+
+/** Which projects a distilled topic comes from, and its newest lesson's date: "x0x · Sep 2026" tells a reader what it's about. */
+export function topicContext(store: { get(id: string): StoredRecord | undefined }, members: string[]) {
+  const envs = members.map((id) => store.get(id)?.rec.context.environment ?? '');
+  const projects = [...new Set(envs.map((e) => e.match(/^[\w.-]+\/([\w.-]+)/)?.[1]).filter((x): x is string => !!x))];
+  const dates = envs.map((e) => e.match(/(\d{4}-\d{2}-\d{2})/)?.[1]).filter((x): x is string => !!x).sort();
+  return { projects, latest: dates.at(-1) ?? null };
+}
