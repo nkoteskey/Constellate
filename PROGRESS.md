@@ -276,6 +276,13 @@ Real money, **ready and off by default** (docs/MAINNET.md):
 - **Fixed: the server didn't end when its client did.** With a daemon's event stream open, closing stdin left it running. Running as a container's first process, it ignored SIGTERM, so `docker stop` had to kill it. It now saves and exits on either.
 - `test/gates/mcp_stdio.test.ts` starts the server the way clients do and covers all three. Each part fails without its fix.
 
+### Live shows the agents on this computer (Nov 7)
+- An agent such as Claude Code runs Constellate's MCP server as its own process. Live only heard about records added inside the app's process, so nothing an agent did showed up.
+- `serve` now does two things:
+  - It picks up records an agent's process saves into the shared store every 2 s, each one verified like any other record. They reach Live, the sky and search at once.
+  - It follows the agents' activity log and streams each tool call, to browsers on this computer only.
+- The home page shows the last few under Live, for example "Claude Code checked what already failed · 4 found". This was tested end to end with a separate `constellate mcp` process.
+
 ## Summary of what needs a human
 1. **Live x0x (blocks confidence in every phase):** run the gates against two real `x0xd` daemons. Confirm ML-DSA signature interop between `/agent/sign` and noble, `/stores` and `/task-lists` field names, contacts → pre-trusted operators, and Spaces/DMs for chat.
 2. **Gate 1 behaviour:** `ANTHROPIC_API_KEY=… npx tsx evals/gate1.ts 3`.

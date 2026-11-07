@@ -48,6 +48,20 @@ export class ActivityLog {
     try { mkdirSync(dirname(this.file), { recursive: true }); appendFileSync(this.file, JSON.stringify(e) + '\n'); } catch { /* activity is best-effort; never break a tool call */ }
   }
 
+  /** Events appended since `from` (a byte offset), and where to read from next time. */
+  since(from: number): { events: ActivityEvent[]; next: number } {
+    try {
+      const size = statSync(this.file).size;
+      if (size < from) return { events: [], next: size }; // the file was replaced
+      if (size === from) return { events: [], next: from };
+      const buf = readFileSync(this.file).subarray(from);
+      const end = buf.lastIndexOf(10) + 1; // only whole lines (offsets are in bytes)
+      const events = buf.subarray(0, end).toString('utf8').split('\n').filter(Boolean).map((l) => { try { return JSON.parse(l) as ActivityEvent; } catch { return null; } }).filter((x): x is ActivityEvent => !!x);
+      return { events, next: from + end };
+    } catch { return { events: [], next: from }; }
+  }
+  size(): number { try { return statSync(this.file).size; } catch { return 0; } }
+
   events(): ActivityEvent[] {
     if (!existsSync(this.file)) return [];
     try {

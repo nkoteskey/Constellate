@@ -44,6 +44,27 @@ export class RecordStore {
 
   onAdd(cb: (s: StoredRecord) => void) { this.listeners.add(cb); return () => this.listeners.delete(cb); }
 
+  /**
+   * Pick up records another process on this computer saved into the same folder: an agent's own Constellate
+   * MCP server shares this store with the app, and without this the app wouldn't see what the agent shared
+   * until it restarted. Each one is verified like any record. Returns how many were new.
+   */
+  rescan(): number {
+    if (!this.dir) return 0;
+    let added = 0;
+    for (const v of ['public', 'private'] as const) {
+      let names: string[] = [];
+      try { names = readdirSync(join(this.dir, v)); } catch { continue; }
+      for (const f of names) {
+        if (!f.endsWith('.cbor')) continue;
+        const id = f.slice(0, -5);
+        if (this.byId.has(id) || this.removed.has(id)) continue;
+        try { if (this.add(decodeCanonical<SignedRecord>(readFileSync(join(this.dir, v, f))), v, false)) added++; } catch { /* still being written: next time */ }
+      }
+    }
+    return added;
+  }
+
   /** Returns the stored entry, or null if the record failed verification. */
   add(rec: SignedRecord, visibility: Visibility = 'public', persist = true, segment?: string): StoredRecord | null {
     const v = verifyRecord(rec, { root: (id) => this.byId.get(id)?.rec });

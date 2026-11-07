@@ -465,3 +465,8 @@ label.inline-check input { margin: 0; width: 16px; height: 16px; accent-color: v
 .plan-log { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; font-size: 13.5px; }
 .plan-log li { display: grid; grid-template-columns: 7.5em 1fr; gap: 8px; }
 .plan-chip { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+
+/* The agents on this computer, at work: under Live on the home page. */
+.agent-live { margin-top: 10px; display: grid; gap: 4px; font-size: var(--t-sm); }
+.agent-line { display: flex; align-items: center; gap: 8px; color: var(--fg); animation: fade var(--t-med) var(--ease); }
+.agent-line.old { color: var(--muted); }

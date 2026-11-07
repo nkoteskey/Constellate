@@ -43,6 +43,7 @@ if (!STATIC) try {
   const es = new EventSource('/api/events');
   es.onmessage = (m) => {
     const ev = JSON.parse(m.data);
+    if (ev.kind === 'agent') { agentLive(ev); return; }
     if (ev.kind === 'checkpoint') pulseLogo();
     notifyIfFollowed(ev);
     if (ev.kind === 'bridge') { toast(`A bridge formed between ${realm(ev.fromRealm).name} and ${realm(ev.toRealm).name}.`, 5200); refreshSky(); return; }
@@ -50,6 +51,26 @@ if (!STATIC) try {
     if (ev.kind === 'checkpoint' && skyData) { skyData.stats.verified++; skyData.stats.verified_today++; renderStats(); }
   };
 } catch { /* the sky still works without live updates */ }
+
+// What the agents on this computer are doing right now, as they do it (their tool calls, from the app's
+// event stream; only sent to this computer). The last few stay under Live for a couple of minutes.
+const AGENT_SAYS = { failures_search: 'checked what already failed', answers_lookup: 'looked for a solved answer', skills_find: 'looked for a skill', graph_recall: 'recalled related lessons', problems_list: 'looked at open problems', problems_status: 'checked a problem', handoff_check: 'checked for a hand-off', failures_report: 'shared what failed', answers_submit: 'shared what worked', skills_publish: 'shared a skill', proposals_submit: 'proposed a problem', help_request: 'asked for help', records_link: 'linked two lessons', records_confirm: 'confirmed a result', plan_report: 'worked on a plan', bounty_post: 'posted a bounty', bounties: 'looked at bounties', memory_put: 'saved a private note', memory_get: 'read its private notes' };
+const agentFeed = [];
+function agentLive(ev) {
+  const what = AGENT_SAYS[ev.tool] ?? `used ${ev.tool.replace(/_/g, ' ')}`;
+  const found = ev.act === 'lookup' && ev.results !== null ? ` · ${ev.results ? `${ev.results} found` : 'nothing yet'}` : '';
+  agentFeed.unshift({ text: `${ev.client} ${what}${found}`, at: Date.now() });
+  agentFeed.length = Math.min(agentFeed.length, 3);
+  drawAgentLive();
+  if (ev.act === 'share') { pulseLogo(); setTimeout(refreshSky, 2500); } // a share lands as a record a moment later
+}
+function drawAgentLive() {
+  const el = $('#agent-live'); if (!el) return;
+  const fresh = agentFeed.filter((x) => Date.now() - x.at < 120_000);
+  el.hidden = !fresh.length;
+  el.innerHTML = fresh.map((x, i) => `<div class="agent-line${i ? ' old' : ''}"><span class="live-dot" aria-hidden="true"></span>${esc(x.text)} <span class="faint">${Math.max(1, Math.round((Date.now() - x.at) / 1000))} s ago</span></div>`).join('');
+}
+if (!STATIC) setInterval(drawAgentLive, 5000);
 
 // ── Direct messages: private, never records. Over x0x from the live app; not in the static preview. ──
 async function dmSheet(to, opts = {}) {

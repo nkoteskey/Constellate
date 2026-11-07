@@ -173,6 +173,8 @@ Lend your computer instead: node "${cli}" models, then node "${cli}" contribute`
     play?.deposit(hub.node.agentId, 20_000_000, `play-starter:${hub.node.agentId}`, 'play', 'starting play money');
     const economy = hub.attachRail(credits ?? play ?? new TestnetLedger());
     hub.bounties.watch();
+    // Agents' own Constellate processes save into the same store: pick up what they add, so it shows here at once.
+    setInterval(() => { try { hub.node.store.rescan(); } catch { /* next time */ } }, 2000).unref();
     const spec = flag(argv, '--model');
     const model = spec ? runnerFromSpec(spec, { vault: vault() }) : undefined;
     if (model) hub.collective.constitution.attachReviewer(model);
