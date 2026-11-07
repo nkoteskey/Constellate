@@ -151,4 +151,20 @@ describe('GATE 6 — human experience', () => {
     const wrongKind = await fetch(`${web.url}/api/records`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(cp) });
     expect((await wrongKind.json()).error).toMatch(/cannot submit checkpoint/);
   });
+  it('acting on a page keeps your place: voting or rating never jumps back to the top', async () => {
+    const p = await browser.newPage({ viewport: { width: 1100, height: 700 } });
+    await p.goto(`${web.url}/#/`); await p.waitForTimeout(800);
+    const problem = `#/p/${demo.viewer.problems.list()[0].rec.id}`;
+    for (const [target, button] of [['#/proposals', '[data-vote]'], [problem, '#follow']] as const) {
+      await p.goto(`${web.url}/#/`); await p.waitForTimeout(300); // leave and come back, as a reader does
+      await p.goto(`${web.url}/${target}`);
+      await p.waitForSelector(button);
+      const y = await p.evaluate(() => { scrollTo(0, Math.min(600, document.documentElement.scrollHeight - innerHeight)); return scrollY; }); // read partway down the page
+      expect(y).toBeGreaterThan(200);
+      await p.evaluate((b) => { const all = document.querySelectorAll(b); (all[all.length - 1] as HTMLElement).click(); }, button);
+      await p.waitForTimeout(1200);
+      expect(Math.abs((await p.evaluate(() => scrollY)) - y)).toBeLessThan(150);
+    }
+    await p.close();
+  });
 });

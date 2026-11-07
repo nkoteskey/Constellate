@@ -4,6 +4,7 @@ import { canonicalBytes, decodeCanonical } from '../core/canonical.js';
 import { SignedRecord } from '../core/record.js';
 import { RecordStore } from '../store/records.js';
 import { LocalSigner } from '../core/identity.js';
+import { personalDataCheck } from '../privacy/scrub.js';
 
 /**
  * Private read mode for closed projects: download a snapshot of the PUBLIC
@@ -18,11 +19,11 @@ export function exportSnapshot(store: RecordStore): Uint8Array {
 }
 
 /** Loads a snapshot; every record is re-verified, so a tampered snapshot can't inject anything. */
-export function importSnapshot(bytes: Uint8Array, store: RecordStore) {
+export function importSnapshot(bytes: Uint8Array, store: RecordStore, persist = false) {
   const snap = decodeCanonical<Snapshot>(bytes);
   if (snap.v !== 1 || !Array.isArray(snap.records)) throw new Error('not a Constellate snapshot');
   let ok = 0, rejected = 0;
-  for (const r of snap.records) { if (store.add(r, 'public', false)) ok++; else rejected++; }
+  for (const r of snap.records) { if (personalDataCheck(r).ok && store.add(r, 'public', persist)) ok++; else rejected++; }
   return { ok, rejected, created: snap.created };
 }
 

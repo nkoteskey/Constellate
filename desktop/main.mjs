@@ -15,6 +15,8 @@ const CLI = join(ROOT, 'dist', 'cli.js');
 const PORT = Number(process.env.CONSTELLATE_PORT ?? 4747);
 const APP_URL = `http://127.0.0.1:${PORT}`;
 const DASH_URL = 'http://127.0.0.1:4748';
+// The starter library bundled with the app (stage/starter in a packaged build; desktop/stage/starter when run from source).
+const STARTER = [join(HERE, 'starter', 'saorsa-labs.cbor'), join(HERE, 'stage', 'starter', 'saorsa-labs.cbor')].find((f) => existsSync(f));
 const ICON = join(HERE, 'build', process.platform === 'darwin' ? 'trayTemplate.png' : 'tray.png');
 
 if (!app.requestSingleInstanceLock()) app.quit();
@@ -39,7 +41,7 @@ const x0x = new X0xSidecar({
   log: (l) => log(`[x0x] ${l}`),
 });
 const common = { execPath: process.execPath, cliPath: CLI, log };
-const server = new Service({ ...common, name: 'server', args: ['serve'], env: { ...x0x.env(), PORT: String(PORT) }, ready: () => isConstellate(APP_URL) });
+const server = new Service({ ...common, name: 'server', args: ['serve'], env: { ...x0x.env(), PORT: String(PORT), ...(STARTER ? { CONSTELLATE_STARTER: STARTER } : {}) }, ready: () => isConstellate(APP_URL) });
 let contributor = null;
 let externalServer = false; // a Constellate the person already runs on this port (e.g. from the command line)
 
@@ -128,7 +130,7 @@ async function setContribute(on) {
 
 // ── What the app can see and do (only from the local app, never from other sites) ──
 function status() {
-  const entry = mcpEntry({ execPath: process.execPath, cliPath: CLI, x0xDataDir: x0x.dataDir });
+  const entry = mcpEntry({ execPath: process.execPath, cliPath: CLI, x0xDataDir: x0x.dataDir, starter: STARTER });
   const agents = Object.fromEntries(Object.entries(agentConfigs()).map(([id, a]) => [id, { name: a.name, present: a.present, connection: connection(a.file, entry) }]));
   return {
     version: app.getVersion(), platform: process.platform,
@@ -161,7 +163,7 @@ handle('desktop:connectAgent', async (_e, id) => {
     detail: `This adds Constellate to ${a.name}'s settings file:\n${a.file}\n\nA copy of the file as it is now is kept next to it. Restart ${a.name} afterwards.`,
   });
   if (response !== 0) return { ok: false, cancelled: true };
-  try { const backup = connect(a.file, mcpEntry({ execPath: process.execPath, cliPath: CLI, x0xDataDir: x0x.dataDir })); return { ok: true, backup }; }
+  try { const backup = connect(a.file, mcpEntry({ execPath: process.execPath, cliPath: CLI, x0xDataDir: x0x.dataDir, starter: STARTER })); return { ok: true, backup }; }
   catch (err) { return { ok: false, error: err.message }; }
 });
 handle('desktop:disconnectAgent', (_e, id) => { const a = agentConfigs()[id]; if (!a) throw new Error('Unknown agent'); try { return { ok: disconnect(a.file) }; } catch (err) { return { ok: false, error: err.message }; } });

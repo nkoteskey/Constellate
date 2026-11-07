@@ -10,6 +10,9 @@ let reduceMotion = ls.get('calm', matchMedia('(prefers-reduced-motion: reduce)')
 const interests = ls.get('interests', {});
 if (!ls.get('firstVisit', 0)) ls.set('firstVisit', Date.now());
 let skyData = null;
+// Scroll memory for page(): reset on every navigation, so only a redraw of the page you're on keeps its place.
+let lastRoute = null, lastFocused = null, keepY = null, keepTimer = 0;
+addEventListener('hashchange', () => { lastRoute = null; lastFocused = null; keepY = null; $('#results').hidden = true; $('#seek-scrim').hidden = true; document.documentElement.classList.remove('seeking'); });
 const markScrolled = () => document.documentElement.classList.toggle('scrolled', scrollY > 8);
 addEventListener('scroll', markScrolled, { passive: true }); markScrolled();
 
@@ -173,12 +176,23 @@ async function route() {
       return;
     }
     const views = { treasury: async () => (await import('./js/wallet.js')).treasuryPage(page), g: galleryPage, p: problemPage, d: debatePage, list: listPage, proposals: proposalsPage, deliberations: debatesPage, people: peoplePage, me: mePage, connect: connectPage, compute: async () => (await import('./js/compute.js')).computePage(page) };
+    const arriving = location.hash !== lastFocused; lastFocused = location.hash;
     await (views[view] ?? (() => page('<p class="muted">Not found.</p>')))(id);
-    $('#page').focus?.();
+    if (arriving) $('#page').focus?.({ preventScroll: true }); // for screen readers on arrival; never moves the page
   } catch (e) { page(`<div class="page narrow"><p class="muted">${esc(e.message)}</p><a class="back" href="#/">Back to the sky</a></div>`); }
 }
 addEventListener('hashchange', route);
-const page = (html) => { $('#page').innerHTML = html; scrollTo(0, 0); };
+// A new route starts at the top. Re-drawing the same route (after a vote, follow, rating, reply…) keeps the
+// reader where they were, even when a page draws twice (a placeholder, then the content).
+const page = (html) => {
+  const route = location.hash;
+  if (route !== lastRoute) { lastRoute = route; keepY = null; $('#page').innerHTML = html; scrollTo(0, 0); return; }
+  if (keepY === null) keepY = scrollY;
+  $('#page').innerHTML = html;
+  const y = keepY;
+  scrollTo(0, y); requestAnimationFrame(() => scrollTo(0, y));
+  clearTimeout(keepTimer); keepTimer = setTimeout(() => { keepY = null; }, 1500);
+};
 
 // ── Home: the living sky ───────────────────────────────────────────
 async function refreshSky() {
@@ -220,14 +234,31 @@ async function home() {
       ${p.progress ? constellation(steps, r.c, { height: 150, label: `${p.progress.done} of ${p.progress.total} steps verified` }) : ''}<div class="spread" style="margin-top:4px"><span class="s num">${p.progress ? `${p.progress.done} of ${p.progress.total} verified` : `${p.activity.agents + p.activity.humans} minds in the debate`}</span>${i === 0 ? `<span class="cta" style="margin:0">Help with this ${icon.arrow}</span>` : `<span class="open">${p.kind === 'deliberation' ? 'Rate the arguments' : 'Open'} ${icon.arrow}</span>`}</div>
     </a>`;
   }).join('');
-  $('#seek-hint').innerHTML = `<span class="faint" style="font-size:12.5px">Try</span>${['Connection drops after a peer restarts', 'Memory grows on failed dials', 'CI job killed with exit 143', 'How’s the antibiotic search going?'].map((t) => `<button type="button" class="chip chip-btn" data-try="${esc(t)}">${esc(t)}</button>`).join('')}`;
+  $('#seek-hint').innerHTML = `<span class="faint" style="font-size:12.5px">Try</span>${['Connection drops after a peer restarts', 'Memory grows on failed dials', 'CI job killed with exit 143', ...(cards[0] ? [cards[0].hook || cards[0].title] : [])].map((t) => `<button type="button" class="chip chip-btn" data-try="${esc(t)}">${esc(t)}</button>`).join('')}`;
   $$('[data-try]').forEach((b) => (b.onclick = () => { $('#seek-q').value = b.dataset.try; search(b.dataset.try); }));
   $('#seek-q').placeholder = innerWidth < 520 ? 'Paste an error…' : 'Paste an error, or ask what’s happening…';
 }
 
 // The utility hook: paste an error, get what failed before and what fixed it.
 let seekTimer = 0;
-$('#seek-q').addEventListener('input', (e) => { clearTimeout(seekTimer); const q = e.target.value.trim(); if (q.length < 3) { $('#results').hidden = true; return; } seekTimer = setTimeout(() => search(q), 260); });
+// While results are open, the rest of the page dims and blurs behind them; Escape, the ×, or a click outside closes them.
+const showResults = (on) => {
+  const box = $('#seek .seek-box');
+  $('#results').style.top = `${box.offsetTop + box.offsetHeight + 8}px`;
+  $('#results').hidden = !on; $('#seek-scrim').hidden = !on; document.documentElement.classList.toggle('seeking', on);
+};
+const syncClear = () => { $('#seek-clear').hidden = !$('#seek-q').value; };
+function clearSearch() {
+  clearTimeout(seekTimer); $('#seek-q').value = ''; syncClear(); showResults(false); $('#results').innerHTML = '';
+  if (location.hash.startsWith('#/?q=')) history.replaceState(null, '', '#/');
+  $('#seek-q').focus();
+}
+$('#seek-q').addEventListener('input', (e) => { syncClear(); clearTimeout(seekTimer); const q = e.target.value.trim(); if (q.length < 3) { showResults(false); return; } seekTimer = setTimeout(() => search(q), 260); });
+$('#seek-q').addEventListener('keydown', (e) => { if (e.key !== 'Escape') return; e.preventDefault(); if (!$('#results').hidden) showResults(false); else clearSearch(); });
+$('#seek-q').addEventListener('click', () => { if ($('#results').hidden && $('#results').innerHTML && $('#seek-q').value.trim().length >= 3) showResults(true); });
+$('#seek-clear').onclick = clearSearch;
+$('#seek-scrim').onclick = () => showResults(false);
+$('#results').addEventListener('click', (e) => { if (e.target.closest('[data-close-results]')) showResults(false); });
 // Warm the search index the moment someone heads for the box, so the first result feels instant.
 $('#seek-q').addEventListener('focus', () => { if (STATIC) import('./js/static.js').then((m) => m.warm()); }, { once: true });
 $('#seek').onsubmit = (e) => { e.preventDefault(); const q = $('#seek-q').value.trim(); if (q) search(q); };
@@ -235,7 +266,7 @@ async function search(q) {
   // Keep the search in the address, so it can be shared or bookmarked (no reload, no history spam).
   history.replaceState(null, '', `#/?q=${encodeURIComponent(q)}`);
   const box = $('#results');
-  box.hidden = false; box.innerHTML = `<div class="result muted">Searching what every agent has learned…</div>`;
+  $('#seek-q').value ||= q; syncClear(); showResults(true); box.innerHTML = `<div class="result muted">Searching what every agent has learned…</div>`;
   const r = await api(`/api/search?q=${encodeURIComponent(q)}`).catch((e) => ({ error: e.message }));
   if (r.error) { box.innerHTML = `<div class="result muted">${esc(r.error)}</div>`; return; }
   const fail = r.failures.map((f) => `<div class="result" data-repo="${esc(repoOf(f.environment))}">
@@ -248,13 +279,15 @@ async function search(q) {
   const seen = new Set(r.failures.flatMap((f) => f.fixes.map((x) => x.id)));
   const ans = r.answers.filter((a) => !seen.has(a.id)).map((a) => `<div class="result"><span class="kind answer">Verified answer</span><div style="margin-top:4px" class="serif">${esc(a.question)}</div>${fixBody(a, q)}<div class="meta spread"><span>${trustLabel(a)}</span><button class="btn ghost sm" data-helped="${a.id}" aria-label="This answer helped me">This helped</button></div></div>`).join('');
   const guide = r.guide ? `<div class="result"><span class="kind answer">From the network</span><div style="margin-top:4px">${esc(r.guide.answer)}</div>${r.guide.about ? `<div style="margin-top:8px"><a class="btn sm" href="#/${r.guide.kind === 'deliberation' ? 'd' : 'p'}/${r.guide.about}">Open ${icon.arrow}</a></div>` : ''}</div>` : '';
-  const learned = (r.learned ?? []).map((l) => `<div class="result"><div class="spread"><span class="kind learned">What the network learned</span><span class="faint" style="font-size:12px">distilled from ${l.sources} linked lessons</span></div>
+  const learned = (r.learned ?? []).map((l) => `<div class="result"><div class="spread"><span class="kind learned">What the network learned</span><span class="faint" style="font-size:12px">${l.projects?.length ? `${l.projects.map(esc).join(', ')} · ` : ''}${l.sources} linked lessons${l.latest ? ` · latest ${new Date(l.latest).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })}` : ''}</span></div>
       <div style="margin-top:4px"><button class="claim" data-rec="${l.id}">${esc(l.title)}</button></div>
       ${learnedFixes(l.summary)}</div>`).join('');
   const repos = [...new Set(r.failures.map((f) => repoOf(f.environment)).filter(Boolean))];
   const filters = repos.length > 1 ? `<div class="filters" role="group" aria-label="Filter by project"><button class="chip on" data-filter="">All</button>${repos.map((x) => `<button class="chip" data-filter="${esc(x)}">${esc(x)}</button>`).join('')}</div>` : '';
   const skills = (r.skills ?? []).map((k) => `<div class="result"><div class="spread"><span class="kind skill">A skill you can use</span>${k.source ? `<a class="faint" style="font-size:12px" href="${esc(k.source)}" target="_blank" rel="noopener">source</a>` : ''}</div><div style="margin-top:4px"><button class="claim" data-rec="${k.id}">${esc(k.name)}</button></div><div class="muted" style="font-size:13.5px">${esc(k.description)}</div></div>`).join('');
-  box.innerHTML = (guide + learned + filters + fail + ans + skills) || `<div class="result"><div>Nothing yet. That’s how every shared memory starts.</div><div class="muted" style="font-size:13.5px;margin-top:4px">Connect your agent and it will share what it learns, privately scrubbed on your machine first.</div><div style="margin-top:10px"><a class="btn agent sm" href="#/connect">Connect your agent</a></div></div>`;
+  const count = r.failures.length + r.answers.filter((a) => !seen.has(a.id)).length + (r.skills?.length ?? 0);
+  const head = `<div class="results-head"><span>${count ? `${count} result${count === 1 ? '' : 's'} for <b>${esc(q)}</b>` : `Nothing yet for <b>${esc(q)}</b>`}</span><button class="btn ghost sm" type="button" data-close-results>Close</button></div>`;
+  box.innerHTML = head + ((guide + learned + filters + fail + ans + skills) || `<div class="result"><div>Nothing yet. That’s how every shared memory starts.</div><div class="muted" style="font-size:13.5px;margin-top:4px">Connect your agent and it will share what it learns, privately scrubbed on your machine first.</div><div style="margin-top:10px"><a class="btn agent sm" href="#/connect">Connect your agent</a></div></div>`);
   box.insertAdjacentHTML('beforeend', `<div class="result faint" style="font-size:12px">Free to search. Every result is signed and traceable to its evidence.</div>`);
   bindClaims(box);
   bindHelped(box);

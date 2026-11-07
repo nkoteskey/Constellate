@@ -23,4 +23,6 @@ writeFileSync(join(STAGE, 'package.json'), JSON.stringify({
 // The root lockfile pins transitive versions; npm install keeps them where it can, production only.
 cpSync(join(ROOT, 'package-lock.json'), join(STAGE, 'package-lock.json'));
 execFileSync('npm', ['install', '--omit=dev', '--no-audit', '--no-fund', '--ignore-scripts'], { cwd: STAGE, stdio: 'inherit', shell: process.platform === 'win32' });
+// The starter library: public lessons a new install opens on (built from data/seed, signed, re-verified on import).
+execFileSync(process.execPath, [join(DESK, 'scripts', 'starter.mjs'), join(STAGE, 'starter', 'saorsa-labs.cbor')], { stdio: 'inherit' });
 console.log(`staged ${STAGE}`);

@@ -3,6 +3,8 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { importSnapshot } from './seed/snapshot.js';
 import { Hub } from './hub/hub.js';
 import { createMcpServer } from './mcp/server.js';
 import { Consolidator } from './graph/consolidate.js';
@@ -52,6 +54,7 @@ async function main(argv: string[]) {
   const cmd = argv[0];
   if (cmd === 'mcp') {
     const hub = argv.includes('--private') ? await Hub.privateMode() : await Hub.fromEnv();
+    if (!argv.includes('--private')) importStarter(hub);
     const server = createMcpServer(hub);
     await server.connect(new StdioServerTransport());
     return;
@@ -81,6 +84,7 @@ Lend your computer instead: node "${cli}" models, then node "${cli}" contribute`
   }
   if (cmd === 'serve') {
     const hub = await Hub.fromEnv();
+    importStarter(hub);
     // Money: the testnet ledger unless the owner turns real payments on (docs/MAINNET.md).
     const funding = fundingConfig(process.env, vault());
     const credits = funding ? new CreditLedger(join(process.env.CONSTELLATE_HOME ?? join(homedir(), '.constellate'), `credits-${funding.mode}.jsonl`), { live: funding.mode === 'live' }) : null;
@@ -134,6 +138,22 @@ Lend your computer instead: node "${cli}" models, then node "${cli}" contribute`
     return;
   }
   console.log(USAGE);
+}
+
+/**
+ * The desktop app's starter library (CONSTELLATE_STARTER: a signed snapshot of public lessons). Imported once
+ * per data folder, every record re-verified and privacy-checked, kept locally and never re-gossiped: it gives
+ * a new install real lessons to search on day one, and everything live arrives on top of it.
+ */
+function importStarter(hub: Hub) {
+  const file = process.env.CONSTELLATE_STARTER;
+  const marker = join(process.env.CONSTELLATE_HOME ?? join(homedir(), '.constellate'), 'starter-imported');
+  if (!file || !existsSync(file) || existsSync(marker)) return;
+  try {
+    const r = importSnapshot(readFileSync(file), hub.node.store, true);
+    writeFileSync(marker, JSON.stringify({ file, ...r, at: new Date().toISOString() }));
+    console.log(`Starter library: ${r.ok} signed lessons from public history${r.rejected ? ` (${r.rejected} refused)` : ''}`);
+  } catch (e) { console.error(`Starter library not loaded: ${(e as Error).message}`); }
 }
 
 /** The encrypted on-device key vault. */

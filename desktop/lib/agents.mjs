@@ -10,8 +10,8 @@ import { homedir } from 'node:os';
 export const SERVER_NAME = 'constellate';
 
 /** The MCP server entry an agent needs to start Constellate from this app. */
-export function mcpEntry({ execPath, cliPath, x0xDataDir }) {
-  return { command: execPath, args: [cliPath, 'mcp'], env: { ELECTRON_RUN_AS_NODE: '1', ...(x0xDataDir ? { X0X_DATA_DIR: x0xDataDir } : {}) } };
+export function mcpEntry({ execPath, cliPath, x0xDataDir, starter }) {
+  return { command: execPath, args: [cliPath, 'mcp'], env: { ELECTRON_RUN_AS_NODE: '1', ...(x0xDataDir ? { X0X_DATA_DIR: x0xDataDir } : {}), ...(starter ? { CONSTELLATE_STARTER: starter } : {}) } };
 }
 
 /** Config files of the agents we can connect with one click. */
