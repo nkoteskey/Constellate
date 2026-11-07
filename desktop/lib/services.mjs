@@ -46,12 +46,19 @@ export class Service {
     if (this.child) return this.status();
     this.state = 'starting'; this.error = null;
     const child = this.spawnOnce();
-    for (let i = 0; i < 150; i++) { // up to 30 s
+    const limit = Date.now() + (this.startTimeoutMs ?? 120_000); // a first start on a busy network can be slow
+    let shown = '';
+    while (Date.now() < limit) {
       if (child.exitCode !== null || child.signalCode !== null) break;
       if (await this.ready().catch(() => false)) { this.state = 'running'; return this.status(); }
-      await sleep(200);
+      const latest = this.tail.at(-1) ?? '';
+      if (latest !== shown) { shown = latest; this.progress?.(latest); }
+      await sleep(250);
     }
-    if (this.child === child && this.state === 'starting') { this.state = 'failed'; this.error = `${this.name} didn't start: ${this.tail.slice(-3).join(' | ') || 'no output'}`; }
+    if (this.child === child && this.state === 'starting') {
+      const ended = child.exitCode !== null ? `it stopped (exit ${child.exitCode})` : child.signalCode ? `it was stopped (${child.signalCode})` : 'it didn’t answer within 2 minutes';
+      this.state = 'failed'; this.error = `${this.name} didn't start: ${ended}. ${this.tail.length ? `Last output: ${this.tail.slice(-3).join(' | ')}` : 'It printed nothing.'}`;
+    }
     return this.status();
   }
 

@@ -50,7 +50,8 @@ export class StorageFund {
     if (!economy?.rail.release) throw new Error('no ledger attached');
     if (!note.trim()) throw new Error('say what the money is for, e.g. "ANT for Autonomi uploads"');
     amount = Math.floor(amount);
-    const ref = `fund_withdrawal:${Date.now()}:${amount}`;
+    // Letters in the reference: a long run of digits reads like a card number to the privacy check.
+    const ref = `fund_withdrawal:${Date.now().toString(36)}-${amount.toString(36)}`;
     if (!economy.rail.release(FUND, economy.me, amount, ref)) throw new Error('already withdrawn');
     const { record } = await this.hub.node.submit({ kind: 'receipt', context: { task: 'payment: fund_withdrawal', domain: ['payments', 'storage'], environment: economy.rail.network }, body: { type: 'fund_withdrawal', payer: FUND, payee: economy.me, amount, tx: ref, rail: economy.rail.name, network: economy.rail.network, note: note.trim().slice(0, 200) }, refs: [] }, { publish: true });
     return record;

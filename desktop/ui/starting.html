@@ -17,7 +17,8 @@
   p { color: var(--muted); margin: 0; min-height: 1.5em; }
   ol { list-style: none; padding: 0; margin: 22px 0 0; color: var(--muted); font-size: 13.5px; }
   li { margin: 6px 0; } li.on { color: var(--fg); } li.done { color: #8fe3b0; } li.done::before { content: "✓ "; }
-  .err { color: var(--warn); max-width: 46ch; margin-top: 18px; }
+  .err { color: var(--warn); max-width: 46ch; margin-top: 18px; overflow-wrap: anywhere; }
+  .detail { color: var(--muted, #8a90a0); font-size: 13px; max-width: 52ch; margin-top: 10px; min-height: 1.2em; overflow-wrap: anywhere; }
   @keyframes pulse { 50% { opacity: .35; transform: scale(.8); } }
   @media (prefers-reduced-motion: reduce) { .mark i { animation: none; } }
 </style>
@@ -32,6 +33,7 @@
       <li id="s-network">Joining the x0x network</li>
       <li id="s-app">Opening your shared memory</li>
     </ol>
+    <p class="detail" id="detail" hidden></p>
     <p class="err" id="err" hidden></p>
   </div>
 </main>
@@ -39,6 +41,7 @@
   window.setStep = (s) => {
     const order = ['network', 'app'];
     if (s.error) { const e = document.getElementById('err'); e.hidden = false; e.textContent = s.error; document.getElementById('msg').textContent = 'Constellate couldn’t start.'; return; }
+    const d = document.getElementById('detail'); if (d) { d.textContent = s.detail ?? ''; d.hidden = !s.detail; }
     order.forEach((k, i) => { const li = document.getElementById('s-' + k); const at = order.indexOf(s.step); li.className = i < at ? 'done' : i === at ? 'on' : ''; });
     if (s.x0x === 'missing' || s.x0x === 'offline') document.getElementById('s-network').textContent = 'x0x isn’t available, so this computer works on its own for now';
   };
