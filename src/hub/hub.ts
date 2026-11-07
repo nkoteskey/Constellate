@@ -157,7 +157,7 @@ export class Hub {
     const memoryKey = MemoryKey.loadOrCreate(join(home, 'memory.key'));
     const privacy: ScrubOptions = { level: env.CONSTELLATE_PRIVACY === 'standard' ? 'standard' : 'strict', denyTerms: (env.CONSTELLATE_DENY_TERMS ?? '').split(',').filter(Boolean) };
     const preview = env.CONSTELLATE_PREVIEW !== 'off';
-    const x0x = new X0xClient(env.X0X_API);
+    const x0x = new X0xClient(env.X0X_API, env.X0X_TOKEN, env.X0X_DATA_DIR);
     try {
       await x0x.health();
       const signer = await DaemonSigner.connect(x0x);

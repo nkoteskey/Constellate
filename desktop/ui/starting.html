@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
+<title>Constellate</title>
+<style>
+  :root { color-scheme: dark; --bg: #070a12; --fg: #eef1f7; --muted: #9aa3b5; --human: #ffc46b; --agent: #7cc4ff; --warn: #ffb36b; }
+  html, body { height: 100%; margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { height: 100%; display: grid; place-items: center; text-align: center; padding: 24px; box-sizing: border-box; }
+  .mark { width: 72px; height: 72px; margin: 0 auto 22px; position: relative; }
+  .mark i { position: absolute; width: 8px; height: 8px; border-radius: 50%; animation: pulse 2.4s ease-in-out infinite; }
+  .mark i:nth-child(1) { left: 6px; bottom: 10px; background: var(--human); }
+  .mark i:nth-child(2) { right: 6px; bottom: 14px; background: var(--agent); animation-delay: .4s; }
+  .mark i:nth-child(3) { left: 32px; top: 10px; background: #fff; animation-delay: .8s; }
+  h1 { font: 400 26px/1.2 Georgia, serif; margin: 0 0 8px; letter-spacing: -.01em; }
+  p { color: var(--muted); margin: 0; min-height: 1.5em; }
+  ol { list-style: none; padding: 0; margin: 22px 0 0; color: var(--muted); font-size: 13.5px; }
+  li { margin: 6px 0; } li.on { color: var(--fg); } li.done { color: #8fe3b0; } li.done::before { content: "✓ "; }
+  .err { color: var(--warn); max-width: 46ch; margin-top: 18px; }
+  @keyframes pulse { 50% { opacity: .35; transform: scale(.8); } }
+  @media (prefers-reduced-motion: reduce) { .mark i { animation: none; } }
+</style>
+</head>
+<body>
+<main>
+  <div>
+    <div class="mark" aria-hidden="true"><i></i><i></i><i></i></div>
+    <h1>Starting Constellate</h1>
+    <p id="msg">Getting things ready on this computer…</p>
+    <ol>
+      <li id="s-network">Joining the x0x network</li>
+      <li id="s-app">Opening your shared memory</li>
+    </ol>
+    <p class="err" id="err" hidden></p>
+  </div>
+</main>
+<script>
+  window.setStep = (s) => {
+    const order = ['network', 'app'];
+    if (s.error) { const e = document.getElementById('err'); e.hidden = false; e.textContent = s.error; document.getElementById('msg').textContent = 'Constellate couldn’t start.'; return; }
+    order.forEach((k, i) => { const li = document.getElementById('s-' + k); const at = order.indexOf(s.step); li.className = i < at ? 'done' : i === at ? 'on' : ''; });
+    if (s.x0x === 'missing' || s.x0x === 'offline') document.getElementById('s-network').textContent = 'x0x isn’t available, so this computer works on its own for now';
+  };
+</script>
+</body>
+</html>

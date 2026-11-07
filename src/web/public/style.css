@@ -127,12 +127,16 @@ input.field:focus { outline: none; border-color: rgba(124,196,255,.5); box-shado
 
 /* ── shell ─────────────────────────────────────────────────────── */
 .top { position: fixed; inset: 0 0 auto 0; z-index: 20; display: flex; align-items: center; gap: 18px; padding: 14px 22px; background: linear-gradient(rgba(5,7,13,.92), rgba(5,7,13,0)); }
+/* Once the page scrolls, the bar turns solid and frosted so text passing behind it never muddles the tabs. */
+/* The frost lives on a layer behind the bar: a blur on .top itself would pin the phone's fixed tab bar to the header. */
+.top::before { content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none; opacity: 0; background: rgba(6,8,15,.86); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); box-shadow: 0 1px 0 var(--line); transition: opacity var(--t-fast); }
+.scrolled .top::before { opacity: 1; }
 .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; }
 .logo { width: 30px; height: 30px; overflow: visible; }
 .logo .meet { filter: drop-shadow(0 0 3px rgba(255,255,255,.55)); transition: filter var(--t-slow) var(--ease); }
 .logo.pulse .meet { filter: drop-shadow(0 0 10px #fff) drop-shadow(0 0 22px rgba(255,255,255,.6)); }
 .wordmark { letter-spacing: .32em; font-weight: 300; font-size: 13px; text-transform: uppercase; }
-nav.views { display: flex; gap: 2px; margin: 0 auto; padding: 4px; border-radius: var(--r-pill); background: rgba(255,255,255,.03); border: 1px solid var(--line); }
+nav.views { display: flex; gap: 2px; margin: 0 auto; padding: 4px; border-radius: var(--r-pill); background: rgba(12,15,26,.82); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); border: 1px solid var(--line); }
 nav.views a { text-decoration: none; color: var(--muted); padding: 7px 14px; border-radius: var(--r-pill); font-size: var(--t-sm); font-weight: 500; transition: color var(--t-fast), background var(--t-fast); }
 nav.views a:hover { color: var(--fg); }
 nav.views a.on { color: var(--fg); background: var(--surface-3); }

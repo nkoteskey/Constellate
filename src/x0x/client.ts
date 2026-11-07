@@ -17,12 +17,27 @@ export class X0xError extends Error {
 }
 
 export class X0xClient {
-  constructor(readonly baseUrl = process.env.X0X_API ?? 'http://127.0.0.1:12700', private readonly token = process.env.X0X_TOKEN ?? defaultToken()) {}
+  /**
+   * With X0X_DATA_DIR set (the desktop app sets it to its own x0x instance), the address and
+   * token are read from that instance's `api.port` and `api-token` on every request, so a
+   * daemon restarted on a new random port is found again without restarting Constellate.
+   */
+  constructor(private readonly fixedUrl = process.env.X0X_API, private readonly fixedToken = process.env.X0X_TOKEN, private readonly dataDir = process.env.X0X_DATA_DIR) {}
+
+  /** The daemon's current address: the instance's `api.port` when there is one, else X0X_API, else the default port. */
+  get baseUrl(): string {
+    if (this.dataDir) { const p = readTrimmed(join(this.dataDir, 'api.port')); if (p) return p.startsWith('http') ? p : `http://${p}`; }
+    return this.fixedUrl ?? 'http://127.0.0.1:12700';
+  }
+  private get token(): string | undefined {
+    return (this.dataDir ? readTrimmed(join(this.dataDir, 'api-token')) : undefined) ?? this.fixedToken ?? defaultToken();
+  }
 
   private async req<T>(method: string, path: string, body?: unknown): Promise<T> {
+    const token = this.token;
     const res = await fetch(this.baseUrl + path, {
       method,
-      headers: { 'content-type': 'application/json', ...(this.token ? { authorization: `Bearer ${this.token}` } : {}) },
+      headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}) },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
     const j = (await res.json().catch(() => ({}))) as Record<string, unknown>;
@@ -48,7 +63,8 @@ export class X0xClient {
   events(onMessage: (m: GossipMessage) => void): () => void {
     const ctl = new AbortController();
     (async () => {
-      const res = await fetch(this.baseUrl + '/events', { headers: this.token ? { authorization: `Bearer ${this.token}` } : {}, signal: ctl.signal });
+      const token = this.token;
+      const res = await fetch(this.baseUrl + '/events', { headers: token ? { authorization: `Bearer ${token}` } : {}, signal: ctl.signal });
       if (!res.body) return;
       const dec = new TextDecoder();
       let buf = '';
@@ -112,7 +128,8 @@ export class X0xClient {
   directEvents(onMessage: (m: { sender: string; payload: string }) => void): () => void {
     const ctl = new AbortController();
     (async () => {
-      const res = await fetch(this.baseUrl + '/direct/events', { headers: this.token ? { authorization: `Bearer ${this.token}` } : {}, signal: ctl.signal });
+      const token = this.token;
+      const res = await fetch(this.baseUrl + '/direct/events', { headers: token ? { authorization: `Bearer ${token}` } : {}, signal: ctl.signal });
       const reader = res.body!.getReader(); const dec = new TextDecoder(); let buf = '';
       for (;;) {
         const { value, done } = await reader.read(); if (done) break;
@@ -130,6 +147,10 @@ export class X0xClient {
   directSend(agentId: string, payloadB64: string) { return this.req<{ ok: true }>('POST', '/direct/send', { agent_id: agentId, payload: payloadB64 }); }
 
   constitution() { return this.req<Record<string, unknown>>('GET', '/constitution'); }
+}
+
+function readTrimmed(path: string): string | undefined {
+  try { return readFileSync(path, 'utf8').trim() || undefined; } catch { return undefined; }
 }
 
 function defaultToken(): string | undefined {

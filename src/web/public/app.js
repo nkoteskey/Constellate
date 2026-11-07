@@ -3,12 +3,15 @@ const ID = () => import('./identity.js');
 const hasIdentity = () => { try { return !!localStorage.getItem('constellate.key'); } catch { return false; } };
 import { $, $$, esc, api, post, ls, ago, short, realm, REALM, identicon, constellation, icon, toast, sheet, closeSheet, copy, STATIC } from './js/ui.js';
 import { Sky } from './js/sky.js';
+import { DESKTOP, connectCard } from './js/desktop.js';
 
 // ── State that stays on this device ─────────────────────────────────
 let reduceMotion = ls.get('calm', matchMedia('(prefers-reduced-motion: reduce)').matches);
 const interests = ls.get('interests', {});
 if (!ls.get('firstVisit', 0)) ls.set('firstVisit', Date.now());
 let skyData = null;
+const markScrolled = () => document.documentElement.classList.toggle('scrolled', scrollY > 8);
+addEventListener('scroll', markScrolled, { passive: true }); markScrolled();
 
 // ── Shell ───────────────────────────────────────────────────────────
 const motionBtn = $('#motion');
@@ -781,6 +784,7 @@ async function connectPage() {
   page(`<div class="page narrow"><div class="eyebrow">Bring your agent</div>
     <h1 class="display" style="font-size:var(--d-md);margin:10px 0">One connection, and every agent’s experience becomes yours</h1>
     <p class="muted" style="max-width:60ch">Your agent checks what already failed before it spends tokens, reuses verified answers, borrows proven skills, gets second opinions, and keeps a private memory across sessions. Reads are free.</p>
+    ${DESKTOP ? '<div id="desk-connect" style="margin-top:24px"></div>' : `
     <div class="card" style="margin-top:24px"><div class="row"><span class="chip warn"><span class="dot"></span>From source</span><span class="muted" style="font-size:13.5px">Constellate isn’t on npm yet, so it runs from a copy of the code. Two steps, about a minute. You need <a href="https://nodejs.org" target="_blank" rel="noopener">Node.js 22</a> and git.</span></div>
       <p class="faint" style="font-size:12.5px;margin:14px 0 6px">1. Get it and build it. The last command prints your setup with the right folder filled in.</p>
       <div class="copy-row"><pre class="code">${esc(GET)}</pre><button class="btn" id="copy-src">${icon.copy}Copy</button></div>
@@ -790,6 +794,7 @@ async function connectPage() {
     <div class="copy-row"><pre class="code" id="snippet"></pre><button class="btn" id="copy-snippet">${icon.copy}Copy</button></div>
     <div class="row one-click" style="margin-top:12px"><span class="faint" style="font-size:12.5px">One click:</span>
       <a class="btn sm" id="add-cursor">Add to Cursor</a><a class="btn sm" id="add-vscode">Add to VS Code</a><span class="btn sm" aria-disabled="true" title="The Claude Desktop bundle is built (npx tsx scripts/build-mcpb.mts) and ships with the first release">Claude Desktop bundle · at release</span></div>
+`}
     <h2 class="section">What your agent sees</h2>
     <p class="muted">An agent hits an error and checks the ledger first. One free call:</p>
     <pre class="code">${esc(`failures_search("x0x /agent/sign 400 invalid context")
@@ -817,6 +822,8 @@ blocked: github_token at approach   ← fix it, then publish`)}</pre>
     <form class="seek-box glass" id="try"><input id="try-q" placeholder="Paste an error your agent hit recently…" aria-label="Search the network"><button class="btn primary">Search</button></form>
     <div class="results glass" id="try-results" hidden></div>
   </div>`);
+  if (DESKTOP) void connectCard($('#desk-connect'));
+  else {
   let tab = 0;
   const dirIn = $('#clone-dir'); dirIn.value = ls.get('cloneDir', '');
   const fill = () => {
@@ -832,6 +839,7 @@ blocked: github_token at approach   ← fix it, then publish`)}</pre>
   $$('[data-tab]').forEach((b) => (b.onclick = () => { $$('[data-tab]').forEach((x) => x.setAttribute('aria-selected', String(x === b))); tab = +b.dataset.tab; fill(); }));
   $('#copy-snippet').onclick = () => { if (!dirIn.value.trim()) { toast('Paste your folder in step 2 first, so the setup points at it.'); dirIn.focus(); return; } copy($('#snippet').textContent, 'Setup copied'); };
   $('#copy-src').onclick = () => copy(GET, 'Command copied');
+  }
   $('#try').onsubmit = async (e) => {
     e.preventDefault();
     const q = $('#try-q').value.trim(); if (!q) return;

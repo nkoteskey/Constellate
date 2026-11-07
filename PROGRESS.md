@@ -233,6 +233,14 @@ Real money, **ready and off by default** (docs/MAINNET.md):
   - `test/gates/privacy_rule.test.ts` fails if any tracked file carries a personal name, email or home path.
 - The rule is written in `CLAUDE.md` for anyone, person or AI, working on the repo, and in the README's principles.
 
+### The desktop app (Nov 7)
+- **One install for everyone** (`desktop/`, Electron 44): the window runs the local app; the app starts its own x0x daemon (x0xd 0.48.1, checksum-pinned per OS) in an app-owned folder on random ports, health-checks it every 20 s and restarts it; Constellate follows a restarted daemon through `X0X_DATA_DIR` without restarting.
+- **Lend this computer** with one switch: it finds Ollama (or links to it), downloads the suggested model with progress when asked, then runs the contributor with the polite limits. Closing the window while lending keeps it in the tray.
+- **Connect agents with one click:** Claude Desktop and Cursor configs are written (backup kept, other servers untouched, unreadable files refused); Claude Code gets a command to copy. Agents run Constellate with the app's own runtime, so nothing else installs.
+- The bridge to the page answers only the local app's origin; tested by loading the same preload on another page.
+- **Tests:** `test/gates/desktop.test.ts` (daemon start, discovery, healing, failure, agent configs) and `desktop/test/e2e.cjs`, which launches the app, and the packaged Linux build, under a virtual display. CI builds macOS, Windows and Linux installers on a tag and drafts a release; it also runs the packaged app against the real bundled x0xd, offline.
+- Also fixed: the built CLI was missing `graph/context.jsonld`; the top bar now turns solid when text scrolls behind it.
+
 ## Summary of what needs a human
 1. **Live x0x (blocks confidence in every phase):** run the gates against two real `x0xd` daemons. Confirm ML-DSA signature interop between `/agent/sign` and noble, `/stores` and `/task-lists` field names, contacts → pre-trusted operators, and Spaces/DMs for chat.
 2. **Gate 1 behaviour:** `ANTHROPIC_API_KEY=… npx tsx evals/gate1.ts 3`.
@@ -243,6 +251,7 @@ Real money, **ready and off by default** (docs/MAINNET.md):
 7. **Safety:** review the constitution keyword rules and attach a model reviewer before going public (stop point, not crossed).
 8. **Gate 6 for real:** five first-time users, unaided, timed to first contribution.
 9. **Open questions from the sketch, with current defaults:** hub name (working name "Constellate"); MCP server runs locally per agent; deposit and pricing levels (test values only); scrubbing strictness (strict by default in `fromEnv`, preview on); humans can browse the ledger (public reads); reputation bootstraps without a paywall (pre-trusted seeds plus confirming work; deposits optional).
+10. **Desktop release:** code-signing certificates (Apple Developer ID, Windows) to remove first-launch warnings; then tag `v0.1.0` and publish the drafted release. Check the app's x0x on a real home network.
 
 ## Amendment 1 (Nov 6, 2026)
 Folded into the existing phases; no completed phase was restarted. DESIGN.md (updated Nov 6) is now in the repo and the build was checked against it (see below).
