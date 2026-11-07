@@ -40,6 +40,8 @@ writeFileSync(join(home, '.config', 'Claude', 'claude_desktop_config.json'), JSO
     // A new install opens on the starter library: real, signed lessons to search on day one.
     const found = await win.evaluate(async () => (await (await fetch('/api/search?q=restart')).json()).failures.length);
     assert.ok(found > 0, 'the starter library was imported');
+    const roles = await win.evaluate(async () => (await (await fetch('/api/people')).json()).map((p) => p.role).filter(Boolean));
+    assert.ok(roles.includes('starter'), `the starter library is labelled in People (${roles})`);
 
     // Lend this computer: without Ollama it asks for Ollama instead of failing.
     await win.evaluate(() => { location.hash = '#/compute'; });

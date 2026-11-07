@@ -1,4 +1,6 @@
 import { readFileSync, existsSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { decodeCanonical } from '../core/canonical.js';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { HttpReply, RawReply, StreamReply, WebServer } from './server.js';
@@ -118,7 +120,9 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
     if (hub.x0x) { try { base = (await (await fetch(`${hub.x0x.baseUrl}/.well-known/agent-card.json`)).json()) as Record<string, unknown>; } catch { /* daemon card unavailable */ } }
     return agentCard(hub, base, { url: web.url });
   });
-  web.route('GET', /^\/api\/people$/, (_r, _m, url) => hub.people.discover({ kind: (url.searchParams.get('kind') as 'human' | 'agent' | null) ?? undefined, q: url.searchParams.get('q') ?? undefined, realm: url.searchParams.get('realm') ?? undefined, problem: url.searchParams.get('problem') ?? undefined }));
+  // Who's who: the starter library's seed identity and this computer's own agent get plain labels.
+  const roleOf = (op: string) => (starterOperators().has(op) ? 'starter' : op === hub.node.operatorId ? 'this-computer' : undefined);
+  web.route('GET', /^\/api\/people$/, (_r, _m, url) => hub.people.discover({ kind: (url.searchParams.get('kind') as 'human' | 'agent' | null) ?? undefined, q: url.searchParams.get('q') ?? undefined, realm: url.searchParams.get('realm') ?? undefined, problem: url.searchParams.get('problem') ?? undefined }).map((p) => ({ ...p, role: roleOf(p.operator) })));
   web.route('GET', /^\/api\/chat\/([0-9a-f]{64})$/, async (_r, m) => {
     const local = hub.people.chat(m[1]);
     if (!spaces.available) return local;
@@ -196,7 +200,7 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
     for (const s of mine) for (const r of s.rec.refs) { let t = hub.node.store.get(r); while (t && !['problem', 'proposal'].includes(t.rec.kind) && t.rec.refs[0]) t = hub.node.store.get(t.rec.refs[0]); if (t && ['problem', 'proposal'].includes(t.rec.kind)) helped.add(t.rec.id); }
     const receipts = hub.economy?.receipts({ payee: m[1] }) ?? [];
     return {
-      id: m[1], contributions: mine.length, by_kind: mine.reduce<Record<string, number>>((a, s) => ((a[s.rec.kind] = (a[s.rec.kind] ?? 0) + 1), a), {}),
+      id: m[1], role: roleOf(m[1]), contributions: mine.length, by_kind: mine.reduce<Record<string, number>>((a, s) => ((a[s.rec.kind] = (a[s.rec.kind] ?? 0) + 1), a), {}),
       helped: [...helped].map((id) => { const b = hub.node.store.get(id)!.rec.body as { title?: string; question?: string }; return { id, title: b.title ?? b.question }; }),
       reputation: hub.reputation.profile(m[1]), credit: receipts.reduce((n, r) => n + r.b.amount, 0),
       pledged_hours: hub.collective.pledged(m[1]),
@@ -428,4 +432,24 @@ export function x0xAgentLink(rec: SignedRecord): string | null {
     if (peerIdFromPublicKey(pk) !== b.x0x_agent_id) return null;
     return verifyExternal(pk, 'constellate.identity-link.v1', utf8(rec.agent_id), fromB64(String(b.signature))) ? b.x0x_agent_id! : null;
   } catch { return null; }
+}
+
+/**
+ * The starter library's signing identities (the desktop app imports a signed snapshot of public history
+ * once; see CONSTELLATE_STARTER). Read from the snapshot named in the import marker, so the People page
+ * can say "Starter library" instead of showing an anonymous agent with a thousand contributions.
+ */
+let starterOps: Set<string> | null = null;
+function starterOperators(): Set<string> {
+  if (starterOps) return starterOps;
+  starterOps = new Set();
+  try {
+    const home = process.env.CONSTELLATE_HOME ?? join(homedir(), '.constellate');
+    const marker = JSON.parse(readFileSync(join(home, 'starter-imported'), 'utf8')) as { file?: string };
+    if (marker.file && existsSync(marker.file)) {
+      const snap = decodeCanonical<{ records: SignedRecord[] }>(new Uint8Array(readFileSync(marker.file)));
+      for (const r of snap.records.slice(0, 2000)) { const v = verifyRecord(r); if (v.ok) starterOps.add(v.operatorId); }
+    }
+  } catch { /* no starter library on this install */ }
+  return starterOps;
 }

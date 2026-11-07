@@ -242,11 +242,28 @@ async function home() {
 // The utility hook: paste an error, get what failed before and what fixed it.
 let seekTimer = 0;
 // While results are open, the rest of the page dims and blurs behind them; Escape, the ×, or a click outside closes them.
+// Searching lifts the box to the top and widens it, so the results get the whole screen. FLIP: measure,
+// switch layout, then animate from where it was, so the box glides rather than jumps (instant with reduced motion).
 const showResults = (on) => {
-  const box = $('#seek .seek-box');
-  $('#results').style.top = `${box.offsetTop + box.offsetHeight + 8}px`;
-  $('#results').hidden = !on; $('#seek-scrim').hidden = !on; document.documentElement.classList.toggle('seeking', on);
+  const seek = $('#seek'), box = $('#seek .seek-box'), res = $('#results');
+  const was = document.documentElement.classList.contains('seeking');
+  const before = seek.getBoundingClientRect();
+  res.hidden = !on; $('#seek-scrim').hidden = !on; document.documentElement.classList.toggle('seeking', on);
+  res.style.top = `${box.offsetTop + box.offsetHeight + 8}px`;
+  if (on) {
+    const top = box.getBoundingClientRect().bottom + 8;
+    const bottom = innerWidth <= 720 ? 84 : 16; // clear the phone's bottom tab bar
+    res.style.maxHeight = `${Math.max(200, innerHeight - top - bottom)}px`;
+  }
+  if (was === on || reduceMotion || !seek.animate) return;
+  const after = seek.getBoundingClientRect();
+  seek.animate([
+    { transform: `translate(${before.left - after.left}px, ${before.top - after.top}px)`, width: `${before.width}px` },
+    { transform: 'none', width: `${after.width}px` },
+  ], { duration: 420, easing: 'cubic-bezier(.2, .7, .2, 1)' });
+  if (on) res.animate([{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }], { duration: 320, delay: 120, easing: 'ease-out', fill: 'backwards' });
 };
+addEventListener('resize', () => { if (document.documentElement.classList.contains('seeking')) showResults(true); });
 const syncClear = () => { $('#seek-clear').hidden = !$('#seek-q').value; };
 function clearSearch() {
   clearTimeout(seekTimer); $('#seek-q').value = ''; syncClear(); showResults(false); $('#results').innerHTML = '';
@@ -313,6 +330,12 @@ function fixBody(x, q = '') {
   return `<div style="margin-top:2px"><button class="claim fix-line" data-rec="${x.id}">${hl(x.headline, q)}</button></div>${how ? `<div class="muted" style="font-size:13.5px;margin-top:2px">${esc(how)}</div>` : ''}`;
 }
 // Say what we actually know. Zero confirmations is not zero evidence: a merged fix is evidence.
+/** Lessons imported from public history carry their origin: "saorsa-labs/x0x, closed 2026-09-01". */
+function historyOf(rec) {
+  const m = /^([\w.-]+\/[\w.-]+), closed (\d{4}-\d{2}-\d{2})/.exec(rec?.context?.environment ?? '');
+  return m ? { repo: m[1], when: new Date(`${m[2]}T12:00:00Z`).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) } : null;
+}
+
 function trustLabel(x) {
   if (x.confirmations) return `${x.confirmations} independent confirmation${x.confirmations === 1 ? '' : 's'}`;
   if (/merged pull request/.test(x.proof?.detail ?? '')) return '<span class="chip ok sm"><span class="dot"></span>Fix merged upstream</span> <span class="faint">· not yet re-checked here</span>';
@@ -354,7 +377,7 @@ async function openRecord(recId) {
     const w = Math.min(1, r.trust.weight / 2);
     const el = sheet(`<div class="spread"><div class="eyebrow">Where this came from</div><button class="btn ghost sm" data-close>Close</button></div>
       <h2 style="margin-top:8px">${esc(titleOf(rec))}</h2>
-      <div class="row" style="margin:10px 0 16px">${identicon(rec.agent_id, r.human, 28)}<span class="tag ${r.human ? 'human' : 'agent'}">${r.human ? 'Person' : 'Agent'}</span><span class="muted num">${short(rec.agent_id)}</span><span class="faint">· ${esc(rec.kind.replace('_', ' '))} · ${ago(rec.created)}</span></div>
+      <div class="row" style="margin:10px 0 16px">${identicon(rec.agent_id, r.human, 28)}${(() => { const h = historyOf(rec); return h ? `<span class="tag">Starter library</span><span class="faint">· ${esc(rec.kind.replace('_', ' '))} from ${esc(h.repo)}, closed ${esc(h.when)} · imported ${ago(rec.created)}</span>` : `<span class="tag ${r.human ? 'human' : 'agent'}">${r.human ? 'Person' : 'Agent'}</span><span class="muted num">${short(rec.agent_id)}</span><span class="faint">· ${esc(rec.kind.replace('_', ' '))} · ${ago(rec.created)}</span>`; })()}</div>
       <div class="grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:16px">
         <div class="stat"><b class="num">${r.trust.confirmations}</b><span>independent confirmations</span></div>
         <div class="stat"><b class="num">${r.trust.contradictions}</b><span>contradictions</span></div>
@@ -656,10 +679,10 @@ async function proposalsPage() {
     <h2 class="section">Being worked on now</h2><div class="stack">${q.active.map(row).join('') || '<p class="muted">Nothing yet.</p>'}</div>
     <h2 class="section">Waiting</h2><div class="stack">${q.waiting.map(row).join('') || '<p class="muted">Nothing waiting in the queue right now.</p>'}</div>
     <h2 class="section">Ideas from people</h2>
-    <p class="muted" style="font-size:13.5px;margin-top:-6px">An idea becomes a problem once it has checkable steps, so the network can tell when it’s done. Vote for the ones you’d like turned into one.</p>
+    <p class="muted" style="font-size:13.5px;margin-top:-6px">An idea becomes a problem once someone splits it into steps a machine can check, so the network can tell when each one is done. You don’t need anyone’s permission: hand it to your agent with <b>Plan it with your agent</b>, check the plan it proposes, and it goes live once the constitution check clears it. Votes decide which live problems get the network’s shared computer time.</p>
     <div class="stack">${ideas.map((i) => `<div class="card"><div class="spread"><b class="serif" style="font-size:19px">${esc(i.title)}</b><span class="chip sm" style="--c:${realm(i.realm).c}"><span class="dot"></span>${esc(realm(i.realm).short)}</span></div>
       <p class="muted" style="font-size:13.5px;margin:6px 0">${esc(i.goal)}</p><p class="faint" style="font-size:12.5px;margin:0">Done means: ${esc(i.done)}</p>
-      <div class="row" style="margin-top:10px"><button class="btn sm" data-vote="${i.id}">${icon.vote}Vote</button><span class="faint" style="font-size:12.5px">${i.voters} voter${i.voters === 1 ? '' : 's'} · from a ${i.human ? 'person' : 'an agent'}</span></div></div>`).join('') || '<p class="muted">No ideas yet. Be the first.</p>'}</div>
+      <div class="row" style="margin-top:10px"><button class="btn sm" data-vote="${i.id}">${icon.vote}Vote</button><button class="btn sm agent" data-plan="${i.id}">Plan it with your agent</button><span class="faint" style="font-size:12.5px">${i.voters} voter${i.voters === 1 ? '' : 's'} · from a ${i.human ? 'person' : 'an agent'}</span></div></div>`).join('') || '<p class="muted">No ideas yet. Be the first.</p>'}</div>
     <h2 class="section">Propose a problem</h2>
     <form class="card stack" id="idea">
       <label>What should we take on?<input class="field" id="i-title" maxlength="200" required placeholder="e.g. Find counterexamples to a conjecture in graph colouring"></label>
@@ -678,6 +701,12 @@ async function proposalsPage() {
     if (await give({ kind: 'proposal', task: body.title, domain: [body.realm], body }, 'Proposed')) proposalsPage();
   };
   $('#pledge').onsubmit = async (e) => { e.preventDefault(); const h = Math.max(0, Math.min(168, Number($('#p-hours').value) || 0)); ls.set('pledge', h); if (await give({ kind: 'pledge', task: 'compute pledge', domain: ['compute'], body: { hours_per_week: h } }, `Pledged ${h} hours a week`)) proposalsPage(); };
+  // Hand an idea to the person's own agent (Claude, Cursor…, connected over MCP): it drafts checkable steps and submits them.
+  $$('[data-plan]').forEach((b) => (b.onclick = () => {
+    const i = ideas.find((x) => x.id === b.dataset.plan);
+    if (!i) return;
+    copy(`Using the Constellate tools, turn this idea into a problem the network can work on.\n\nIdea: ${i.title}\nGoal: ${i.goal}\nDone means: ${i.done}\nIdea id: ${i.id}\n\nFirst check problems_list and failures_search for related work. Then split it into small steps that a machine can check (an exact answer, a Lean proof, or another registered verifier), show me the plan, and once I agree, submit it with proposals_submit (realm: ${i.realm}).`, 'Copied. Paste it into your connected agent (Claude, Cursor…).');
+  }));
   $$('[data-vote]').forEach((b) => (b.onclick = async () => { if (await give({ kind: 'vote', task: 'vote', domain: ['collective'], body: { problem: b.dataset.vote, support: true }, refs: [b.dataset.vote] }, 'Vote counted')) proposalsPage(); }));
 }
 
@@ -700,7 +729,7 @@ async function peoplePage() {
   const render = async () => {
     const qs = new URLSearchParams(Object.entries(f).filter(([, v]) => v)).toString();
     const people = await api(`/api/people${qs ? `?${qs}` : ''}`);
-    $('#people').innerHTML = people.map((x) => `<a class="card link" href="#/me/${x.operator}"><div class="row">${identicon(x.operator, x.human, 40)}<div><span class="tag ${x.human ? 'human' : 'agent'}">${x.human ? 'Person' : 'Agent'}</span>${x.operator === me ? '<span class="badge-you">You</span>' : ''}${ls.get('followPeople', []).includes(x.operator) ? '<span class="faint" style="font-size:12px;margin-left:6px">Following</span>' : ''}<div class="num faint" style="margin-top:4px;font-size:12.5px">${short(x.operator)}</div></div></div>
+    $('#people').innerHTML = people.map((x) => `<a class="card link" href="#/me/${x.operator}"><div class="row">${identicon(x.operator, x.human, 40)}<div>${x.role === 'starter' ? '<span class="tag">Starter library</span><span class="faint" style="font-size:12px;margin-left:6px">public lessons this app came with</span>' : `<span class="tag ${x.human ? 'human' : 'agent'}">${x.human ? 'Person' : x.role === 'this-computer' ? 'This computer' : 'Agent'}</span>`}${x.operator === me ? '<span class="badge-you">You</span>' : ''}${ls.get('followPeople', []).includes(x.operator) ? '<span class="faint" style="font-size:12px;margin-left:6px">Following</span>' : ''}<div class="num faint" style="margin-top:4px;font-size:12.5px">${short(x.operator)}</div></div></div>
       ${x.problems.map(titleFor).filter(Boolean).slice(0, 2).map((t) => `<div class="serif" style="font-size:16.5px;margin-top:10px;line-height:1.3">${esc(t)}</div>`).join('')}
       <div class="muted" style="font-size:13px;margin-top:8px">${x.contributions} contribution${x.contributions === 1 ? '' : 's'}${x.realms.length ? ` · ${x.realms.map((r) => esc(realm(r).short)).join(', ')}` : ''}</div></a>`).join('') || '<p class="muted">No one matches yet.</p>';
   };
@@ -769,7 +798,7 @@ async function mePage(id) {
   const sky = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;margin:18px 0" role="img" aria-label="Your light and what it helped">${nodes.map((n) => `<line x1="${cx}" y1="${cy}" x2="${n.x}" y2="${n.y}" stroke="${human ? '#ffc46b' : '#7cc4ff'}" stroke-opacity=".35"/><circle cx="${n.x}" cy="${n.y}" r="16" fill="#8fa8ff" fill-opacity=".14"/><circle cx="${n.x}" cy="${n.y}" r="3" fill="#fff"/> <text x="${n.x}" y="${n.y + (n.y > cy ? 34 : -24)}" fill="#8a90a0" font-size="11" text-anchor="middle" font-family="Inter">${esc((n.title ?? '').slice(0, 30))}</text>`).join('')}<circle cx="${cx}" cy="${cy}" r="26" fill="${human ? '#ffc46b' : '#7cc4ff'}" fill-opacity=".18"/><circle cx="${cx}" cy="${cy}" r="6" fill="${human ? '#ffc46b' : '#7cc4ff'}"/></svg>`;
   page(`<div class="page narrow">
     <div class="eyebrow">${mine ? 'Me' : 'Contributor'}</div>
-    <div class="row" style="margin:12px 0 4px">${identicon(who, human, 52)}<div><h1 class="display" style="font-size:var(--d-sm)">${mine ? 'Your light in the sky' : me.linked_github ? `@${esc(me.linked_github.handle)}` : `${human ? 'Person' : 'Agent'} ${short(who)}`}</h1>${me.linked_github ? `<a class="chip sm" id="gh-badge" href="${esc(me.linked_github.proof)}" target="_blank" rel="noopener" style="margin:4px 0">@${esc(me.linked_github.handle)} on GitHub · checking…</a>` : ''}<button class="claim faint num" style="font-size:12.5px" id="copy-id" title="Copy full id">${short(who)}</button></div></div>
+    <div class="row" style="margin:12px 0 4px">${identicon(who, human, 52)}<div><h1 class="display" style="font-size:var(--d-sm)">${mine ? 'Your light in the sky' : me.role === 'starter' ? 'Starter library' : me.role === 'this-computer' ? 'This computer’s agent' : me.linked_github ? `@${esc(me.linked_github.handle)}` : `${human ? 'Person' : 'Agent'} ${short(who)}`}</h1>${me.role === 'starter' ? '<p class="muted" style="margin:4px 0 0;font-size:13.5px">Public lessons this app came with: Saorsa Labs’ closed issues and the fixes that closed them, signed once when the app was built. Not a person, and not doing any work.</p>' : me.role === 'this-computer' ? '<p class="muted" style="margin:4px 0 0;font-size:13.5px">The agent running on this computer. It signs what Constellate does here on your behalf, like distilling lessons into topics, and any work you lend.</p>' : ''}${me.linked_github ? `<a class="chip sm" id="gh-badge" href="${esc(me.linked_github.proof)}" target="_blank" rel="noopener" style="margin:4px 0">@${esc(me.linked_github.handle)} on GitHub · checking…</a>` : ''}<button class="claim faint num" style="font-size:12.5px" id="copy-id" title="Copy full id">${short(who)}</button></div></div>
     ${sky}
     <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(130px,1fr))">
       <div class="stat"><b class="num">${me.contributions}</b><span>contribution${me.contributions === 1 ? '' : 's'}</span></div>
