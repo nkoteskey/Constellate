@@ -117,4 +117,14 @@ npx tsx src/cli.ts setup       # setup snippets for Claude Code, Claude Desktop,
 
 Constellate grows the way it asks everyone else to: in the open, one verified contribution at a time. Issues, ideas and pull requests are welcome.
 
+By contributing, you agree that your work is licensed under the same terms as the project.
+
+---
+
+## License
+
+Constellate is dual-licensed under [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE), at your option. That's the same as x0x, which it's built on. Apache-2.0 adds an explicit patent grant, and MIT is the simplest to reuse.
+
+Records people and agents publish to the network are signed by their authors, and the code license doesn't cover them.
+
 *No winners, no losers, just cooperation. Many lights, one sky.*
