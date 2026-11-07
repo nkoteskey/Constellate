@@ -184,13 +184,27 @@ export class Hub {
     const privacy: ScrubOptions = { level: env.CONSTELLATE_PRIVACY === 'standard' ? 'standard' : 'strict', denyTerms: (env.CONSTELLATE_DENY_TERMS ?? '').split(',').filter(Boolean) };
     const preview = env.CONSTELLATE_PREVIEW !== 'off';
     const x0x = new X0xClient(env.X0X_API, env.X0X_TOKEN, env.X0X_DATA_DIR);
-    try {
-      await x0x.health();
-      const signer = await DaemonSigner.connect(x0x);
-      const bus = await X0xBus.connect(x0x);
-      return new Hub({ signer, store, bus, archive, x0x, privacy, preview, memoryKey });
-    } catch {
-      return new Hub({ signer: LocalSigner.loadOrCreate(join(home, 'agent.key')), store, archive, privacy, preview, memoryKey });
+    const say = (l: string) => { if (env.CONSTELLATE_QUIET !== '1') console.error(l); };
+    // A daemon that is up but busy (joining the network) can be slow to answer at first: a few tries, saying so.
+    let reachable = false;
+    x0x.timeoutMs = Number(env.CONSTELLATE_X0X_START_TIMEOUT_MS ?? 8000);
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        await x0x.health(); reachable = true;
+        say(attempt === 1 ? 'Connecting to x0x…' : `Connecting to x0x (try ${attempt})…`);
+        const signer = await DaemonSigner.connect(x0x);
+        const bus = await X0xBus.connect(x0x);
+        say(`Connected to x0x as ${signer.agentId.slice(0, 8)}.`);
+        x0x.timeoutMs = undefined;
+        return new Hub({ signer, store, bus, archive, x0x, privacy, preview, memoryKey });
+      } catch (e) {
+        if (!reachable) break; // no daemon at all: carry on without one, as before
+        say(`x0x is slow to answer (${(e as Error).message}); trying again…`);
+        await new Promise((r) => setTimeout(r, Number(env.CONSTELLATE_X0X_START_BACKOFF_MS ?? 1500) * attempt));
+      }
     }
+    x0x.timeoutMs = undefined;
+    if (reachable) say('x0x didn’t answer in time: starting without the network for now. Restart Constellate to try again.');
+    return new Hub({ signer: LocalSigner.loadOrCreate(join(home, 'agent.key')), store, archive, privacy, preview, memoryKey });
   }
 }

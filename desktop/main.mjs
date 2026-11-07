@@ -192,8 +192,10 @@ async function boot() {
     const s = await x0x.start();
     log(`x0x: ${s.state}${s.error ? ` (${s.error})` : ''}`);
     await say({ step: 'app', x0x: s.state });
+    server.progress = (line) => void say({ step: 'app', x0x: s.state, detail: line });
     const st = await server.start();
-    if (st.state !== 'running') { await say({ error: st.error }); return; }
+    server.progress = null;
+    if (st.state !== 'running') { log(`server failed: ${st.error}`); await say({ error: `${st.error} Details are in ${LOG}`, log: LOG }); return; }
   }
   ready = true;
   await openInApp();

@@ -147,7 +147,9 @@ Lend your computer instead: node "${cli}" models, then node "${cli}" contribute`
     return;
   }
   if (cmd === 'serve') {
+    console.error('Starting Constellate…');
     const hub = await Hub.fromEnv();
+    console.error(`Loaded ${hub.node.store.all().length.toLocaleString()} records.`);
     importStarter(hub);
     // Money: the testnet ledger unless the owner turns real payments on (docs/MAINNET.md).
     const funding = fundingConfig(process.env, vault());

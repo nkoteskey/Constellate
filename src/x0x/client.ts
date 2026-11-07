@@ -31,6 +31,8 @@ export function directSendProblem(e: unknown): string {
 }
 
 export class X0xClient {
+  /** Per-request time limit (ms); startup uses a shorter one. */
+  timeoutMs?: number;
   /**
    * With X0X_DATA_DIR set (the desktop app sets it to its own x0x instance), the address and
    * token are read from that instance's `api.port` and `api-token` on every request, so a
@@ -49,11 +51,14 @@ export class X0xClient {
 
   private async req<T>(method: string, path: string, body?: unknown): Promise<T> {
     const token = this.token;
+    // Nothing waits on the daemon forever: a busy or stuck x0x must not freeze Constellate (or its startup).
+    const ms = path === '/direct/send' ? 90_000 : this.timeoutMs ?? Number(process.env.CONSTELLATE_X0X_TIMEOUT_MS ?? 20_000);
     const res = await fetch(this.baseUrl + path, {
       method,
       headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}) },
       body: body === undefined ? undefined : JSON.stringify(body),
-    });
+      signal: AbortSignal.timeout(ms),
+    }).catch((e: Error) => { throw new X0xError(0, e.name === 'TimeoutError' ? `no answer from x0x after ${ms / 1000}s (${method} ${path})` : `can’t reach x0x (${e.message})`); });
     const j = (await res.json().catch(() => ({}))) as Record<string, unknown>;
     if (!res.ok || j.ok === false) throw new X0xError(res.status, String(j.error ?? res.statusText));
     return j as T;
