@@ -32,11 +32,11 @@ jobs:
         working-directory: desktop
       - name: Install Playwright for the end-to-end check
         run: npm install --no-save playwright@1.63.0
-      - name: End-to-end: the packaged app with a stand-in x0xd
+      - name: 'End-to-end, the packaged app with a stand-in x0xd'
         run: xvfb-run -a node desktop/test/e2e.cjs
         env:
           DESKTOP_EXE: ${{ github.workspace }}/desktop/release/linux-unpacked/constellate-desktop
-      - name: End-to-end: the packaged app with the real, bundled x0xd (offline)
+      - name: 'End-to-end, the packaged app with the real, bundled x0xd (offline)'
         run: xvfb-run -a node desktop/test/e2e.cjs
         env:
           DESKTOP_EXE: ${{ github.workspace }}/desktop/release/linux-unpacked/constellate-desktop
