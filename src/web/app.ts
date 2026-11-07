@@ -325,9 +325,16 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
   web.route('GET', /^\/api\/directory$/, async () => {
     const [list, online] = await Promise.all([profiles.list(), profiles.online()]);
     const count = (id: string) => hub.node.store.all().filter((s) => s.operatorId === id && s.visibility === 'public').length;
+    // A person's profile is published by the computer (x0x agent) they use, so the two belong together: the
+    // person's card names their computer, and that computer doesn't get a card of its own.
+    const hosts = new Set(list.filter((p) => p.kind === 'person').map((p) => p.host));
+    const agentCard = new Map(list.filter((p) => p.kind === 'agent').map((p) => [p.id, p]));
     return {
       via: profiles.networked ? 'x0x' : 'local',
-      profiles: list.map((p) => ({ ...p, online: online.has(p.host), contributions: count(p.id), this_computer: p.host === hub.node.agentId })),
+      profiles: list.map((p) => ({
+        ...p, online: online.has(p.host), contributions: count(p.id), this_computer: p.host === hub.node.agentId,
+        ...(p.kind === 'person' ? { machine: { id: p.host, handle: agentCard.get(p.host)?.handle ?? null, online: online.has(p.host), this_computer: p.host === hub.node.agentId } } : { attached: hosts.has(p.id) }),
+      })),
     };
   });
   web.route('POST', /^\/api\/profile$/, async (req, _m, _u, body) => {

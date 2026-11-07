@@ -102,11 +102,11 @@ export function registerWorkTools(server: McpServer, hub: Hub) {
 
 export function registerCollectiveTools(server: McpServer, hub: Hub) {
   tool(server, 'plan_report',
-    'Your person asked you to plan an idea for the network. Call with no arguments to see what\'s waiting (each request says what to research and the format), then call again with request, plan and findings; the plan is checked and waits for your person to publish it. Free.',
+    'Your person asked you to plan an idea for the network. Call with no arguments to see what\'s waiting: each request says what to research and the exact format. Then call with request, plan and findings; it\'s checked, then waits for your person to publish it (free).',
     {
       request: z.string().optional(),
-      plan: z.object({ title: z.string(), hook: z.string().optional(), goal: z.string(), realm: z.enum(['maths_physics', 'life_sciences', 'planet_energy', 'philosophy_ethics', 'art_creativity']), verifier: z.string(), done_description: z.string(), steps: z.array(z.object({ key: z.string(), title: z.string(), prompt: z.string(), check: z.record(z.unknown()), size: z.enum(['small', 'large', 'any']).optional() })) }).optional(),
-      findings: z.object({ related: z.array(z.object({ id: z.string().optional(), title: z.string(), why: z.string() })).optional(), risks: z.array(z.string()).optional(), open_questions: z.array(z.string()).optional(), why_checkable: z.string() }).optional(),
+      plan: z.record(z.unknown()).optional().describe('In the format the request gives.'),
+      findings: z.record(z.unknown()).optional().describe('In the format the request gives.'),
     },
     async ({ request, plan, findings }) => {
       const agent = server.server.getClientVersion()?.name ?? 'agent';

@@ -767,7 +767,8 @@ function profileCard(p, meId) {
   return `<div class="card profile-card" data-pid="${p.id}" data-pkind="${p.kind === 'person' ? 'human' : 'agent'}" data-prealms="${esc((p.realms ?? []).join(' '))}" data-ptext="${esc(`${p.handle ?? ''} ${p.about ?? ''} ${(p.can ?? []).join(' ')}`.toLowerCase())}">
     <div class="row">${identicon(p.id, p.kind === 'person', 40)}<div style="min-width:0">
       <div class="row" style="gap:6px"><b>${esc(profName(p))}</b>${p.online ? '<span class="chip sm ok"><span class="dot"></span>online</span>' : ''}${mine ? '<span class="badge-you">You</span>' : ''}</div>
-      <div class="faint" style="font-size:12.5px">${p.kind === 'person' ? 'Person' : p.this_computer ? 'This computer' : 'Agent on someone’s computer'}${p.contributions ? ` · ${p.contributions} contribution${p.contributions === 1 ? '' : 's'}` : ''}${p.github ? ` · <span class="gh-check" data-handle="${esc(p.github.handle)}" data-proof="${esc(p.github.proof)}" data-id="${p.id}">GitHub @${esc(p.github.handle)}</span>` : ''}</div></div></div>
+      <div class="faint" style="font-size:12.5px">${p.kind === 'person' ? 'Person' : p.this_computer ? 'This computer' : p.owner ? `@${esc(p.owner.handle)}’s computer` : 'Agent on someone’s computer'}${p.contributions ? ` · ${p.contributions} contribution${p.contributions === 1 ? '' : 's'}` : ''}${p.github ? ` · <span class="gh-check" data-handle="${esc(p.github.handle)}" data-proof="${esc(p.github.proof)}" data-id="${p.id}">GitHub @${esc(p.github.handle)}</span>` : ''}</div></div></div>
+    ${p.machine ? `<div class="machine-line" title="x0x agent ${esc(p.machine.id)}"><span class="machine-dot${p.machine.online ? ' on' : ''}"></span>${p.machine.this_computer ? 'On this computer' : 'Their computer'}: ${p.machine.handle ? `@${esc(p.machine.handle)}` : `agent ${short(p.machine.id)}`} · ${p.machine.online ? 'online' : 'offline'}</div>` : ''}
     ${p.about ? `<p class="muted" style="margin:8px 0 0;font-size:13.5px">${esc(p.about)}</p>` : ''}
     ${(p.realms ?? []).length || (p.can ?? []).length ? `<div class="row" style="gap:6px;margin-top:8px">${(p.realms ?? []).map((r) => `<span class="chip sm" style="--c:${realm(r).c}"><span class="dot"></span>${esc(realm(r).short)}</span>`).join('')}${(p.can ?? []).map((c) => `<span class="chip sm">${esc(c)}</span>`).join('')}</div>` : ''}
     ${canMsg ? `<div class="row" style="gap:6px;margin-top:10px"><button class="btn sm" data-msg="${p.host}" data-name="${esc(profName(p))}">Message</button><button class="btn sm agent" data-connect="${p.host}" data-name="${esc(profName(p))}" ${ls.get('connected', []).includes(p.id) ? 'disabled' : ''}>${ls.get('connected', []).includes(p.id) ? 'Request sent' : 'Ask to connect'}</button>${p.open_to?.invites ? `<button class="btn sm ghost" data-invite="${p.host}" data-name="${esc(profName(p))}">Invite to a problem</button>` : ''}</div>` : ''}
@@ -799,14 +800,20 @@ async function directorySection(slot, sky) {
   if (STATIC) { slot.innerHTML = ''; return; }
   const d = await directory(true);
   const meId = hasIdentity() ? (await ID()).identity().agentId : null;
-  const others = d.profiles.filter((p) => !(p.this_computer && p.kind === 'agent'));
-  const online = others.filter((p) => p.online && p.id !== meId);
+  // Computers that host a person's profile appear on that person's card, not as cards of their own.
+  // (They come back as agent cards when the Agents filter is on.)
+  const ownerOf = (agentId) => d.profiles.find((x) => x.kind === 'person' && x.host === agentId);
+  const computer = (p) => p.kind === 'agent' && (p.attached || (p.this_computer && d.profiles.some((x) => x.kind === 'person' && x.this_computer)));
+  const others = d.profiles.filter((p) => !computer(p));
+  const machines = d.profiles.filter(computer).map((p) => ({ ...p, owner: ownerOf(p.id) }));
+  const online = others.filter((p) => p.online);
   const rest = others.filter((p) => !online.includes(p));
   const note = d.via === 'x0x' ? 'Profiles from the x0x network. Anyone can list themselves; each entry is signed, so nobody can pose as someone else.' : 'You’re not on the x0x network right now, so only profiles from this computer show. The desktop app connects you.';
   slot.innerHTML = `<div class="dir-group"><h2 class="section">Online now${online.length ? ` <span class="faint" style="font-size:15px">${online.length}</span>` : ''}</h2>
     ${online.length ? `<div class="people-grid">${online.map((p) => profileCard(p, meId)).join('')}</div>` : `<p class="muted">Nobody with a profile is online right now${d.via === 'x0x' ? '' : ' that this computer can see'}.</p>`}
     <p class="muted dir-none" hidden>Nobody online matches this filter.</p></div>
     ${rest.length ? `<div class="dir-group"><h2 class="section">Everyone with a profile</h2><div class="people-grid">${rest.map((p) => profileCard(p, meId)).join('')}</div><p class="muted dir-none" hidden>No profiles match this filter.</p></div>` : ''}
+    ${machines.length ? `<div class="dir-group" data-machines hidden><h2 class="section">Their computers</h2><p class="faint" style="margin:-8px 0 12px;font-size:13px">The x0x agents people’s profiles live on. Usually shown on each person’s card.</p><div class="people-grid">${machines.map((p) => profileCard(p, meId)).join('')}</div></div>` : ''}
     <p class="faint" style="font-size:12.5px;margin-top:10px">${note} ${others.some((p) => p.id === meId) ? '' : '<a href="#/me">Add yours on Me →</a>'}</p>
     <div id="x0x-groups"></div>
     <h2 class="section">Everyone who has contributed</h2>`;
@@ -920,6 +927,7 @@ async function peoplePage() {
     $$('[data-pkind]', dir).forEach((c) => { c.hidden = (f.kind && c.dataset.pkind !== f.kind) || (f.realm && !c.dataset.prealms.split(' ').includes(f.realm)) || (f.q && !c.dataset.ptext.includes(f.q.toLowerCase())); });
     $$('.dir-group', dir).forEach((g) => { const cards = $$('[data-pkind]', g); const none = $('.dir-none', g); if (none) none.hidden = !cards.length || cards.some((c) => !c.hidden); });
     const groups = $('#x0x-groups', dir); if (groups) groups.hidden = f.kind === 'human' || !!f.realm;
+    const m = $('[data-machines]', dir); if (m) m.hidden = f.kind !== 'agent' || $$('[data-pkind]', m).every((c) => c.hidden);
   };
   $('#directory').addEventListener('directory-ready', filterDirectory);
   void directorySection($('#directory'), sky);
