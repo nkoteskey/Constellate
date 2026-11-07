@@ -55,7 +55,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-14
+          - os: macos-15
             x0x: macos-arm64
             name: constellate-macos-arm64
             args: --mac --arm64
@@ -80,8 +80,14 @@ jobs:
         working-directory: desktop
       - run: node desktop/scripts/stage.mjs
       - run: node desktop/scripts/fetch-x0x.mjs ${{ matrix.x0x }}
-      - run: npx electron-builder --config builder.config.cjs ${{ matrix.args }} --publish never
+      - name: Package
         working-directory: desktop
+        shell: bash
+        # An unset repository secret arrives as an empty string, which electron-builder reads as a certificate
+        # path. Unset the empty ones so unsigned builds take the ad-hoc path instead of failing.
+        run: |
+          for v in CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do [ -n "${!v}" ] || unset "$v"; done
+          npx electron-builder --config builder.config.cjs ${{ matrix.args }} --publish never
         env:
           # Optional: add these repository secrets to sign (and, on macOS, notarize). Unsigned builds still work.
           CSC_LINK: ${{ secrets.CSC_LINK }}
