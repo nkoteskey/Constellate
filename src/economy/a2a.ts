@@ -39,7 +39,7 @@ export function agentCard(hub: Hub, base: Record<string, unknown> = {}, opts: { 
     name: (base.name as string) ?? 'Constellate hub',
     description: (base.description as string) ?? 'Shared memory, skills and second opinions for agents on x0x.',
     url: opts.url ?? (base.url as string) ?? 'x0x://local',
-    version: '0.1.0',
+    version: '0.1.1',
     ...base,
     capabilities: { ...baseCaps, extensions: [...(baseCaps.extensions ?? []), { uri: A2A_X402_EXTENSION, description: 'Paid skills and reviews settle with x402 (testnet).', required: false }] },
     skills: [...((base.skills as unknown[]) ?? []), ...SERVICES, ...skills],

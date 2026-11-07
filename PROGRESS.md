@@ -275,6 +275,9 @@ Real money, **ready and off by default** (docs/MAINNET.md):
 - **Fixed: the first run printed a line on stdout.** "Starter library: N signed lessons…" went to stdout, which under `constellate mcp` must carry only MCP messages. Strict clients and directory checks would reject the server on its first start. The line now goes to stderr. npm 0.1.0 still has the bug, so it needs a 0.1.1 release.
 - **Fixed: the server didn't end when its client did.** With a daemon's event stream open, closing stdin left it running. Running as a container's first process, it ignored SIGTERM, so `docker stop` had to kill it. It now saves and exits on either.
 - `test/gates/mcp_stdio.test.ts` starts the server the way clients do and covers all three. Each part fails without its fix.
+- **Fixed: a blank `X0X_API` or `X0X_TOKEN` counted as set.** A launcher may pass an optional field it left empty as `X0X_API=""` instead of leaving it out. The server then tried the address "" and only worked offline by accident. Blank now means unset, so it uses the default daemon address (`test/unit/x0x_client.test.ts`).
+- **Version 0.1.1** carries these fixes (package, MCP server, registry entry and agent card).
+- **Docker MCP Catalog:** pull request docker/mcp-registry#6754 adds `servers/constellate/server.yaml`, built from the `Dockerfile` at commit 8a752b2 (the stdio fixes), with the `/data` volume and an optional daemon address and token. Docker's team reviews it.
 
 ## Summary of what needs a human
 1. **Live x0x (blocks confidence in every phase):** run the gates against two real `x0xd` daemons. Confirm ML-DSA signature interop between `/agent/sign` and noble, `/stores` and `/task-lists` field names, contacts → pre-trusted operators, and Spaces/DMs for chat.
@@ -287,7 +290,8 @@ Real money, **ready and off by default** (docs/MAINNET.md):
 8. **Gate 6 for real:** five first-time users, unaided, timed to first contribution.
 9. **Open questions from the sketch, with current defaults:** hub name (working name "Constellate"); MCP server runs locally per agent; deposit and pricing levels (test values only); scrubbing strictness (strict by default in `fromEnv`, preview on); humans can browse the ledger (public reads); reputation bootstraps without a paywall (pre-trusted seeds plus confirming work; deposits optional).
 10. **Desktop release:** `v0.1.0` is tagged (Nov 7) and its release drafted by the Desktop workflow; review it and publish. Code-signing certificates (Apple Developer ID, Windows) would remove first-launch warnings. Check the app's x0x on a real home network.
-11. **npm 0.1.1:** publish the stdio fixes (security-key sign-in), then update the MCP Registry entry and the ClawHub skill version.
+11. **npm 0.1.1:** the version is bumped. Once it's on main, `npm publish` (security-key sign-in), then `mcp-publisher publish` for the MCP Registry entry. The ClawHub skill text hasn't changed, so it stays at 0.1.0.
+12. **Listings that need the owner's sign-in** (`distribution/LISTINGS.md`): Glama (then the `punkpeye/awesome-mcp-servers` pull request, which needs Glama's badge), cursor.directory, and the mcpservers.org form (it asks for a contact email). Decide whether to turn on GitHub's private vulnerability reporting; Docker's pull request template asks for a security contact.
 
 ## Amendment 1 (Nov 6, 2026)
 Folded into the existing phases; no completed phase was restarted. DESIGN.md (updated Nov 6) is now in the repo and the build was checked against it (see below).

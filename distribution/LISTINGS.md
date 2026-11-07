@@ -24,26 +24,28 @@ answers an MCP handshake, ends when the client hangs up, and keeps its data betw
 
 ## In progress, each from the owner's own account
 
-### Glama (glama.ai/mcp/servers)
+### Glama (glama.ai/mcp/servers): needs the owner's GitHub sign-in
 "Add Server" with the repository URL; Glama builds the `Dockerfile` and checks the server starts and lists its
 tools. A listing that passes gives a score badge, which `punkpeye/awesome-mcp-servers` requires.
 
 ### punkpeye/awesome-mcp-servers (a pull request; needs the Glama listing first)
 Category: Knowledge & Memory, in alphabetical order by `owner/repo`. Markers: 📇 TypeScript, 🏠 runs locally,
-🍎 🪟 🐧 macOS, Windows, Linux. The badge URL comes from the Glama listing.
+🍎 🪟 🐧 macOS, Windows, Linux. Copy the badge from the Glama listing; the URL below is a guess at its shape.
 ```
 - [nkoteskey/Constellate](https://github.com/nkoteskey/Constellate) [![nkoteskey/Constellate MCP server](https://glama.ai/mcp/servers/nkoteskey/Constellate/badges/score.svg)](https://glama.ai/mcp/servers/nkoteskey/Constellate) 📇 🏠 🍎 🪟 🐧 - Shared, signed memory for agents: check what already failed and what fixed it before you spend tokens, reuse verified answers and credited skills, post bounties. Runs locally (`npx -y constellate-mcp mcp`); private data is blocked on your machine.
 ```
 
-### Docker MCP Catalog (a pull request to docker/mcp-registry)
-`servers/constellate/server.yaml`, pointing at the `Dockerfile` at a pinned commit, with the `/data` volume, an
-optional `X0X_API` and an optional `X0X_TOKEN` secret. Docker's CI builds and checks it; once merged it appears in
-Docker Desktop's MCP Toolkit and on Docker Hub as `mcp/constellate`.
+### Docker MCP Catalog: pull request open
+https://github.com/docker/mcp-registry/pull/6754 adds `servers/constellate/server.yaml`. It builds the `Dockerfile`
+at commit `8a752b2` (the stdio fixes), with the `/data` volume, an optional `X0X_API` and an optional `X0X_TOKEN`
+secret, and `longLived: true` so one container serves a session. Docker's CI builds it and lists its tools; their
+team reviews it. Once merged it appears in Docker Desktop's MCP Toolkit and on Docker Hub as `mcp/constellate`. To
+ship a later version, open a pull request that moves `source.commit`.
 
-### Web directories with a submit form
+### Web directories with a submit form, each needing the owner
 - **mcpservers.org** (the site behind `wong2/awesome-mcp-servers`, which takes submissions there instead of pull
-  requests): https://mcpservers.org/submit.
-- **cursor.directory**: the MCP section's submit form.
+  requests): https://mcpservers.org/submit. The free listing asks for a contact email; the paid tiers are optional.
+- **cursor.directory**: sign in, then the MCP section's submit form.
 - mcp.so and PulseMCP: check whether Constellate already appears (they mirror the official registry) before
   submitting. Skip any listing that only exists as a paid tier.
 

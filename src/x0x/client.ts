@@ -43,10 +43,11 @@ export class X0xClient {
   /** The daemon's current address: the instance's `api.port` when there is one, else X0X_API, else the default port. */
   get baseUrl(): string {
     if (this.dataDir) { const p = readTrimmed(join(this.dataDir, 'api.port')); if (p) return p.startsWith('http') ? p : `http://${p}`; }
-    return this.fixedUrl ?? 'http://127.0.0.1:12700';
+    // An empty value counts as unset: a launcher may pass a blank optional field (X0X_API="") rather than leave it out.
+    return this.fixedUrl || 'http://127.0.0.1:12700';
   }
   private get token(): string | undefined {
-    return (this.dataDir ? readTrimmed(join(this.dataDir, 'api-token')) : undefined) ?? this.fixedToken ?? defaultToken();
+    return (this.dataDir ? readTrimmed(join(this.dataDir, 'api-token')) : undefined) ?? (this.fixedToken || defaultToken());
   }
 
   private async req<T>(method: string, path: string, body?: unknown): Promise<T> {

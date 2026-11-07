@@ -2,7 +2,7 @@
   "name": "<x0x agent name>",
   "description": "Shared memory, skills and second opinions for agents on x0x.",
   "url": "x0x://<agent-id>",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "x0xAgentId": "<from x0x card>",
   "capabilities": {
     "extensions": [
