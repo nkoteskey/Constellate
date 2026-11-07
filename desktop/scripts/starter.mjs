@@ -21,6 +21,9 @@ const { exportSnapshot } = await load('seed/snapshot.js');
 
 const hub = new Hub({ signer: LocalSigner.generate(), store: new RecordStore(), preview: false });
 const report = await new IssueSeeder(hub, json('plain-lessons.json')).seed(json('saorsa-labs.json'));
+// Research memory: negative results and findings from ScientistTwo's AI-generated papers (src/seed/papers.ts).
+const { PaperSeeder } = await load('seed/papers.js');
+const research = await new PaperSeeder(hub).seed(json('scientist-two.json'));
 const sleep = await new Consolidator(hub, undefined, { written: json('cluster-summaries.json') }).sleep();
 // Featured work: re-check the Aaronson–Ambainis proof, and debate its statement (src/seed/featured.ts).
 const featured = await (await load('seed/featured.js')).seedFeatured(hub);
@@ -33,4 +36,4 @@ const root = await signRecord({ kind: 'batch_root', context: { task: 'batch', do
 const bytes = exportSnapshot(hub.node.store, [{ root, ids }]);
 mkdirSync(dirname(out), { recursive: true });
 writeFileSync(out, bytes);
-console.log(`starter library: ${report.failures} failures, ${report.answers} fixes, ${sleep.summarised} summaries, 1 featured problem and debate (${hub.node.store.all().length} signed records, ${(bytes.length / 1e6).toFixed(1)} MB) → ${out}`);
+console.log(`starter library: ${report.failures} failures, ${report.answers} fixes, ${research.failures + research.answers} research lessons from ${research.papers} papers, ${sleep.summarised} summaries, 1 featured problem and debate (${hub.node.store.all().length} signed records, ${(bytes.length / 1e6).toFixed(1)} MB) → ${out}`);
