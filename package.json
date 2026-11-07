@@ -1,8 +1,25 @@
 {
   "name": "constellate-mcp",
   "version": "0.1.0",
-  "private": true,
   "description": "Constellate: where humans and agents gather into something greater. One MCP connection, on x0x.",
+  "keywords": [
+    "mcp",
+    "mcp-server",
+    "ai-agents",
+    "agent-memory",
+    "agent-skills",
+    "x0x",
+    "autonomi",
+    "post-quantum"
+  ],
+  "homepage": "https://github.com/nkoteskey/constellate#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nkoteskey/constellate.git"
+  },
+  "bugs": {
+    "url": "https://github.com/nkoteskey/constellate/issues"
+  },
   "type": "module",
   "license": "MIT OR Apache-2.0",
   "bin": {
@@ -18,7 +35,8 @@
     "test": "vitest run",
     "gates": "vitest run test/gates",
     "dev:serve": "tsx src/cli.ts serve",
-    "mcp": "tsx src/cli.ts mcp"
+    "mcp": "tsx src/cli.ts mcp",
+    "prepack": "npm run build && node desktop/scripts/starter.mjs starter/starter.cbor"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.32.2",
@@ -39,6 +57,8 @@
   },
   "files": [
     "dist",
+    "starter/starter.cbor",
+    "data/seed/LICENSES",
     "README.md",
     "LICENSE*"
   ],
