@@ -45,8 +45,11 @@ writeFileSync(join(home, '.config', 'Claude', 'claude_desktop_config.json'), JSO
 
     // Lend this computer: without Ollama it asks for Ollama instead of failing.
     await win.evaluate(() => { location.hash = '#/compute'; });
-    await win.waitForSelector('#desk-slot .card', { timeout: 15_000 });
-    const lend = await win.textContent('#desk-slot');
+    // One button first ("Start helping", or the one free download it needs); the detailed controls sit under More options.
+    await win.waitForSelector('#start-slot .card', { timeout: 15_000 });
+    assert.match(await win.textContent('#start-slot'), /Start helping|Install Ollama/);
+    await win.waitForFunction(() => document.querySelector('#desk-slot .card'), null, { timeout: 15_000 });
+    const lend = await win.evaluate(() => document.querySelector('#desk-slot').textContent);
     assert.match(lend, /On the x0x network/);
     if (process.env.E2E_REAL_X0X) console.log(`real x0xd: ${st.x0x.version ?? 'online'}`);
     assert.match(lend, /Ollama|hosted model/);

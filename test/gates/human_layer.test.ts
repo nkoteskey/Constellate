@@ -148,10 +148,11 @@ describe('the human layer, in the browser', () => {
     });
     await page.goto('about:blank');
     await page.goto(`${web.url}/#/compute`);
-    await page.waitForSelector('#bc-start');
-    await page.click('#bc-start');
-    await page.waitForFunction(() => /Sent a result/.test(document.querySelector('#bc-status')?.textContent ?? ''), null, { timeout: 20_000 });
-    await page.click('#bc-stop');
+    // One button: "Start helping" picks the in-browser model here and shows what it's doing in the same card.
+    await page.waitForSelector('#st-go');
+    await page.click('#st-go');
+    await page.waitForFunction(() => /Sent a result/.test(document.querySelector('#st-status')?.textContent ?? ''), null, { timeout: 20_000 });
+    await page.click('#st-stop');
     const r = demo.viewer.node.store.ofKind('task_result').find((x) => /^browser \(WebGPU\)/.test(x.rec.context.environment));
     expect(r).toBeDefined();
     expect(errors, errors.join('\n')).toEqual([]);
