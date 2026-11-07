@@ -4,7 +4,7 @@ name: Pages
 # into files) and publish it to GitHub Pages. Owner-approved Nov 6, 2026.
 on:
   push:
-    branches: [main, claude/new-session-nvj453]
+    branches: [main]   # the github-pages environment only accepts main; branches preview locally
   workflow_dispatch:
 
 permissions:

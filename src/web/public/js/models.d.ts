@@ -20,4 +20,5 @@ export const FREE_HOSTED: HostedOption[];
 export function familyOf(model?: string): string;
 export function parseModelSpec(spec?: string): { provider: Provider; model: string };
 export function suggest(device: DeviceInfo): Suggestion;
+export const RUN: string;
 export function commands(s: Suggestion): string[];

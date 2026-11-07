@@ -275,8 +275,11 @@ nav.views a.on { color: var(--fg); background: var(--surface-3); }
 .tabs { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 12px; }
 .tabs button { all: unset; cursor: pointer; padding: 8px 14px; border-radius: var(--r-pill); font-size: var(--t-sm); color: var(--muted); border: 1px solid transparent; }
 .tabs button[aria-selected="true"] { color: var(--fg); border-color: var(--line-2); background: var(--surface-2); }
-.copy-row { display: flex; align-items: stretch; gap: 8px; }
-.copy-row pre { flex: 1; }
+/* The code box holds the button: code scrolls in its own lane, the button stays a chip in the top-right corner. */
+.copy-row { display: flex; align-items: flex-start; background: rgba(0,0,0,.35); border: 1px solid var(--line); border-radius: var(--r-sm); }
+.copy-row pre { flex: 1; min-width: 0; background: none; border: 0; border-radius: 0; }
+.copy-row > .btn { flex: none; margin: 8px 8px 8px 0; padding: 7px 12px; font-size: var(--t-xs); }
+.copy-row > .btn svg { width: 14px; height: 14px; }
 .services { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
 .services .card b { display: block; margin: 10px 0 4px; }
 

@@ -27,7 +27,7 @@ describe('any model, and the right free one for the device', () => {
   });
 
   it('gives exact commands', () => {
-    expect(commands(suggest({ memGB: 32, gpuGB: 24 }))).toEqual(['ollama pull qwen3:32b && ollama pull gemma3:27b', 'constellate contribute --model ollama/qwen3:32b --verifier ollama/gemma3:27b']);
+    expect(commands(suggest({ memGB: 32, gpuGB: 24 }))).toEqual(['ollama pull qwen3:32b && ollama pull gemma3:27b', 'node dist/cli.js contribute --model ollama/qwen3:32b --verifier ollama/gemma3:27b']);
   });
 
   it('every listed model names a real family and fits its own budget maths', () => {

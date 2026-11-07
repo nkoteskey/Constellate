@@ -17,4 +17,12 @@ describe('package name safety', () => {
     } catch { hits = ''; } // grep exits 1 when nothing matches
     expect(hits).toBe('');
   });
+
+  // Until `constellate-mcp` is published by us, anyone could claim it. The app and CLI must
+  // point people at their own clone, never at npx. Delete this check once the package is ours.
+  it('until the package is published, the app and CLI never tell anyone to npx constellate-mcp', () => {
+    let hits = '';
+    try { hits = execFileSync('grep', ['-rnE', String.raw`npx (-y )?constellate-mcp|"-y", "constellate-mcp"|'-y', 'constellate-mcp'`, 'src'], { encoding: 'utf8' }); } catch { hits = ''; }
+    expect(hits).toBe('');
+  });
 });

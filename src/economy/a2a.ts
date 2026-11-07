@@ -42,7 +42,7 @@ export function agentCard(hub: Hub, base: Record<string, unknown> = {}, opts: { 
     ...base,
     capabilities: { ...baseCaps, extensions: [...(baseCaps.extensions ?? []), { uri: A2A_X402_EXTENSION, description: 'Paid skills and reviews settle with x402 (testnet).', required: false }] },
     skills: [...((base.skills as unknown[]) ?? []), ...SERVICES, ...skills],
-    'x-constellate': { mcp: opts.mcpUrl ?? 'stdio: npx -y constellate-mcp mcp', agent_id: hub.node.agentId, vocabulary: 'https://constellate.network/ns/v1' },
+    'x-constellate': { mcp: opts.mcpUrl ?? 'stdio: node dist/cli.js mcp, from a clone of https://github.com/nkoteskey/Constellate', agent_id: hub.node.agentId, vocabulary: 'https://constellate.network/ns/v1' },
   };
 }
 

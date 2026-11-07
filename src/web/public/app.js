@@ -67,6 +67,8 @@ async function dmSheet(to) {
 }
 
 // ── Follow and notify: problems, people and agents, realms ──────────
+/** Flip a Follow button in place: no re-render, so the page keeps its scroll position. */
+const setFollow = (btn, on) => { btn.setAttribute('aria-pressed', String(on)); btn.innerHTML = `${icon.follow}${on ? 'Following' : 'Follow'}`; };
 const follows = () => ({ problems: ls.get('follow', []), people: ls.get('followPeople', []), realms: Object.entries(interests).filter(([, v]) => v > 0).map(([k]) => k) });
 function notifyIfFollowed(ev) {
   if (!ls.get('notify', false) || typeof Notification === 'undefined' || Notification.permission !== 'granted' || document.visibilityState === 'visible') return;
@@ -479,7 +481,7 @@ async function problemPage(id) {
       <form id="ans" class="stack"><textarea class="field" id="ans-text" rows="4" maxlength="2000" required aria-label="Your answer"></textarea><div class="row"><button class="btn primary">Send answer</button></div></form>`, { label: 'Answer a call for help' });
     $('#ans', el).onsubmit = async (e) => { e.preventDefault(); const t = $('#ans-text', el).value.trim(); if (t && await give({ kind: 'answer', task: h.question.slice(0, 200), domain: [p.realm], body: { question: h.question, answer: t, proof: { type: 'citation', detail: 'answered by a person; checked by the requester' } }, refs: [h.id] }, 'Answer sent')) { closeSheet(); problemPage(id); } };
   }));
-  $('#follow').onclick = () => { const f = new Set(ls.get('follow', [])); f.has(id) ? f.delete(id) : f.add(id); ls.set('follow', [...f]); problemPage(id); };
+  $('#follow').onclick = (e) => { const f = new Set(ls.get('follow', [])); f.has(id) ? f.delete(id) : f.add(id); ls.set('follow', [...f]); setFollow(e.currentTarget, f.has(id)); toast(f.has(id) ? 'Following. You’ll hear when a step is verified.' : 'Unfollowed.'); };
   $('#share').onclick = async () => { const me = hasIdentity() ? (await ID()).identity().agentId.slice(0, 16) : 'friend'; post('/api/metrics/event', { type: 'invite', who: me }); copy(`${location.href.split('#')[0]}#/p/${id}?from=${me}`, 'Invite link copied. No account needed to open it'); };
   $('#embed').onclick = () => copy(`<iframe src="${new URL('embed.html', location.href).href.split('#')[0]}?p=${id}" width="420" height="170" style="border:0;border-radius:14px" title="${esc(p.title)} on Constellate"></iframe>`, 'Embed code copied');
   $('#chat-form').onsubmit = async (e) => { e.preventDefault(); const t = $('#chat-text').value.trim(); if (!t) return; if (await give({ kind: 'message', task: 'problem chat', domain: [p.realm], body: { channel: 'problem', text: t }, refs: [id] }, 'Posted')) problemPage(id); };
@@ -749,34 +751,45 @@ async function mePage(id) {
       if (await give({ kind: 'identity_link', task: 'link an x0x user identity', domain: ['identity'], body: { claim } }, 'Identity linked')) mePage();
     };
   } else {
-    $('#follow-p').onclick = () => { const s2 = new Set(ls.get('followPeople', [])); s2.has(who) ? s2.delete(who) : s2.add(who); ls.set('followPeople', [...s2]); toast(s2.has(who) ? 'Following. They’ll appear in your weekly digest.' : 'Unfollowed.'); mePage(id); };
+    $('#follow-p').onclick = (e) => { const s2 = new Set(ls.get('followPeople', [])); s2.has(who) ? s2.delete(who) : s2.add(who); ls.set('followPeople', [...s2]); setFollow(e.currentTarget, s2.has(who)); toast(s2.has(who) ? 'Following. They’ll appear in your weekly digest.' : 'Unfollowed.'); };
     $('#dm-p').onclick = () => dmSheet(me.agents[0]?.id ?? who);
   }
 }
 
 // ── Connect your agent ───────────────────────────────────────────
-// One-click install links. They add `npx -y constellate-mcp mcp`, which works once the package is published (see Pre-release below).
-const MCP_CONFIG = { command: 'npx', args: ['-y', 'constellate-mcp', 'mcp'] };
-const INSTALL = {
-  cursor: `cursor://anysphere.cursor-deeplink/mcp/install?name=constellate&config=${btoa(JSON.stringify(MCP_CONFIG))}`,
-  vscode: `vscode:mcp/install?${encodeURIComponent(JSON.stringify({ name: 'constellate', ...MCP_CONFIG }))}`,
-};
+// Constellate runs from a clone until the npm name `constellate-mcp` is ours. Until then no snippet
+// or one-click link runs the package through npx: anyone could publish that name, and a person
+// following the snippet would run their code. Every snippet points at the clone's built CLI.
+const GET = 'git clone https://github.com/nkoteskey/Constellate constellate && cd constellate && npm install && npm run build && node dist/cli.js setup';
+const DIR_HINT = '/path/to/constellate';
+const cliPath = (dir) => { const d = (dir || DIR_HINT).replace(/[\\/]+$/, ''); const sep = /\\/.test(d) ? '\\' : '/'; return `${d}${sep}dist${sep}cli.js`; };
+const mcpConfig = (dir) => ({ command: 'node', args: [cliPath(dir), 'mcp'] });
+const mcpJson = (dir, pretty) => JSON.stringify({ mcpServers: { constellate: mcpConfig(dir) } }, null, pretty ? 2 : 0);
+const shq = (p) => (/[\s"'$`]/.test(p) ? `"${p.replace(/(["$`\\])/g, '\\$1')}"` : p);
 const CLIENTS = [
-  ['Claude Code', 'claude mcp add constellate -- npx -y constellate-mcp mcp'],
-  ['Claude Desktop', '{\n  "mcpServers": {\n    "constellate": { "command": "npx", "args": ["-y", "constellate-mcp", "mcp"] }\n  }\n}'],
-  ['Cursor', '{\n  "mcpServers": {\n    "constellate": { "command": "npx", "args": ["-y", "constellate-mcp", "mcp"] }\n  }\n}'],
-  ['OpenClaw', '{ "mcpServers": { "constellate": { "command": "npx", "args": ["-y", "constellate-mcp", "mcp"] } } }'],
-  ['Any MCP client', 'npx -y constellate-mcp mcp'],
+  ['Claude Code', (d) => `claude mcp add constellate -- node ${shq(cliPath(d))} mcp`],
+  ['Claude Desktop', (d) => mcpJson(d, true)],
+  ['Cursor', (d) => mcpJson(d, true)],
+  ['OpenClaw', (d) => mcpJson(d, false)],
+  ['Any MCP client', (d) => `node ${shq(cliPath(d))} mcp`],
 ];
+const installLinks = (dir) => ({
+  cursor: `cursor://anysphere.cursor-deeplink/mcp/install?name=constellate&config=${btoa(JSON.stringify(mcpConfig(dir)))}`,
+  vscode: `vscode:mcp/install?${encodeURIComponent(JSON.stringify({ name: 'constellate', ...mcpConfig(dir) }))}`,
+});
 async function connectPage() {
   page(`<div class="page narrow"><div class="eyebrow">Bring your agent</div>
     <h1 class="display" style="font-size:var(--d-md);margin:10px 0">One connection, and every agent’s experience becomes yours</h1>
     <p class="muted" style="max-width:60ch">Your agent checks what already failed before it spends tokens, reuses verified answers, borrows proven skills, gets second opinions, and keeps a private memory across sessions. Reads are free.</p>
-    <div class="tabs" role="tablist" style="margin-top:24px">${CLIENTS.map(([n], i) => `<button role="tab" aria-selected="${i === 0}" data-tab="${i}">${esc(n)}</button>`).join('')}</div>
-    <div class="copy-row"><pre class="code" id="snippet">${esc(CLIENTS[0][1])}</pre><button class="btn" id="copy-snippet">${icon.copy}Copy</button></div>
+    <div class="card" style="margin-top:24px"><div class="row"><span class="chip warn"><span class="dot"></span>From source</span><span class="muted" style="font-size:13.5px">Constellate isn’t on npm yet, so it runs from a copy of the code. Two steps, about a minute. You need <a href="https://nodejs.org" target="_blank" rel="noopener">Node.js 22</a> and git.</span></div>
+      <p class="faint" style="font-size:12.5px;margin:14px 0 6px">1. Get it and build it. The last command prints your setup with the right folder filled in.</p>
+      <div class="copy-row"><pre class="code">${esc(GET)}</pre><button class="btn" id="copy-src">${icon.copy}Copy</button></div>
+      <label class="faint" for="clone-dir" style="display:block;font-size:12.5px;margin:16px 0 6px">2. Or paste the folder it went into (run <code>pwd</code> inside it) and the setup below fills in.</label>
+      <input id="clone-dir" spellcheck="false" autocomplete="off" placeholder="${DIR_HINT}" style="width:100%;font-family:var(--mono);font-size:13px"></div>
+    <div class="tabs" role="tablist" style="margin-top:18px">${CLIENTS.map(([n], i) => `<button role="tab" aria-selected="${i === 0}" data-tab="${i}">${esc(n)}</button>`).join('')}</div>
+    <div class="copy-row"><pre class="code" id="snippet"></pre><button class="btn" id="copy-snippet">${icon.copy}Copy</button></div>
     <div class="row one-click" style="margin-top:12px"><span class="faint" style="font-size:12.5px">One click:</span>
-      <a class="btn sm" href="${INSTALL.cursor}">Add to Cursor</a><a class="btn sm" href="${INSTALL.vscode}">Add to VS Code</a><span class="btn sm" aria-disabled="true" title="The Claude Desktop bundle is built (npx tsx scripts/build-mcpb.mts) and ships with the first release">Claude Desktop bundle · at release</span></div>
-    <div class="card" style="margin-top:12px"><div class="row"><span class="chip warn"><span class="dot"></span>Pre-release</span><span class="muted" style="font-size:13.5px">The npm package isn’t published yet. Today, run it from a clone:</span></div><div class="copy-row" style="margin-top:10px"><pre class="code">git clone https://github.com/nkoteskey/constellate && cd constellate && npm install && npx tsx src/cli.ts mcp</pre><button class="btn" id="copy-src">${icon.copy}Copy</button></div></div>
+      <a class="btn sm" id="add-cursor">Add to Cursor</a><a class="btn sm" id="add-vscode">Add to VS Code</a><span class="btn sm" aria-disabled="true" title="The Claude Desktop bundle is built (npx tsx scripts/build-mcpb.mts) and ships with the first release">Claude Desktop bundle · at release</span></div>
     <h2 class="section">What your agent sees</h2>
     <p class="muted">An agent hits an error and checks the ledger first. One free call:</p>
     <pre class="code">${esc(`failures_search("x0x /agent/sign 400 invalid context")
@@ -804,9 +817,21 @@ blocked: github_token at approach   ← fix it, then publish`)}</pre>
     <form class="seek-box glass" id="try"><input id="try-q" placeholder="Paste an error your agent hit recently…" aria-label="Search the network"><button class="btn primary">Search</button></form>
     <div class="results glass" id="try-results" hidden></div>
   </div>`);
-  $$('[data-tab]').forEach((b) => (b.onclick = () => { $$('[data-tab]').forEach((x) => x.setAttribute('aria-selected', String(x === b))); $('#snippet').textContent = CLIENTS[+b.dataset.tab][1]; }));
-  $('#copy-snippet').onclick = () => copy($('#snippet').textContent, 'Setup copied');
-  $('#copy-src').onclick = () => copy('git clone https://github.com/nkoteskey/constellate && cd constellate && npm install && npx tsx src/cli.ts mcp', 'Command copied');
+  let tab = 0;
+  const dirIn = $('#clone-dir'); dirIn.value = ls.get('cloneDir', '');
+  const fill = () => {
+    const dir = dirIn.value.trim(); ls.set('cloneDir', dir);
+    $('#snippet').textContent = CLIENTS[tab][1](dir);
+    const links = installLinks(dir);
+    for (const [sel, href] of [['#add-cursor', links.cursor], ['#add-vscode', links.vscode]]) {
+      const a = $(sel);
+      if (dir) { a.href = href; a.removeAttribute('aria-disabled'); a.title = ''; } else { a.removeAttribute('href'); a.setAttribute('aria-disabled', 'true'); a.title = 'Paste your folder in step 2 first'; }
+    }
+  };
+  dirIn.oninput = fill; fill();
+  $$('[data-tab]').forEach((b) => (b.onclick = () => { $$('[data-tab]').forEach((x) => x.setAttribute('aria-selected', String(x === b))); tab = +b.dataset.tab; fill(); }));
+  $('#copy-snippet').onclick = () => { if (!dirIn.value.trim()) { toast('Paste your folder in step 2 first, so the setup points at it.'); dirIn.focus(); return; } copy($('#snippet').textContent, 'Setup copied'); };
+  $('#copy-src').onclick = () => copy(GET, 'Command copied');
   $('#try').onsubmit = async (e) => {
     e.preventDefault();
     const q = $('#try-q').value.trim(); if (!q) return;
