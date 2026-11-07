@@ -168,7 +168,8 @@ Lend your computer instead: node "${cli}" models, then node "${cli}" contribute`
     await web.listen(Number(process.env.PORT ?? 4747));
     if (funding) console.log(`Payments: ${funding.mode === 'live' ? 'LIVE (real money)' : 'test mode'}${funding.stripe ? ' · Stripe' : ''}${funding.usdc ? ` · USDC on ${funding.usdc.network} to ${funding.usdc.depositAddress}` : ''}`);
     if (hub.archive instanceof AutonomiArchive) console.log('Archive: Autonomi mainnet (paid, capped daily)');
-    new Consolidator(hub, model).schedule(); // "sleep" every 6 hours: distil related lessons into summaries
+    new Consolidator(hub, model).schedule(); // "sleep" every 6 hours: distil related lessons into topic pages
+    hub.pages.schedule(); // "dream" every 6 hours: re-check pages whose evidence changed (docs/MEMORY.md)
     if (model) { const { Deliberation } = await import('./collective/deliberation.js'); new Deliberation(hub).scheduleReruns(model); } // debates revisited as models change
     if (model) console.log(`Model: ${model.id} (guide, constitution review, summaries, debate re-runs)`);
     // Incoming direct messages: history sync between computers, otherwise a person's message for the app's inbox.

@@ -54,7 +54,8 @@ export class Consolidator {
       const { record } = await this.hub.node.submit({
         kind: 'summary',
         context: { task: `consolidate ${use.length} related records`, domain, environment: pre ? 'written summary (reviewed, data/seed/cluster-summaries.json)' : this.runner?.id ?? 'extractive' },
-        body: { cluster: key, title: pre?.title ?? headline(use.map((id) => this.hub.node.store.get(id)!)), summary: summary.slice(0, 2000), members: use, realms, supersedes: prev?.rec.id ?? null },
+        // A topic page (src/graph/pages.ts): rules with evidence and status, traps, the fix verbatim, links.
+        body: { cluster: key, title: pre?.title ?? headline(use.map((id) => this.hub.node.store.get(id)!)), summary: summary.slice(0, 2000), members: use, realms, supersedes: prev?.rec.id ?? null, ...this.hub.pages.build(use, key) },
         refs: use,
       }, { publish: true });
       const addr = await this.hub.archive.put(canonicalBytes(record));

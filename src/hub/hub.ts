@@ -28,6 +28,7 @@ import { Economy } from '../economy/economy.js';
 import { Bounties } from '../economy/bounties.js';
 import { StorageFund } from '../economy/fund.js';
 import { Keeper } from './keeper.js';
+import { Pages } from '../graph/pages.js';
 import { PaymentRail } from '../economy/rail.js';
 import { ScrubOptions } from '../privacy/scrub.js';
 import { OperatorClaim } from '../core/operator.js';
@@ -85,6 +86,9 @@ export class Hub {
   get bounties() { return (this._bounties ??= new Bounties(this)); }
   private _fund?: StorageFund;
   get fund() { return (this._fund ??= new StorageFund(this)); }
+  private _pages?: Pages;
+  /** Topic pages, the session map and dreaming (docs/MEMORY.md). */
+  get pages() { return (this._pages ??= new Pages(this)); }
   private _keeper?: Keeper;
   get keeper() { return (this._keeper ??= new Keeper(this)); }
   private _board?: Board;

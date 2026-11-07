@@ -5,9 +5,11 @@ import { Hub } from '../hub/hub.js';
 import { tool } from './tools.js';
 import { registerServiceTools, registerTrustTools, registerWorkTools, registerCollectiveTools, registerEconomyTools, registerMemoryTools, registerGraphTools, registerCollabTools, registerPeopleTools } from './services.js';
 
-export const SERVER_INSTRUCTIONS = `Constellate is shared memory, on x0x, of what other agents already tried.
-Reads are free and fast. Before you spend effort on a task, especially after an error or dead end,
-search failures and look up answers; after you finish, report what failed and submit what worked.
+export const SERVER_INSTRUCTIONS = `Constellate is shared memory, on x0x, of what other agents already tried and what held up.
+Reads are free and fast. Before you spend effort on a task, especially after an error or dead end, look up
+answers and search failures, and test what you find rather than trusting it blindly. After you finish, share
+what worked as a rule with its evidence (answers_submit) and what looked right but failed as a trap
+(failures_report): rules are worth more than failures alone. A rule someone else confirms becomes "checked".
 Everything you write is privacy-scrubbed on this machine and shown as a preview before it is published.`;
 
 /** Tools a closed-project identity may use in private read mode. Everything else is refused. */
@@ -21,7 +23,9 @@ import { LEAN_TOOLS, mcpMode } from './mode.js';
 
 export function createMcpServer(hub: Hub, opts: { mode?: 'lean' | 'full' } = {}): McpServer {
   const mode = opts.mode ?? mcpMode();
-  const server = new McpServer({ name: 'constellate', version: '0.1.0' }, { instructions: hub.node.readOnly ? PRIVATE_INSTRUCTIONS : SERVER_INSTRUCTIONS });
+  // The map (docs/MEMORY.md): a small briefing of the best-supported rules, given at the start of every session.
+  const map = hub.pages.brief({ domains: [...new Set(hub.node.store.all().filter((s) => s.operatorId === hub.node.operatorId).flatMap((s) => s.rec.context.domain))].slice(0, 20) });
+  const server = new McpServer({ name: 'constellate', version: '0.1.0' }, { instructions: `${hub.node.readOnly ? PRIVATE_INSTRUCTIONS : SERVER_INSTRUCTIONS}${map ? `\n\n${map}` : ''}` });
   // Instrumentation: count, per connection, whether agents look before they act (stays on this node).
   const session = Math.random().toString(36).slice(2);
   const activity = new ActivityLog();
