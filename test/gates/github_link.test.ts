@@ -47,7 +47,7 @@ describe('linking a GitHub account', () => {
       const post = async (body: Record<string, unknown>) => fetch(`${web.url}/api/records`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(await signRecord({ kind: 'identity_link', context: { ...ctx, task: 'link x0x' }, body }, person)) });
       expect((await post(await vouch(x0xAgent, stranger.agentId))).status).toBe(400); // vouches for someone else
       expect((await post({ ...(await vouch(x0xAgent, person.agentId)), x0x_agent_id: stranger.agentId })).status).toBe(400); // key and id don't match
-      expect((await post({ ...(await vouch(x0xAgent, person.agentId)), note: 'email me at pat@corp.io' })).status).toBe(400); // only the key and signature are set aside
+      expect((await post({ ...(await vouch(x0xAgent, person.agentId)), note: 'call me on +44 7700 900123' })).status).toBe(400); // only the key and signature are set aside
       expect((await post(await vouch(x0xAgent, person.agentId))).status).toBe(200);
       const me = await (await fetch(`${web.url}/api/me/${person.agentId}`)).json();
       expect(me.linked_x0x).toBe(x0xAgent.agentId);
