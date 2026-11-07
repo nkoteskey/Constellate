@@ -13,6 +13,8 @@ const dataDir = val('data_dir');
 mkdirSync(dataDir, { recursive: true });
 writeFileSync(join(dataDir, 'fake-args.json'), JSON.stringify({ args, config: cfgText }));
 if (process.env.FAKE_X0XD_FAIL) { console.error('fake x0xd: told to fail'); process.exit(3); }
+// As x0xd 0.48 does: a named instance must say which network plane it joins.
+if (val('instance_name') && !/^network_id = "/m.test(cfgText)) { console.error(`Error: named instance '${val('instance_name')}' has no network_id`); process.exit(1); }
 const token = randomBytes(16).toString('hex');
 const server = createServer((req, res) => {
   if (req.headers.authorization !== `Bearer ${token}`) { res.writeHead(401).end('{}'); return; }
