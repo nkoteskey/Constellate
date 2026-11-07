@@ -29,6 +29,7 @@ describe('the desktop app’s own x0x daemon', () => {
     expect(seen.config).toMatch(/^api_address = "127\.0\.0\.1:0"$/m);
     expect(seen.config).toMatch(/^bind_address = "\[::\]:0"$/m);
     expect(seen.config).toMatch(/^bootstrap_peers = \[\]$/m);
+    expect(seen.config).toMatch(/^network_id = "x0x\.prod"$/m); // x0xd refuses a named instance without one
     expect(seen.config).toContain(`identity_dir = '${join(x.dataDir, 'identity')}'`);
     // Constellate itself finds the daemon through X0X_DATA_DIR.
     const c = new X0xClient(undefined, undefined, x.env().X0X_DATA_DIR);

@@ -77,5 +77,6 @@ cd desktop && npx electron-builder --config builder.config.cjs
   releases page.
 - **x0x on real networks.** Tests use a stand-in daemon and the real x0xd offline. The
   first run on a home network (NAT traversal, peers) should be checked on a real machine.
+- **Network plane:** the app joins x0x's production plane (`network_id = "x0x.prod"`); set `CONSTELLATE_X0X_PLANE` (e.g. `x0x.testnet`) to join another.
 - **Upgrading x0x** is a reviewed change: update `X0X_VERSION` and the five SHA-256 sums
   in `desktop/scripts/fetch-x0x.mjs`, and `X0X_VERSION` in `desktop/lib/x0x.mjs`.

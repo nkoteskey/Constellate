@@ -24,8 +24,10 @@ export class X0xSidecar {
    *   binary: path to x0xd (null when this build has none); base: the app's data folder;
    *   offline: no bootstrap peers (tests and air-gapped use).
    */
-  constructor({ binary, base, offline = false, log = () => {} }) {
+  constructor({ binary, base, offline = false, plane = process.env.CONSTELLATE_X0X_PLANE ?? 'x0x.prod', log = () => {} }) {
+    if (!/^[a-z0-9._-]{1,64}$/.test(plane)) throw new Error(`Not an x0x network plane: ${plane}`);
     this.binary = binary;
+    this.plane = plane; // which x0x network to join: x0xd refuses a named instance that doesn't say (x0x 0.48)
     this.dataDir = join(base, `x0x-${INSTANCE}`);
     this.offline = offline;
     this.log = log;
@@ -58,6 +60,7 @@ export class X0xSidecar {
       `data_dir = ${toml(this.dataDir)}`,
       `identity_dir = ${toml(join(this.dataDir, 'identity'))}`,
       `instance_name = "${INSTANCE}"`,
+      `network_id = "${this.plane}"`,
     ];
     if (this.offline) lines.push('bootstrap_peers = []');
     const file = join(this.dataDir, 'constellate.toml');
