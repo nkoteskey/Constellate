@@ -12,3 +12,6 @@ distribution/mcpb/
 desktop/stage/
 desktop/release/
 desktop/resources/
+
+# the starter library bundled into the npm package (built by `npm pack` / `npm publish`)
+starter/

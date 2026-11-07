@@ -227,12 +227,14 @@ Lend your computer instead: node "${cli}" models, then node "${cli}" contribute`
 }
 
 /**
- * The desktop app's starter library (CONSTELLATE_STARTER: a signed snapshot of public lessons). Imported once
+ * The starter library (CONSTELLATE_STARTER, or the copy bundled in the npm package: a signed snapshot of public lessons). Imported once
  * per data folder, every record re-verified and privacy-checked, kept locally and never re-gossiped: it gives
  * a new install real lessons to search on day one, and everything live arrives on top of it.
  */
 function importStarter(hub: Hub) {
-  const file = process.env.CONSTELLATE_STARTER;
+  // The desktop app names its own copy; the npm package carries one next to dist/ (CONSTELLATE_STARTER=off skips it).
+  const bundled = fileURLToPath(new URL('../starter/starter.cbor', import.meta.url));
+  const file = process.env.CONSTELLATE_STARTER === 'off' ? undefined : process.env.CONSTELLATE_STARTER ?? (existsSync(bundled) ? bundled : undefined);
   const marker = join(process.env.CONSTELLATE_HOME ?? join(homedir(), '.constellate'), 'starter-imported');
   if (!file || !existsSync(file) || existsSync(marker)) return;
   try {
