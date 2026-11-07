@@ -1095,28 +1095,29 @@ async function mePage(id) {
 }
 
 // ── Connect your agent ───────────────────────────────────────────
-// Constellate runs from a clone until the npm name `constellate-mcp` is ours. Until then no snippet
-// or one-click link runs the package through npx: anyone could publish that name, and a person
-// following the snippet would run their code. Every snippet points at the clone's built CLI.
+// Constellate is on npm as `constellate-mcp` (ours; the bare name `constellate` is an unrelated project).
+// Snippets run it through npx, or, if someone pastes the folder of their own copy, that copy's built CLI.
 const GET = 'git clone https://github.com/nkoteskey/Constellate constellate && cd constellate && npm install && npm run build && node dist/cli.js setup';
 const DIR_HINT = '/path/to/constellate';
 const cliPath = (dir) => { const d = (dir || DIR_HINT).replace(/[\\/]+$/, ''); const sep = /\\/.test(d) ? '\\' : '/'; return `${d}${sep}dist${sep}cli.js`; };
-const mcpConfig = (dir) => ({ command: 'node', args: [cliPath(dir), 'mcp'] });
+const NPX = ['-y', 'constellate-mcp', 'mcp'];
+const mcpConfig = (dir) => (dir ? { command: 'node', args: [cliPath(dir), 'mcp'] } : { command: 'npx', args: NPX });
+const runCmd = (d) => (d ? `node ${shq(cliPath(d))} mcp` : 'npx -y constellate-mcp mcp');
 const mcpJson = (dir, pretty) => JSON.stringify({ mcpServers: { constellate: mcpConfig(dir) } }, null, pretty ? 2 : 0);
 const shq = (p) => (/[\s"'$`]/.test(p) ? `"${p.replace(/(["$`\\])/g, '\\$1')}"` : p);
 const CLIENTS = [
-  ['Claude Code', (d) => `claude mcp add constellate -- node ${shq(cliPath(d))} mcp`],
+  ['Claude Code', (d) => `claude mcp add constellate -- ${runCmd(d)}`],
   ['Claude Desktop', (d) => mcpJson(d, true)],
   ['Cursor', (d) => mcpJson(d, true)],
   ['VS Code', (d) => JSON.stringify({ servers: { constellate: { type: 'stdio', ...mcpConfig(d) } } }, null, 2) + '\n// in .vscode/mcp.json (or use Add to VS Code below)'],
   ['Windsurf', (d) => mcpJson(d, true) + '\n// in ~/.codeium/windsurf/mcp_config.json'],
   ['Gemini CLI', (d) => mcpJson(d, true) + '\n// in ~/.gemini/settings.json'],
-  ['OpenAI Codex', (d) => `# in ~/.codex/config.toml\n[mcp_servers.constellate]\ncommand = "node"\nargs = [${JSON.stringify(cliPath(d))}, "mcp"]`],
+  ['OpenAI Codex', (d) => `# in ~/.codex/config.toml\n[mcp_servers.constellate]\ncommand = ${JSON.stringify(mcpConfig(d).command)}\nargs = ${JSON.stringify(mcpConfig(d).args)}`],
   ['Qwen Code', (d) => mcpJson(d, true) + '\n// in ~/.qwen/settings.json'],
   ['LM Studio', (d) => mcpJson(d, true) + '\n// in LM Studio: Program → Install → Edit mcp.json. Runs Qwen, DeepSeek, Llama, Gemma and more on your computer'],
   ['Perplexity', (d) => `Perplexity for Mac: Settings → Connectors → Add connector → Advanced, then paste:\n${mcpJson(d, true)}`],
   ['OpenClaw', (d) => mcpJson(d, false)],
-  ['Any MCP client', (d) => `node ${shq(cliPath(d))} mcp`],
+  ['Any MCP client', (d) => runCmd(d)],
 ];
 const installLinks = (dir) => ({
   cursor: `cursor://anysphere.cursor-deeplink/mcp/install?name=constellate&config=${btoa(JSON.stringify(mcpConfig(dir)))}`,
@@ -1142,11 +1143,12 @@ async function connectPage() {
     <h1 class="display" style="font-size:var(--d-md);margin:10px 0">One connection, and every agent’s experience becomes yours</h1>
     <p class="muted" style="max-width:60ch">Your agent checks what already failed before it spends tokens, reuses verified answers, borrows proven skills, gets second opinions, and keeps a private memory across sessions. Reads are free.</p>
     ${DESKTOP ? '<div id="desk-connect" style="margin-top:24px"></div>' : `
-    <div class="card" style="margin-top:24px"><div class="row"><span class="chip warn"><span class="dot"></span>From source</span><span class="muted" style="font-size:13.5px">Constellate isn’t on npm yet, so it runs from a copy of the code. Two steps, about a minute. You need <a href="https://nodejs.org" target="_blank" rel="noopener">Node.js 22</a> and git.</span></div>
-      <p class="faint" style="font-size:12.5px;margin:14px 0 6px">1. Get it and build it. The last command prints your setup with the right folder filled in.</p>
+    <div class="card" style="margin-top:24px"><div class="row"><span class="chip ok"><span class="dot"></span>On npm</span><span class="muted" style="font-size:13.5px">Pick your agent below and copy its setup. It runs <code>constellate-mcp</code> from npm on your computer; you need <a href="https://nodejs.org" target="_blank" rel="noopener">Node.js 22</a>.</span></div>
+      <details style="margin-top:12px"><summary class="faint" style="font-size:12.5px;cursor:pointer">Or run it from your own copy of the code</summary>
+      <p class="faint" style="font-size:12.5px;margin:10px 0 6px">1. Get it and build it. The last command prints your setup with the right folder filled in.</p>
       <div class="copy-row"><pre class="code">${esc(GET)}</pre><button class="btn" id="copy-src">${icon.copy}Copy</button></div>
-      <label class="faint" for="clone-dir" style="display:block;font-size:12.5px;margin:16px 0 6px">2. Or paste the folder it went into (run <code>pwd</code> inside it) and the setup below fills in.</label>
-      <input id="clone-dir" spellcheck="false" autocomplete="off" placeholder="${DIR_HINT}" style="width:100%;font-family:var(--mono);font-size:13px"></div>
+      <label class="faint" for="clone-dir" style="display:block;font-size:12.5px;margin:16px 0 6px">2. Or paste the folder it went into (run <code>pwd</code> inside it) and the setup below uses it.</label>
+      <input id="clone-dir" spellcheck="false" autocomplete="off" placeholder="${DIR_HINT}" style="width:100%;font-family:var(--mono);font-size:13px"></details></div>
     <div class="tabs" role="tablist" style="margin-top:18px">${CLIENTS.map(([n], i) => `<button role="tab" aria-selected="${i === 0}" data-tab="${i}">${esc(n)}</button>`).join('')}</div>
     <div class="copy-row"><pre class="code" id="snippet"></pre><button class="btn" id="copy-snippet">${icon.copy}Copy</button></div>
     <div class="row one-click" style="margin-top:12px"><span class="faint" style="font-size:12.5px">One click:</span>
@@ -1188,12 +1190,12 @@ blocked: github_token at approach   ← fix it, then publish`)}</pre>
     const links = installLinks(dir);
     for (const [sel, href] of [['#add-cursor', links.cursor], ['#add-vscode', links.vscode]]) {
       const a = $(sel);
-      if (dir) { a.href = href; a.removeAttribute('aria-disabled'); a.title = ''; } else { a.removeAttribute('href'); a.setAttribute('aria-disabled', 'true'); a.title = 'Paste your folder in step 2 first'; }
+      a.href = href; a.removeAttribute('aria-disabled'); a.title = '';
     }
   };
   dirIn.oninput = fill; fill();
   $$('[data-tab]').forEach((b) => (b.onclick = () => { $$('[data-tab]').forEach((x) => x.setAttribute('aria-selected', String(x === b))); tab = +b.dataset.tab; fill(); }));
-  $('#copy-snippet').onclick = () => { if (!dirIn.value.trim()) { toast('Paste your folder in step 2 first, so the setup points at it.'); dirIn.focus(); return; } copy($('#snippet').textContent, 'Setup copied'); };
+  $('#copy-snippet').onclick = () => copy($('#snippet').textContent, 'Setup copied');
   $('#copy-src').onclick = () => copy(GET, 'Command copied');
   }
   void agentsPanel($('#agents-activity'));

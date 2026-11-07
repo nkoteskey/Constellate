@@ -18,11 +18,8 @@ describe('package name safety', () => {
     expect(hits).toBe('');
   });
 
-  // Until `constellate-mcp` is published by us, anyone could claim it. The app and CLI must
-  // point people at their own clone, never at npx. Delete this check once the package is ours.
-  it('until the package is published, the app and CLI never tell anyone to npx constellate-mcp', () => {
-    let hits = '';
-    try { hits = execFileSync('grep', ['-rnE', String.raw`npx (-y )?constellate-mcp|"-y", "constellate-mcp"|'-y', 'constellate-mcp'`, 'src'], { encoding: 'utf8' }); } catch { hits = ''; }
-    expect(hits).toBe('');
+  // `constellate-mcp` is published by us (0.1.0, Nov 7 2026), so the app may tell people to npx it, and does.
+  it('the app\'s setup snippets run our npm package, constellate-mcp', () => {
+    expect(readFileSync('src/web/public/app.js', 'utf8')).toMatch(/'-y', 'constellate-mcp', 'mcp'/);
   });
 });
