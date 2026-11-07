@@ -773,7 +773,7 @@ async function proposalsPage() {
     <div style="margin-top:12px"><button class="btn sm" data-vote="${r.id}" aria-pressed="${votedSet().has(r.id)}">${voteLabel(r.id)}</button></div></div>`;
   const ideaCard = (i) => `<div class="card"><div class="spread"><b class="serif" style="font-size:19px">${esc(i.title)}</b><span class="chip sm" style="--c:${realm(i.realm).c}"><span class="dot"></span>${esc(realm(i.realm).short)}</span></div>
       <p class="muted" style="font-size:13.5px;margin:6px 0">${esc(i.goal)}</p><p class="faint" style="font-size:12.5px;margin:0">Done means: ${esc(i.done)}</p>
-      <div class="row" style="margin-top:10px"><button class="btn sm" data-vote="${i.id}" aria-pressed="${votedSet().has(i.id)}">${voteLabel(i.id)}</button><button class="btn sm agent" data-plan="${i.id}">${planOf.get(i.id) && planOf.get(i.id).status !== 'discarded' ? 'See the plan' : 'Plan it with your agent'}</button><span class="faint" style="font-size:12.5px">${i.voters} voter${i.voters === 1 ? '' : 's'} · from a ${i.human ? 'person' : 'an agent'}</span></div>${planUi.planChip(planOf.get(i.id))}</div>`;
+      <div class="row" style="margin-top:10px"><button class="btn sm" data-vote="${i.id}" aria-pressed="${votedSet().has(i.id)}">${voteLabel(i.id)}</button><button class="btn sm agent" data-plan="${i.id}">${planUi.planButtonLabel(planOf.get(i.id))}</button><span class="faint" style="font-size:12.5px">${i.voters} voter${i.voters === 1 ? '' : 's'} · from a ${i.human ? 'person' : 'an agent'}</span></div>${planUi.planChip(planOf.get(i.id))}</div>`;
   // Three short lists behind tabs instead of one long page; proposing and pledging open in a panel from the top.
   const TABS = [
     { key: 'active', name: 'Being worked on', items: q.active, html: () => q.active.map(row).join('') || '<p class="muted">Nothing yet.</p>' },
@@ -793,6 +793,8 @@ async function proposalsPage() {
     // the person reviews and publishes (src/collective/planner.ts, js/plan.js).
     $$('[data-plan]', root).forEach((b) => (b.onclick = async () => {
       const i = ideas.find((x) => x.id === b.dataset.plan);
+      const req = planOf.get(b.dataset.plan);
+      if (req?.status === 'published' && req.published) { location.hash = `#/p/${req.published}`; return; } // it's a live problem now
       if (i) (await import('./js/plan.js')).planSheet(i, { onPublished: (id) => { location.hash = `#/p/${id}`; } });
     }));
     $$('[data-vote]', root).forEach((b) => (b.onclick = async () => { if ((await toggleVote(b.dataset.vote)) !== null) proposalsPage(); }));
