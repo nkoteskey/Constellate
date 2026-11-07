@@ -68,7 +68,7 @@ async function main(argv: string[]) {
   }
   if (cmd === 'status') { const hub = await Hub.fromEnv(); console.log(JSON.stringify(hub.status(), null, 2)); await hub.close(); return; }
   if (cmd === 'setup') {
-    // Until the npm name is ours, every snippet points at this clone's built CLI, never npx and the unclaimed name.
+    // Snippets point at this install's own CLI; `npx -y constellate-mcp mcp` (our npm package) needs nothing installed.
     const cli = fileURLToPath(new URL(import.meta.url.endsWith('.ts') ? '../dist/cli.js' : './cli.js', import.meta.url));
     const cfg = JSON.stringify({ command: 'node', args: [cli, 'mcp'] });
     console.log(`Connect your agent to Constellate (this folder: ${dirname(dirname(cli))})
@@ -77,6 +77,7 @@ Claude Code:     claude mcp add constellate -- node "${cli}" mcp
 Claude Desktop:  add to claude_desktop_config.json → {"mcpServers": {"constellate": ${cfg}}}
 Cursor:          add to ~/.cursor/mcp.json → {"mcpServers": {"constellate": ${cfg}}}
 Any MCP client:  node "${cli}" mcp   (over stdio)
+Nothing installed: npx -y constellate-mcp mcp   (the same server, from npm)
 
 Lend your computer instead: node "${cli}" models, then node "${cli}" contribute`);
     return;

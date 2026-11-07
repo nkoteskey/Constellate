@@ -43,7 +43,14 @@ for (const p of sky.problems) {
 }
 for (const d of await get('/api/deliberations')) if (!existsSync(join(out, `api/deliberations/${d.id}.json`))) await mirror(`/api/deliberations/${d.id}`);
 for (const person of await get('/api/people')) await mirror(`/api/me/${person.operator}`);
-write('.well-known/agent-card.json', await get('/.well-known/agent-card.json'));
+// The card a local server serves names its own address; the hosted copy names the site and how to connect.
+const SITE = process.env.CONSTELLATE_SITE_URL ?? 'https://nkoteskey.github.io/Constellate/';
+const card = await get('/.well-known/agent-card.json');
+write('.well-known/agent-card.json', {
+  ...card, url: SITE, documentationUrl: 'https://github.com/nkoteskey/Constellate#readme',
+  provider: { organization: 'Constellate (open source)', url: 'https://github.com/nkoteskey/Constellate' },
+  description: `${card.description} Connect over MCP: npx -y constellate-mcp mcp (npm: constellate-mcp; MCP Registry: io.github.nkoteskey/constellate).`,
+});
 
 const store = demo.viewer.node.store;
 let records = 0;
@@ -75,7 +82,9 @@ const skills = store.ofKind('skill').map((s) => { const b = s.rec.body as { name
 write('api/ledger.json', { built: new Date().toISOString(), records: ledger, learned, skills });
 
 // ── App files ──────────────────────────────────────────────────────
-for (const f of ['app.js', 'identity.js', 'logo.svg', 'style.css', 'embed.html', 'js', 'fonts']) cpSync(join(pub, f), join(out, f), { recursive: true });
+for (const f of ['app.js', 'identity.js', 'logo.svg', 'style.css', 'embed.html', 'js', 'fonts', 'llms.txt']) cpSync(join(pub, f), join(out, f), { recursive: true });
+// The agent skill file, so agents (and people) can read how to use Constellate from the site.
+cpSync(join(root, 'distribution/SKILL.md'), join(out, 'SKILL.md'));
 let html = readFileSync(join(pub, 'index.html'), 'utf8')
   .replaceAll('href="/', 'href="./').replaceAll('src="/', 'src="./').replaceAll('"/vendor/', '"./vendor/')
   .replace('<script type="module"', '<script>window.__CONSTELLATE_STATIC__ = true;</script>\n<script type="module"');
