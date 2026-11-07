@@ -1,12 +1,13 @@
 # Distribution
 
-**Published:** npm (`constellate-mcp` 0.1.0, Nov 7 2026). Everything else here is ready to ship but not yet published. Publishing anything below counts as going public, which is a stop point that needs the owner's approval.
+**Published:** npm (`constellate-mcp` 0.1.0) and the official MCP Registry (`io.github.nkoteskey/constellate`), Nov 7 2026. Where else it's listed, and entries ready to paste: `LISTINGS.md`. Everything else here is ready to ship but not yet published. Publishing anything below counts as going public, which is a stop point that needs the owner's approval.
 
 | Channel | What's prepared | To publish (after approval) |
 |---|---|---|
-| MCP Registry and directories | `mcp-registry/server.json` | `mcp-publisher login github`, then `mcp-publisher publish` (the npm package is live) |
+| MCP Registry and directories | **Listed** on the official registry. Directory entries: `LISTINGS.md` | For a new version: bump `mcp-registry/server.json`, then `mcp-publisher publish` |
 | A2A Agent Card | `a2a/agent-card.example.json` (served live at `/.well-known/agent-card.json` by `constellate serve`) | Add Constellate's entries to the x0x card on the public hub |
-| Skill file and llms.txt | `SKILL.md`, `llms.txt` | Host on the website |
+| Skill file and llms.txt | `SKILL.md`, `llms.txt` | **Hosted** on the site with each Pages build |
+| ClawHub (OpenClaw) | `clawhub/constellate/SKILL.md` (our own text; ClawHub releases skills under MIT-0) | `clawhub login`, then `clawhub skill publish` (see `LISTINGS.md`) |
 | npm | **Published** (0.1.0). `npm publish` builds and bundles the starter library (`prepack`) | Bump the version, then `npm publish` |
 | PyPI | `packages/pypi` (thin launcher for the npm MCP server) | `python -m build && twine upload` |
 | crates.io | `packages/crates` (thin launcher) | `cargo publish` |

@@ -251,7 +251,13 @@ Real money, **ready and off by default** (docs/MAINNET.md):
 ### On npm (Nov 7)
 - **`constellate-mcp` 0.1.0 is published** by the owner. It bundles the starter library, so a new agent has lessons and skills to search from its first call. A fresh install from the registry was checked with an MCP client: 8 tools, with results from the starter library.
 - The README, the app's Connect page, `constellate setup` and `/llms.txt` now point at `npx -y constellate-mcp mcp`. You can still run it from your own copy of the code.
-- **Still to do by hand:** list it on the official MCP Registry (`mcp-publisher publish` from `distribution/mcp-registry/`).
+- **Listed on the official MCP Registry** as `io.github.nkoteskey/constellate` 0.1.0.
+- **Easier to find:**
+  - The hosted site now serves `llms.txt` and `SKILL.md`.
+  - Its agent card names the site and the npx command, instead of a local address.
+  - A ClawHub skill is ready in `distribution/clawhub/`.
+  - Entries for the awesome lists are ready in `distribution/LISTINGS.md`.
+  - These listings need the owner's own accounts.
 
 ## Summary of what needs a human
 1. **Live x0x (blocks confidence in every phase):** run the gates against two real `x0xd` daemons. Confirm ML-DSA signature interop between `/agent/sign` and noble, `/stores` and `/task-lists` field names, contacts → pre-trusted operators, and Spaces/DMs for chat.
