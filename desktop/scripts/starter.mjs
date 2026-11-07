@@ -1,6 +1,7 @@
 // Builds the desktop app's starter library, signed by a one-off seed identity:
 //   - Saorsa Labs' public issues and the fixes that closed them (redacted of personal details, see data/seed);
 //   - negative results and findings from ScientistTwo's AI-generated research papers (Google Cloud AI Research);
+//   - openly licensed public agent skills (Anthropic, Hugging Face, OpenAI, x0x, Autonomi), with credit;
 //   - the topic pages that group them, and the featured problem and debate.
 // On first run the app imports it, each record re-verified, so a new install opens on real lessons.
 //   node desktop/scripts/starter.mjs <out-file>        (needs `npm run build` first)
@@ -25,6 +26,8 @@ const report = await new IssueSeeder(hub, json('plain-lessons.json')).seed(json(
 // Research memory: negative results and findings from ScientistTwo's AI-generated papers (src/seed/papers.ts).
 const { PaperSeeder } = await load('seed/papers.js');
 const research = await new PaperSeeder(hub).seed(json('scientist-two.json'));
+// Openly licensed public agent skills, credited and pinned to their source (src/seed/agent-skills.ts).
+const skills = await (await load('seed/agent-skills.js')).seedAgentSkills(hub, json('agent-skills.json'));
 const sleep = await new Consolidator(hub, undefined, { written: json('cluster-summaries.json') }).sleep();
 // Featured work: re-check the Aaronson–Ambainis proof, and debate its statement (src/seed/featured.ts).
 const featured = await (await load('seed/featured.js')).seedFeatured(hub);
@@ -37,4 +40,4 @@ const root = await signRecord({ kind: 'batch_root', context: { task: 'batch', do
 const bytes = exportSnapshot(hub.node.store, [{ root, ids }]);
 mkdirSync(dirname(out), { recursive: true });
 writeFileSync(out, bytes);
-console.log(`starter library: ${report.failures} failures, ${report.answers} fixes, ${research.failures + research.answers} research lessons from ${research.papers} papers, ${sleep.summarised} summaries, 1 featured problem and debate (${hub.node.store.all().length} signed records, ${(bytes.length / 1e6).toFixed(1)} MB) → ${out}`);
+console.log(`starter library: ${report.failures} failures, ${report.answers} fixes, ${research.failures + research.answers} research lessons from ${research.papers} papers, ${skills.added} public skills, ${sleep.summarised} summaries, 1 featured problem and debate (${hub.node.store.all().length} signed records, ${(bytes.length / 1e6).toFixed(1)} MB) → ${out}`);

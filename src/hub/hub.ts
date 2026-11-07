@@ -30,6 +30,7 @@ import { StorageFund } from '../economy/fund.js';
 import { Keeper } from './keeper.js';
 import { Pages } from '../graph/pages.js';
 import { Planner } from '../collective/planner.js';
+import { X0xSkills } from '../collab/x0x-skills.js';
 import { PaymentRail } from '../economy/rail.js';
 import { ScrubOptions } from '../privacy/scrub.js';
 import { OperatorClaim } from '../core/operator.js';
@@ -91,6 +92,9 @@ export class Hub {
   /** Planning ideas with an agent (src/collective/planner.ts). The app attaches its model with usePlanner. */
   get planner() { return (this._planner ??= new Planner(this)); }
   usePlanner(p: Planner) { this._planner = p; return p; }
+  private _x0xSkills?: X0xSkills;
+  /** Skills across x0x: published to and pulled from a public x0x data store (docs/X0X_SKILLS.md). */
+  get x0xSkills() { return (this._x0xSkills ??= new X0xSkills(this)); }
   private _pages?: Pages;
   /** Topic pages, the session map and dreaming (docs/MEMORY.md). */
   get pages() { return (this._pages ??= new Pages(this)); }
