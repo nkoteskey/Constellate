@@ -109,12 +109,15 @@ export function suggest(device) {
   return { budgetGB: Math.round(budget), runtime, where, primary, verifier, alternatives, hosted: FREE_HOSTED, notes, updated: CATALOG_UPDATED };
 }
 
+/** How to run Constellate: from the folder it was cloned and built in (Connect page, step 1), until the npm package is published. */
+export const RUN = 'node dist/cli.js';
+
 /** The exact commands to get going, for a suggestion. */
 export function commands(s) {
-  if (!s.primary) return [`constellate contribute --model groq/${FREE_HOSTED[0].model}   # needs GROQ_API_KEY (free tier)`];
+  if (!s.primary) return [`${RUN} contribute --model groq/${FREE_HOSTED[0].model}   # needs GROQ_API_KEY (free tier)`];
   const spec = (m) => `${m.run.provider}/${m.run.model}`;
   return [
     `ollama pull ${s.primary.run.model}${s.verifier ? ` && ollama pull ${s.verifier.run.model}` : ''}`,
-    `constellate contribute --model ${spec(s.primary)}${s.verifier ? ` --verifier ${spec(s.verifier)}` : ''}`,
+    `${RUN} contribute --model ${spec(s.primary)}${s.verifier ? ` --verifier ${spec(s.verifier)}` : ''}`,
   ];
 }

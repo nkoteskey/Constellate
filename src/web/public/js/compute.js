@@ -2,7 +2,7 @@
 // The browser can only estimate the hardware, so the person can correct it; the
 // command line (`constellate models`) then checks precisely on the machine itself.
 import { $, $$, esc, icon, copy, api, toast, STATIC } from './ui.js';
-import { suggest, commands, PROVIDERS, FREE_HOSTED, CATALOG_UPDATED } from './models.js';
+import { suggest, commands, RUN, PROVIDERS, FREE_HOSTED, CATALOG_UPDATED } from './models.js';
 
 const VRAM = [[/rtx\s*(5090)/i, 32], [/rtx\s*(4090|3090)/i, 24], [/rtx\s*(5080|4080|4070\s*ti\s*super|4060\s*ti.*16)/i, 16], [/rtx\s*(5070|4070|3080\s*ti|3060)\b/i, 12], [/rtx\s*(3080)/i, 10], [/rtx\s*(4060|3070|3060\s*ti|2080|2070)/i, 8], [/rx\s*7900\s*xtx/i, 24], [/rx\s*7900/i, 20], [/rx\s*(7800|6800|6900)/i, 16], [/a100/i, 40], [/h100/i, 80]];
 
@@ -169,7 +169,7 @@ export function computePage(page) {
     <div id="sugg" style="margin-top:12px"></div>
     <h3 class="eyebrow" style="margin-top:18px">To start</h3>
     <div class="copy-row"><pre class="code" id="cmds"></pre><button class="btn" id="copy-cmds">${icon.copy}Copy</button></div>
-    <p class="faint" style="font-size:12.5px;margin:6px 0 0">Your browser can only estimate the hardware. <code>constellate models</code> checks it precisely on the machine. Once running, <code>constellate contribute</code> opens its status and controls (pause, plugged-in only, battery, hours, heat) on this page at 127.0.0.1:4748. A packaged installer comes with the first release.</p>
+    <p class="faint" style="font-size:12.5px;margin:6px 0 0">Your browser can only estimate the hardware. Run these from your Constellate folder (<a href="#/connect">get it on Connect</a>, about a minute). <code>${RUN} models</code> checks it precisely on the machine. Once running, <code>${RUN} contribute</code> opens its status and controls (pause, plugged-in only, battery, hours, heat) on this page at 127.0.0.1:4748. A packaged installer comes with the first release.</p>
 
     <h2 class="section">Or bring any model</h2>
     <p class="muted" style="max-width:62ch">Local or hosted, open or closed: pass <code>--model provider/model</code>. Keys stay on your machine, read from the provider’s usual variable, and are never put in a record.</p>
@@ -177,7 +177,7 @@ export function computePage(page) {
       <div class="provider-head"><b>${esc(p.name)}</b><span class="chip sm ${/free/.test(p.cost) ? 'ok' : ''}">${/free/.test(p.cost) ? '<span class="dot"></span>' : ''}${esc(p.cost)}</span></div>
       <div class="faint" style="font-size:12.5px;margin-top:6px">${p.kind === 'local' ? 'Runs on your machine' : p.kind === 'custom' ? 'Your own server' : 'Hosted'}${p.openWeight === true ? ' · open weights' : p.openWeight === 'mixed' ? ' · open and closed' : ''}</div>
       ${p.note ? `<div class="muted" style="font-size:13px;margin-top:6px">${esc(p.note)}</div>` : ''}</button>`).join('')}</div>
-    <div class="copy-row" style="margin-top:12px"><pre class="code" id="any-cmd">constellate contribute --model groq/llama-3.3-70b-versatile</pre><button class="btn" id="copy-any">${icon.copy}Copy</button></div>
+    <div class="copy-row" style="margin-top:12px"><pre class="code" id="any-cmd">${RUN} contribute --model groq/llama-3.3-70b-versatile</pre><button class="btn" id="copy-any">${icon.copy}Copy</button></div>
     <p class="faint" style="font-size:12.5px;margin:6px 0 0">Model list reviewed ${esc(CATALOG_UPDATED)}. Paid models stop at the spending cap you set (<code>--cap-cents</code>).</p>
   </div>`);
 

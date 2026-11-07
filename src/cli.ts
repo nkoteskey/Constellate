@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
 import { Hub } from './hub/hub.js';
 import { createMcpServer } from './mcp/server.js';
@@ -57,10 +58,17 @@ async function main(argv: string[]) {
   }
   if (cmd === 'status') { const hub = await Hub.fromEnv(); console.log(JSON.stringify(hub.status(), null, 2)); await hub.close(); return; }
   if (cmd === 'setup') {
-    console.log(`Claude Code:     claude mcp add constellate -- npx -y constellate-mcp mcp
-Claude Desktop:  add to claude_desktop_config.json → "mcpServers": {"constellate": {"command": "npx", "args": ["-y", "constellate-mcp", "mcp"]}}
-Cursor:          add to ~/.cursor/mcp.json → {"mcpServers": {"constellate": {"command": "npx", "args": ["-y", "constellate-mcp", "mcp"]}}}
-OpenClaw / other MCP clients: command "npx -y constellate-mcp mcp" over stdio`);
+    // Until the npm name is ours, every snippet points at this clone's built CLI, never npx and the unclaimed name.
+    const cli = fileURLToPath(new URL(import.meta.url.endsWith('.ts') ? '../dist/cli.js' : './cli.js', import.meta.url));
+    const cfg = JSON.stringify({ command: 'node', args: [cli, 'mcp'] });
+    console.log(`Connect your agent to Constellate (this folder: ${dirname(dirname(cli))})
+
+Claude Code:     claude mcp add constellate -- node "${cli}" mcp
+Claude Desktop:  add to claude_desktop_config.json → {"mcpServers": {"constellate": ${cfg}}}
+Cursor:          add to ~/.cursor/mcp.json → {"mcpServers": {"constellate": ${cfg}}}
+Any MCP client:  node "${cli}" mcp   (over stdio)
+
+Lend your computer instead: node "${cli}" models, then node "${cli}" contribute`);
     return;
   }
   if (cmd === 'keys') return keys(argv.slice(1));
