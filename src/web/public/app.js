@@ -823,10 +823,22 @@ async function openGroups(slot) {
 }
 
 /** Me: your public profile, hosted by this computer's x0x agent. Only a public handle, never a real name. */
-async function profileEditor(slot, who, linkedGithub) {
+// Your profile: once published, shown as the card others see, with Edit to change it.
+async function profileEditor(slot, who, linkedGithub, opts = {}) {
   if (!slot || STATIC) return;
   const d = await directory(true);
-  const cur = d.profiles.find((p) => p.id === who) ?? {};
+  const cur = d.profiles.find((p) => p.id === who) ?? opts.published ?? {};
+  if (cur.handle && !opts.edit) {
+    const card = { kind: 'person', ...cur, id: who };
+    slot.innerHTML = `<div style="display:grid;gap:8px">
+      <div class="spread"><span class="faint" style="font-size:12.5px">This is how others see you${d.via === 'x0x' && !opts.published?.local ? ' on the x0x network' : ''}.</span><button class="btn sm" id="pf-edit">Edit</button></div>
+      ${profileCard(card, who)}
+      ${opts.published?.local || d.via !== 'x0x' ? '<p class="faint" style="margin:0;font-size:12.5px">Saved on this computer. It goes on the network once you’re connected to x0x (the desktop app does this).</p>' : ''}
+    </div>`;
+    wireProfiles(slot);
+    $('#pf-edit', slot).onclick = () => profileEditor(slot, who, linkedGithub, { edit: true });
+    return;
+  }
   const realms = ['maths_physics', 'life_sciences', 'planet_energy', 'philosophy_ethics', 'art_creativity'];
   slot.innerHTML = `<form class="card" id="prof-form" style="display:grid;grid-template-columns:minmax(0,1fr);gap:10px">
     <p class="muted" style="margin:0;font-size:13.5px">How others find you, message you, or invite you to a problem. Use a public handle, not your real name.${d.via === 'x0x' ? ' It’s published to the x0x network.' : ' It’s saved on this computer and goes on the network once you’re connected to x0x (the desktop app does this).'}</p>
@@ -835,8 +847,10 @@ async function profileEditor(slot, who, linkedGithub) {
     <div class="faint" style="font-size:12.5px">What you’re into</div>
     <div class="row" style="gap:6px">${realms.map((r) => `<label class="chip" style="--c:${realm(r).c};cursor:pointer"><input type="checkbox" data-realm="${r}" ${(cur.realms ?? []).includes(r) ? 'checked' : ''} style="margin-right:6px">${esc(realm(r).short)}</label>`).join('')}</div>
     <div class="row" style="gap:14px;font-size:13px"><label class="row" style="gap:6px"><input type="checkbox" id="pf-msg" ${cur.open_to?.messages === false ? '' : 'checked'}> Open to messages</label><label class="row" style="gap:6px"><input type="checkbox" id="pf-inv" ${cur.open_to?.invites === false ? '' : 'checked'}> Open to invites to problems</label></div>
-    <div class="row"><button class="btn primary sm">${cur.handle ? 'Update profile' : 'Publish profile'}</button><span id="pf-out" class="faint" style="font-size:12.5px"></span></div>
+    <div class="row"><button class="btn primary sm">${cur.handle ? 'Update profile' : 'Publish profile'}</button>${cur.handle ? '<button type="button" class="btn ghost sm" id="pf-cancel">Cancel</button>' : ''}<span id="pf-out" class="faint" style="font-size:12.5px"></span></div>
   </form>`;
+  const cancel = $('#pf-cancel', slot);
+  if (cancel) cancel.onclick = () => profileEditor(slot, who, linkedGithub);
   $('#prof-form', slot).onsubmit = async (e) => {
     e.preventDefault();
     const handle = $('#pf-handle', slot).value.trim().replace(/^@/, '');
@@ -848,7 +862,7 @@ async function profileEditor(slot, who, linkedGithub) {
     if (!r.ok) { $('#pf-out', slot).textContent = j.findings ? 'Blocked by the privacy check: use a public handle and no real names or contact details.' : (j.error ?? 'Couldn’t publish.'); return; }
     dirCache = null;
     toast(j.published === 'x0x' ? `Published. Others on x0x can find @${handle}.` : 'Saved on this computer. It goes on the network once you’re connected to x0x.');
-    $('#pf-out', slot).textContent = j.published === 'x0x' ? 'Live on the x0x network.' : 'Saved on this computer.';
+    await profileEditor(slot, who, linkedGithub, { published: { ...body, id: who, local: j.published !== 'x0x' } });
   };
 }
 
