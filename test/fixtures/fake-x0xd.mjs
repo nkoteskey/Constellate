@@ -21,6 +21,7 @@ const token = randomBytes(16).toString('hex');
 const agent = ml_dsa65.keygen(randomBytes(32));
 const agentId = createHash('sha256').update(Buffer.concat([Buffer.from('AUTONOMI_PEER_ID_V2:'), Buffer.from(agent.publicKey)])).digest('hex');
 const dst = (ctx, payload) => { const c = Buffer.from(ctx); const n = Buffer.alloc(4); n.writeUInt32BE(c.length); return Buffer.concat([Buffer.from([0xf0]), Buffer.from('x0x.external-agent-sign.v1'), n, c, payload]); };
+const stores = new Map();
 const body = (req) => new Promise((r) => { let b = ''; req.on('data', (d) => (b += d)); req.on('end', () => r(b ? JSON.parse(b) : {})); });
 const server = createServer(async (req, res) => {
   if (req.headers.authorization !== `Bearer ${token}`) { res.writeHead(401).end('{}'); return; }
@@ -31,6 +32,23 @@ const server = createServer(async (req, res) => {
     res.end(JSON.stringify({ ok: true, agent_id: agentId, public_key_b64: Buffer.from(agent.publicKey).toString('base64'), signature_b64: Buffer.from(sig).toString('base64'), algorithm: 'ml-dsa-65' }));
     return;
   }
+  // An open directory (self_keyed): join by topic, write only under this agent's id, read anything.
+  const sm = req.url.match(/^\/stores\/([^/]+)\/(join|keys|.+)$/);
+  if (sm) {
+    const topic = decodeURIComponent(sm[1]);
+    if (sm[2] === 'join' && req.method === 'POST') { const already = stores.has(topic); if (!already) stores.set(topic, new Map()); res.end(JSON.stringify(already ? { ok: false, error: 'already joined' } : { ok: true, id: topic })); return; }
+    const st = stores.get(topic);
+    if (!st) { res.statusCode = 404; res.end('{"ok":false}'); return; }
+    if (sm[2] === 'keys') { res.end(JSON.stringify({ ok: true, keys: [...st.keys()].map((key) => ({ key })) })); return; }
+    const key = decodeURIComponent(sm[2]);
+    if (req.method === 'PUT') {
+      if (key !== agentId && !key.startsWith(`${agentId}/`)) { res.statusCode = 403; res.end('{"ok":false,"error":"self_keyed"}'); return; }
+      const j = await body(req); st.set(key, j.value); res.end('{"ok":true}'); return;
+    }
+    const v = st.get(key); if (!v) { res.statusCode = 404; res.end('{"ok":false}'); return; }
+    res.end(JSON.stringify({ ok: true, value: v })); return;
+  }
+  if (req.url === '/presence/online') { res.end(JSON.stringify({ ok: true, agents: [{ agent_id: agentId }] })); return; }
   if (req.url === '/health') res.end(JSON.stringify({ ok: true, status: 'healthy', version: 'fake-0.48.1', peers: 3 }));
   else if (req.url === '/agent') res.end(JSON.stringify({ ok: true, agent_id: agentId, machine_id: 'cd'.repeat(32), user_id: null }));
   else res.end('{"ok":true}');

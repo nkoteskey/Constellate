@@ -52,14 +52,15 @@ if (!STATIC) try {
 } catch { /* the sky still works without live updates */ }
 
 // ── Direct messages: private, never records. Over x0x from the live app; not in the static preview. ──
-async function dmSheet(to) {
+async function dmSheet(to, opts = {}) {
   if (STATIC) { toast('Direct messages need the live app: they travel over x0x, privately, and this preview isn’t connected.', 5200); return; }
   const meId = hasIdentity() ? (await ID()).identity().agentId : null;
   const load = async () => (meId ? (await api(`/api/dm/${meId}`)).messages.filter((m) => m.to === to || m.from === to) : []);
-  const el = sheet(`<div class="spread"><div class="eyebrow">Message ${short(to)}</div><button class="btn ghost sm" data-close>Close</button></div>
+  const el = sheet(`<div class="spread"><div class="eyebrow">Message ${esc(opts.name ?? short(to))}</div><button class="btn ghost sm" data-close>Close</button></div>
     <p class="faint" style="font-size:12.5px;margin:6px 0 12px">Private: sent over x0x direct messages, never stored as a public record.</p>
     <div class="feed" id="dm-list" style="max-height:40vh;overflow:auto"></div>
     <form class="chat-form" id="dm-form"><input class="field" id="dm-text" maxlength="2000" placeholder="Say hello" aria-label="Message" required><button class="btn">Send</button></form>`, { label: 'Direct message' });
+  if (opts.draft) { $('#dm-text', el).value = opts.draft; $('#dm-text', el).focus(); }
   const draw = async () => { const ms = await load(); $('#dm-list', el).innerHTML = ms.map((m) => `<div class="item">${identicon(m.from, m.from === meId, 30)}<div><div class="meta"><span>${m.from === meId ? 'You' : short(m.from)}</span><span>· ${ago(m.at)}</span>${m.via === 'demo' ? '<span class="faint">· demo network</span>' : ''}</div><div class="body">${esc(m.text)}</div></div></div>`).join('') || '<p class="muted">No messages yet.</p>'; };
   $('#dm-form', el).onsubmit = async (e) => {
     e.preventDefault();
@@ -533,6 +534,7 @@ async function problemPage(id) {
         <h2 class="section">Conversation</h2>
         <div class="chat feed" id="chat">${chat.map((c) => `<div class="item">${identicon(c.from, c.human, 34)}<div><div class="meta"><span class="tag ${c.human ? 'human' : 'agent'}">${c.human ? 'Person' : 'Agent'}</span>${c.via === 'x0x' ? '<span class="faint">· from the x0x Space</span>' : ''}<span class="num">${short(c.from)}</span><span>· ${ago(c.at)}</span></div><div class="body">${esc(c.text)}</div></div></div>`).join('') || '<p class="muted">Say hello to the people and agents here.</p>'}</div>
         <form class="chat-form" id="chat-form"><input class="field" id="chat-text" maxlength="500" placeholder="Message everyone working on this" aria-label="Message"><button class="btn">Send</button></form>
+        <div id="helpers"></div>
       </div>
       <aside class="side stack">
         <div class="card"><div class="eyebrow">Done means</div><p style="margin:8px 0 0">${esc(p.definition_of_done.description.replace(/^./, (c) => c.toUpperCase()))}.</p><p class="muted" style="font-size:13.5px;margin:8px 0 0">${esc(p.goal)}</p></div>
@@ -557,6 +559,7 @@ async function problemPage(id) {
   $('#follow').onclick = (e) => { const f = new Set(ls.get('follow', [])); f.has(id) ? f.delete(id) : f.add(id); ls.set('follow', [...f]); setFollow(e.currentTarget, f.has(id)); toast(f.has(id) ? 'Following. You’ll hear when a step is verified.' : 'Unfollowed.'); };
   $('#share').onclick = async () => { const me = hasIdentity() ? (await ID()).identity().agentId.slice(0, 16) : 'friend'; post('/api/metrics/event', { type: 'invite', who: me }); copy(`${location.href.split('#')[0]}#/p/${id}?from=${me}`, 'Invite link copied. No account needed to open it'); };
   $('#embed').onclick = () => copy(`<iframe src="${new URL('embed.html', location.href).href.split('#')[0]}?p=${id}" width="420" height="170" style="border:0;border-radius:14px" title="${esc(p.title)} on Constellate"></iframe>`, 'Embed code copied');
+  void helpersSection($('#helpers'), p);
   $('#chat-form').onsubmit = async (e) => { e.preventDefault(); const t = $('#chat-text').value.trim(); if (!t) return; if (await give({ kind: 'message', task: 'problem chat', domain: [p.realm], body: { channel: 'problem', text: t }, refs: [id] }, 'Posted')) problemPage(id); };
   bindClaims($('#page'));
 }
@@ -725,6 +728,132 @@ async function proposalsPage() {
 }
 
 // ── People ───────────────────────────────────────────────────────
+// ── Who's who: profiles from the open x0x directory ──────────────────
+let dirCache = null;
+async function directory(force = false) {
+  if (STATIC) return { via: 'none', profiles: [] };
+  if (!force && dirCache && Date.now() - dirCache.at < 20_000) return dirCache.d;
+  const d = await api('/api/directory').catch(() => ({ via: 'none', profiles: [] }));
+  dirCache = { at: Date.now(), d };
+  return d;
+}
+const profName = (p) => (p.handle ? `@${p.handle}` : p.kind === 'agent' ? `Agent ${short(p.id)}` : `Person ${short(p.id)}`);
+async function myHandle() { const d = await directory(); return d.profiles.find((x) => x.this_computer && x.kind === 'person')?.handle ?? null; }
+
+function profileCard(p, meId) {
+  const mine = p.id === meId || (p.this_computer && p.kind === 'agent');
+  const canMsg = !mine && p.open_to?.messages !== false;
+  return `<div class="card profile-card" data-pid="${p.id}">
+    <div class="row">${identicon(p.id, p.kind === 'person', 40)}<div style="min-width:0">
+      <div class="row" style="gap:6px"><b>${esc(profName(p))}</b>${p.online ? '<span class="chip sm ok"><span class="dot"></span>online</span>' : ''}${mine ? '<span class="badge-you">You</span>' : ''}</div>
+      <div class="faint" style="font-size:12.5px">${p.kind === 'person' ? 'Person' : p.this_computer ? 'This computer' : 'Agent on someone’s computer'}${p.contributions ? ` · ${p.contributions} contribution${p.contributions === 1 ? '' : 's'}` : ''}${p.github ? ` · <span class="gh-check" data-handle="${esc(p.github.handle)}" data-proof="${esc(p.github.proof)}" data-id="${p.id}">GitHub @${esc(p.github.handle)}</span>` : ''}</div></div></div>
+    ${p.about ? `<p class="muted" style="margin:8px 0 0;font-size:13.5px">${esc(p.about)}</p>` : ''}
+    ${(p.realms ?? []).length || (p.can ?? []).length ? `<div class="row" style="gap:6px;margin-top:8px">${(p.realms ?? []).map((r) => `<span class="chip sm" style="--c:${realm(r).c}"><span class="dot"></span>${esc(realm(r).short)}</span>`).join('')}${(p.can ?? []).map((c) => `<span class="chip sm">${esc(c)}</span>`).join('')}</div>` : ''}
+    ${canMsg ? `<div class="row" style="gap:6px;margin-top:10px"><button class="btn sm" data-msg="${p.host}" data-name="${esc(profName(p))}">Message</button><button class="btn sm agent" data-connect="${p.host}" data-name="${esc(profName(p))}" ${ls.get('connected', []).includes(p.id) ? 'disabled' : ''}>${ls.get('connected', []).includes(p.id) ? 'Request sent' : 'Ask to connect'}</button>${p.open_to?.invites ? `<button class="btn sm ghost" data-invite="${p.host}" data-name="${esc(profName(p))}">Invite to a problem</button>` : ''}</div>` : ''}
+  </div>`;
+}
+
+/** Wire Message / Ask to connect / Invite, and check GitHub badges in this browser. */
+function wireProfiles(root, problems = []) {
+  $$('[data-msg]', root).forEach((b) => (b.onclick = () => dmSheet(b.dataset.msg, { name: b.dataset.name })));
+  $$('[data-connect]', root).forEach((b) => (b.onclick = async () => {
+    const mine = await myHandle();
+    const card = b.closest('[data-pid]');
+    await dmSheet(b.dataset.connect, { name: b.dataset.name, draft: `Hi ${b.dataset.name.startsWith('@') ? b.dataset.name : 'there'}! I found you on Constellate${mine ? ` (I’m @${mine})` : ''}. Want to connect and work on something together?` });
+    if (card) { ls.set('connected', [...new Set([...ls.get('connected', []), card.dataset.pid])]); b.textContent = 'Request sent'; b.disabled = true; }
+  }));
+  $$('[data-invite]', root).forEach((b) => (b.onclick = () => {
+    if (!problems.length) { toast('No open problems to invite them to yet.'); return; }
+    const el = sheet(`<div class="spread"><div class="eyebrow">Invite ${esc(b.dataset.name)} to…</div><button class="btn ghost sm" data-close>Close</button></div>
+      <div class="stack" style="margin-top:10px">${problems.slice(0, 8).map((p) => `<button class="card link" style="text-align:left" data-pick="${p.id}"><b>${esc(p.hook || p.title)}</b><span class="faint" style="display:block;font-size:12.5px">${esc(realm(p.realm).short)}</span></button>`).join('')}</div>`, { label: 'Invite to a problem' });
+    $$('[data-pick]', el).forEach((x) => (x.onclick = () => { const p = problems.find((q) => q.id === x.dataset.pick); closeSheet(); dmSheet(b.dataset.invite, { name: b.dataset.name, draft: `Would you like to help with “${p.hook || p.title}”? ${location.origin}/#/p/${p.id}` }); }));
+  }));
+  const ghs = $$('.gh-check', root);
+  if (ghs.length) import('./js/github-link.js').then((g) => ghs.forEach(async (el) => { const ok = await g.verifyLink(el.dataset.handle, el.dataset.proof, el.dataset.id); el.textContent = `GitHub @${el.dataset.handle}${ok ? ' ✓' : ok === null ? '' : ' (not verified)'}`; }));
+}
+
+/** People: who's online and everyone with a profile, from the x0x directory. */
+async function directorySection(slot, sky) {
+  if (!slot) return;
+  if (STATIC) { slot.innerHTML = ''; return; }
+  const d = await directory(true);
+  const meId = hasIdentity() ? (await ID()).identity().agentId : null;
+  const others = d.profiles.filter((p) => !(p.this_computer && p.kind === 'agent'));
+  const online = others.filter((p) => p.online && p.id !== meId);
+  const rest = others.filter((p) => !online.includes(p));
+  const note = d.via === 'x0x' ? 'Profiles from the x0x network. Anyone can list themselves; each entry is signed, so nobody can pose as someone else.' : 'You’re not on the x0x network right now, so only profiles from this computer show. The desktop app connects you.';
+  slot.innerHTML = `<h2 class="section">Online now${online.length ? ` <span class="faint" style="font-size:15px">${online.length}</span>` : ''}</h2>
+    ${online.length ? `<div class="people-grid">${online.map((p) => profileCard(p, meId)).join('')}</div>` : `<p class="muted">Nobody with a profile is online right now${d.via === 'x0x' ? '' : ' that this computer can see'}.</p>`}
+    ${rest.length ? `<h2 class="section">Everyone with a profile</h2><div class="people-grid">${rest.map((p) => profileCard(p, meId)).join('')}</div>` : ''}
+    <p class="faint" style="font-size:12.5px;margin-top:10px">${note} ${others.some((p) => p.id === meId) ? '' : '<a href="#/me">Add yours on Me →</a>'}</p>
+    <div id="x0x-groups"></div>
+    <h2 class="section">Everyone who has contributed</h2>`;
+  wireProfiles(slot, sky?.problems ?? []);
+  void openGroups($('#x0x-groups', slot));
+}
+
+/**
+ * Out in the open on x0x: public groups other agents and people listed in x0x's directory (signed group cards).
+ * Shown as plain text, never followed or joined automatically. "Introduce yourself" opens a message to the owner
+ * that the person reads and sends themselves.
+ */
+async function openGroups(slot) {
+  if (!slot) return;
+  const r = await api('/api/x0x/groups').catch(() => null);
+  if (!r || r.via !== 'x0x') return;
+  const theirs = r.groups.filter((g) => !g.ours), ours = r.groups.filter((g) => g.ours);
+  const intro = 'Hi! I use Constellate, a shared memory for AI agents on x0x: before trying something, agents check what already failed for others and what fixed it, and they share what they learn. If your agents would like to use it, it’s an MCP server: https://github.com/nkoteskey/Constellate. Happy to compare notes.';
+  slot.innerHTML = `<h2 class="section">Out in the open on x0x</h2>
+    <p class="muted" style="font-size:13.5px;margin-top:-6px">Public groups that agents and people have listed on x0x (AI, agents, code review, research, science). Only what they chose to make public; nothing is joined or sent unless you do it.</p>
+    ${theirs.length ? `<div class="people-grid">${theirs.map((g) => `<div class="card"><div class="spread"><b>${esc(g.name.slice(0, 80))}</b><span class="faint" style="font-size:12px">${g.members} member${g.members === 1 ? '' : 's'}</span></div>
+      ${g.description ? `<p class="muted" style="margin:6px 0 0;font-size:13.5px">${esc(g.description.slice(0, 220))}</p>` : ''}
+      ${g.tags.length ? `<div class="row" style="gap:6px;margin-top:8px">${g.tags.slice(0, 6).map((t) => `<span class="chip sm">${esc(t)}</span>`).join('')}</div>` : ''}
+      ${g.owner ? `<div class="row" style="margin-top:10px"><button class="btn sm" data-intro="${esc(g.owner)}" data-name="${esc(g.name.slice(0, 40))}">Introduce yourself</button></div>` : ''}</div>`).join('')}</div>` : `<p class="muted">Nothing listed publicly under those topics yet. When groups appear, they show here.</p>`}
+    ${ours.length ? `<p class="faint" style="font-size:12.5px;margin-top:10px">Constellate’s own problem spaces are listed too (${ours.length}), so others can find us the same way.</p>` : ''}`;
+  $$('[data-intro]', slot).forEach((b) => (b.onclick = () => dmSheet(b.dataset.intro, { name: `the owner of ${b.dataset.name}`, draft: intro })));
+}
+
+/** Me: your public profile, hosted by this computer's x0x agent. Only a public handle, never a real name. */
+async function profileEditor(slot, who, linkedGithub) {
+  if (!slot || STATIC) return;
+  const d = await directory(true);
+  const cur = d.profiles.find((p) => p.id === who) ?? {};
+  const realms = ['maths_physics', 'life_sciences', 'planet_energy', 'philosophy_ethics', 'art_creativity'];
+  slot.innerHTML = `<form class="card" id="prof-form" style="display:grid;grid-template-columns:minmax(0,1fr);gap:10px">
+    <p class="muted" style="margin:0;font-size:13.5px">How others find you, message you, or invite you to a problem. Use a public handle, not your real name.${d.via === 'x0x' ? ' It’s published to the x0x network.' : ' It’s saved on this computer and goes on the network once you’re connected to x0x (the desktop app does this).'}</p>
+    <label style="display:grid;gap:4px;font-size:12.5px" class="faint">Handle<input class="field" id="pf-handle" maxlength="30" placeholder="your-handle" value="${esc(cur.handle ?? linkedGithub?.handle ?? '')}" style="width:min(280px,100%)"></label>
+    <label style="display:grid;gap:4px;font-size:12.5px" class="faint">About you, in one line<input class="field" id="pf-about" maxlength="160" placeholder="e.g. I check Lean proofs and like number theory" value="${esc(cur.about ?? '')}"></label>
+    <div class="faint" style="font-size:12.5px">What you’re into</div>
+    <div class="row" style="gap:6px">${realms.map((r) => `<label class="chip" style="--c:${realm(r).c};cursor:pointer"><input type="checkbox" data-realm="${r}" ${(cur.realms ?? []).includes(r) ? 'checked' : ''} style="margin-right:6px">${esc(realm(r).short)}</label>`).join('')}</div>
+    <div class="row" style="gap:14px;font-size:13px"><label class="row" style="gap:6px"><input type="checkbox" id="pf-msg" ${cur.open_to?.messages === false ? '' : 'checked'}> Open to messages</label><label class="row" style="gap:6px"><input type="checkbox" id="pf-inv" ${cur.open_to?.invites === false ? '' : 'checked'}> Open to invites to problems</label></div>
+    <div class="row"><button class="btn primary sm">${cur.handle ? 'Update profile' : 'Publish profile'}</button><span id="pf-out" class="faint" style="font-size:12.5px"></span></div>
+  </form>`;
+  $('#prof-form', slot).onsubmit = async (e) => {
+    e.preventDefault();
+    const handle = $('#pf-handle', slot).value.trim().replace(/^@/, '');
+    if (!/^[A-Za-z0-9](?:[A-Za-z0-9_.-]{0,28}[A-Za-z0-9])?$/.test(handle)) { $('#pf-out', slot).textContent = 'A handle is letters, digits, dots, dashes or underscores.'; return; }
+    const body = { kind: 'person', handle, ...(($('#pf-about', slot).value.trim()) ? { about: $('#pf-about', slot).value.trim() } : {}), realms: $$('[data-realm]', slot).filter((x) => x.checked).map((x) => x.dataset.realm), open_to: { messages: $('#pf-msg', slot).checked, invites: $('#pf-inv', slot).checked }, ...(linkedGithub ? { github: linkedGithub } : {}) };
+    const rec = (await ID()).signRecord({ kind: 'profile', task: 'profile', domain: ['people'], body });
+    const r = await fetch('/api/profile', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(rec) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) { $('#pf-out', slot).textContent = j.findings ? 'Blocked by the privacy check: use a public handle and no real names or contact details.' : (j.error ?? 'Couldn’t publish.'); return; }
+    dirCache = null;
+    toast(j.published === 'x0x' ? `Published. Others on x0x can find @${handle}.` : 'Saved on this computer. It goes on the network once you’re connected to x0x.');
+    $('#pf-out', slot).textContent = j.published === 'x0x' ? 'Live on the x0x network.' : 'Saved on this computer.';
+  };
+}
+
+/** A problem page: people and agents in its area who are open to invites. */
+async function helpersSection(slot, p) {
+  if (!slot || STATIC) return;
+  const meId = hasIdentity() ? (await ID()).identity().agentId : null;
+  const d = await directory();
+  const fits = d.profiles.filter((x) => x.id !== meId && !(x.this_computer && x.kind === 'agent') && x.open_to?.invites && (x.realms ?? []).includes(p.realm)).sort((a, b) => Number(b.online) - Number(a.online)).slice(0, 4);
+  if (!fits.length) { slot.innerHTML = ''; return; }
+  slot.innerHTML = `<h2 class="section">People who could help</h2><p class="muted" style="font-size:13.5px;margin-top:-6px">They work in ${esc(realm(p.realm).short)} and are open to invites.</p><div class="people-grid">${fits.map((x) => profileCard(x, meId)).join('')}</div>`;
+  wireProfiles(slot, [{ id: p.id, title: p.title, hook: p.hook, realm: p.realm }]);
+}
+
 async function peoplePage() {
   const [teams, sky, chall] = await Promise.all([api('/api/teams'), api('/api/sky'), api('/api/challenges').catch(() => [])]);
   const titleFor = (id) => { const p = sky.problems.find((x) => x.id === id); return p ? (p.hook || p.title) : null; };
@@ -735,11 +864,13 @@ async function peoplePage() {
       <button class="chip on" data-kind="">Everyone</button><button class="chip" data-kind="human">People</button><button class="chip" data-kind="agent">Agents</button>
       <span class="faint" style="margin:0 4px">·</span>${sky.realms.map((r) => `<button class="chip" data-prealm="${r.id}" style="--c:${realm(r.id).c}"><span class="dot"></span>${esc(realm(r.id).short)}</button>`).join('')}
     </div>
+    <div id="directory"></div>
     <input class="field" id="p-q" placeholder="Find people by problem, e.g. antibiotic" aria-label="Find people by problem" style="margin-top:10px;max-width:420px">
     <div class="people-grid" id="people" style="margin-top:18px"></div>
     ${chall.length ? `<h2 class="section">Team challenges</h2><div class="stack">${chall.map((c) => `<div class="card"><div class="spread"><b>${esc(c.team)}</b><span class="faint" style="font-size:12.5px">until ${esc(new Date(c.ends).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }))}</span></div><div class="muted" style="font-size:13.5px;margin:4px 0 8px">${esc(c.title)}</div><div class="meter"><i style="width:${Math.min(100, Math.round((c.done / c.goal) * 100))}%"></i></div><div class="faint num" style="font-size:12.5px;margin-top:6px">${c.done} of ${c.goal}</div></div>`).join('')}</div>` : ''}
     ${teams.length ? `<h2 class="section">Teams</h2><div class="stack">${teams.map((t) => `<div class="card spread"><b>${esc(t.team)}</b><span class="muted">${t.members} people · ${t.contributions} contributions</span></div>`).join('')}</div>` : ''}
     <form class="card stack" id="chal" style="margin-top:14px"><b>Start a team challenge</b><div class="row"><label style="flex:2">Team<input class="field" id="c-team" maxlength="40" value="${esc(ls.get('team', ''))}" required></label><label style="flex:1">Goal (contributions)<input class="field" id="c-goal" type="number" min="1" max="100000" value="25" required></label><label style="flex:1">Until<input class="field" id="c-ends" type="date" required></label></div><div class="row"><button class="btn">Start challenge</button><span class="faint" style="font-size:12.5px">Everyone who sets this team on their Me page counts toward it.</span></div></form></div>`);
+  void directorySection($('#directory'), sky);
   const render = async () => {
     const qs = new URLSearchParams(Object.entries(f).filter(([, v]) => v)).toString();
     const people = await api(`/api/people${qs ? `?${qs}` : ''}`);
@@ -833,6 +964,8 @@ async function mePage(id) {
     <h2 class="section">Your weekly digest</h2><pre style="font-family:var(--sans);font-size:14px">${esc(digest.text)}</pre>
     <div class="row"><button class="btn sm" id="copy-digest">${icon.copy}Copy to forward</button>${typeof Notification !== 'undefined' && !STATIC ? `<button class="btn ghost sm" id="notify" aria-pressed="${ls.get('notify', false)}">${ls.get('notify', false) ? 'Notifications on' : 'Notify me in this browser'}</button>` : ''}</div>
     <p class="faint" style="font-size:12.5px">Following ${follows().problems.length} problem${follows().problems.length === 1 ? '' : 's'}, ${follows().people.length} ${follows().people.length === 1 ? 'person or agent' : 'people and agents'} and ${follows().realms.length} realm${follows().realms.length === 1 ? '' : 's'}. Follows stay on this device.</p>
+    <h2 class="section">Your profile</h2>
+    <div id="prof-slot"></div>
     <h2 class="section">Show people it’s you <span class="faint" style="font-size:14px">(optional)</span></h2>
     ${DESKTOP ? `<div class="card spread" id="x0x-link" style="margin-bottom:12px">${me.linked_x0x ? `<span>Linked to this computer’s x0x identity <span class="chip sm ok"><span class="dot"></span>agent ${short(me.linked_x0x)} ✓</span></span>` : `<span><b>Your x0x identity</b><span class="faint" style="display:block;font-size:12.5px">One click: this computer’s x0x agent vouches for you, so you and your agents share one reputation.</span></span><button class="btn agent sm" id="x0x-link-btn">Link to this computer’s x0x identity</button>`}</div>` : ''}
     <div id="gh-link"></div>
@@ -851,6 +984,7 @@ async function mePage(id) {
     b.classList.add(ok ? 'ok' : 'warn');
   });
   if (mine) void githubLinkCard($('#gh-link'), who, me.linked_github);
+  if (mine) void profileEditor($('#prof-slot'), who, me.linked_github);
   $('#x0x-link-btn')?.addEventListener('click', async (e) => {
     e.target.disabled = true;
     const r = await window.constellateDesktop.linkX0x(who).catch((err) => ({ ok: false, error: err.message }));

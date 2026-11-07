@@ -78,6 +78,20 @@ writeFileSync(join(home, '.config', 'Claude', 'claude_desktop_config.json'), JSO
     assert.match(String(linked), /^[0-9a-f]{64}$/, 'linked to the x0x agent');
     if (shots) await win.screenshot({ path: join(shots, 'desktop-me.png') });
 
+    // A public profile, hosted by this computer's x0x agent in the open directory (real x0xd in CI).
+    await win.fill('#pf-handle', 'e2e-tester');
+    await win.fill('#pf-about', 'Checks Lean proofs at night');
+    await win.click('#prof-form button');
+    await win.waitForFunction(() => /Live on the x0x network|Saved on this computer/.test(document.querySelector('#pf-out')?.textContent ?? ''), null, { timeout: 20_000 });
+    assert.match(await win.textContent('#pf-out'), /Live on the x0x network/);
+    const dir = await win.evaluate(async () => (await (await fetch('/api/directory')).json()));
+    assert.ok(dir.profiles.some((p) => p.handle === 'e2e-tester' && p.this_computer), 'profile listed in the x0x directory');
+    const groups = await win.evaluate(async () => (await (await fetch('/api/x0x/groups')).json()));
+    assert.equal(groups.via, 'x0x');
+    await win.evaluate(() => { location.hash = '#/people'; });
+    await win.waitForSelector('#directory .section', { timeout: 15_000 });
+    if (shots) await win.screenshot({ path: join(shots, 'desktop-people.png'), fullPage: false });
+
     // Other pages never get the bridge's powers: same preload, different origin, refused.
     const preload = join(ROOT, 'desktop', 'preload.cjs');
     const refused = await app.evaluate(async ({ BrowserWindow }, preload) => {

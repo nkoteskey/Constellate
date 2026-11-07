@@ -17,7 +17,7 @@ export class FakeMesh {
   readonly daemons = new Set<FakeDaemon>();
   readonly wire: { topic: string; from: string; payload: Uint8Array }[] = [];
   readonly stores = new Map<string, { owner: string; policy: string; data: Map<string, { value: string; content_type: string }> }>();
-  readonly groups = new Map<string, { name: string; preset: string; owner: string; messages: { msg_id: string; sender: string; body: string; timestamp: string }[] }>();
+  readonly groups = new Map<string, { name: string; preset: string; owner: string; description?: string; messages: { msg_id: string; sender: string; body: string; timestamp: string }[] }>();
   readonly taskLists = new Map<string, { name: string; tasks: Map<string, { id: string; title: string; description: string | null; state: string; claimed_by: string | null; completed_by: string | null }> }>();
   partitioned = new Set<FakeDaemon>();
 }
@@ -113,11 +113,14 @@ export class FakeDaemon {
       req.on('close', () => this.sse.delete(res));
       return;
     }
+    // Public directory (Phase C.2): public groups appear as signed cards to anyone subscribed.
+    if (m === 'POST' && p === '/groups/discover/subscribe') return this.json(res, 200, { ok: true });
+    if (m === 'GET' && p === '/groups/discover') return this.json(res, 200, { ok: true, groups: [...this.mesh.groups].filter(([, g]) => g.preset.startsWith('public')).map(([id, g]) => ({ group_id: id, name: g.name, description: g.description ?? '', tags: [], member_count: 1, owner_agent_id: g.owner, updated_at: Date.now() })) });
     // Spaces: public named groups (shapes from x0x docs/skill/messaging.md §4.3)
     if (m === 'POST' && p === '/groups') {
       const b = await this.body(req);
       const id = sha256Hex(utf8(`group:${b.name}:${this.agentId}`)).slice(0, 32);
-      if (!this.mesh.groups.has(id)) this.mesh.groups.set(id, { name: b.name, preset: b.preset ?? 'private_secure', owner: this.agentId, messages: [] });
+      if (!this.mesh.groups.has(id)) this.mesh.groups.set(id, { name: b.name, preset: b.preset ?? 'private_secure', owner: this.agentId, description: b.description ?? '', messages: [] });
       return this.json(res, 200, { ok: true, group_id: id, name: b.name, preset: b.preset ?? 'private_secure' });
     }
     let gm = p.match(/^\/groups\/([0-9a-f]+)\/(send|messages|invite)$/);
@@ -143,28 +146,39 @@ export class FakeDaemon {
       this.joinedStores.add(id);
       return this.json(res, 200, { ok: true, id, name: b.name, topic: b.topic, policy: b.policy ?? 'signed' });
     }
-    let mm = p.match(/^\/stores\/([0-9a-f]+)\/join$/);
+    let mm = p.match(/^\/stores\/([^/]+)\/join$/);
     if (m === 'POST' && mm) {
-      const s = this.mesh.stores.get(mm[1]);
       const b = await this.body(req);
+      // An open directory (x0x ≥0.41): joined by topic alone, no owner; each agent writes only under its own id.
+      if (b.policy === 'self_keyed') {
+        const topic = decodeURIComponent(mm[1]);
+        if (!this.mesh.stores.has(topic)) this.mesh.stores.set(topic, { owner: '', policy: 'self_keyed', data: new Map() });
+        if (this.joinedStores.has(topic)) return this.json(res, 409, { ok: false, error: 'already joined' });
+        this.joinedStores.add(topic);
+        return this.json(res, 200, { ok: true, id: topic });
+      }
+      const s = this.mesh.stores.get(mm[1]);
       if (!b.expected_owner) return this.json(res, 422, { ok: false, error: 'owner_required' });
       if (!s) return this.json(res, 404, { ok: false, error: 'store not found' });
       this.joinedStores.add(mm[1]);
       return this.json(res, 200, { ok: true, id: mm[1] });
     }
-    mm = p.match(/^\/stores\/([0-9a-f]+)\/keys$/);
+    mm = p.match(/^\/stores\/([^/]+)\/keys$/);
     if (m === 'GET' && mm) {
+      mm[1] = decodeURIComponent(mm[1]);
       const s = this.mesh.stores.get(mm[1]);
       if (!s || !this.joinedStores.has(mm[1])) return this.json(res, 404, { ok: false, error: 'store not found' });
       return this.json(res, 200, { ok: true, keys: [...s.data.keys()].map((key) => ({ key })) });
     }
-    mm = p.match(/^\/stores\/([0-9a-f]+)\/(.+)$/);
+    mm = p.match(/^\/stores\/([^/]+)\/(.+)$/);
     if (mm) {
+      mm[1] = decodeURIComponent(mm[1]);
       const s = this.mesh.stores.get(mm[1]);
       const key = decodeURIComponent(mm[2]);
       if (!s || !this.joinedStores.has(mm[1])) return this.json(res, 404, { ok: false, error: 'store not found' });
       if (m === 'GET') { const v = s.data.get(key); return v ? this.json(res, 200, { ok: true, ...v }) : this.json(res, 404, { ok: false, error: 'key not found' }); }
-      if (s.owner !== this.agentId) return this.json(res, 403, { ok: false, error: `not authorized: store policy is signed; owner is ${s.owner}` });
+      if (s.policy === 'self_keyed') { if (key !== this.agentId && !key.startsWith(`${this.agentId}/`)) return this.json(res, 403, { ok: false, error: 'self_keyed: write only under your own agent id' }); }
+      else if (s.owner !== this.agentId) return this.json(res, 403, { ok: false, error: `not authorized: store policy is signed; owner is ${s.owner}` });
       if (m === 'PUT') {
         const b = await this.body(req);
         const prev = s.data.get(key);

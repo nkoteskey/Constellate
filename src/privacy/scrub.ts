@@ -143,6 +143,13 @@ const isPqKeyOrSig = (v: unknown) => [1952, 3309].includes(b64Bytes(v));
  * are set aside. Everything else is checked.
  */
 export function readableBody(rec: { kind?: string; body?: unknown }): unknown {
+  if (rec.kind === 'profile' && rec.body && typeof rec.body === 'object') {
+    // A profile's GitHub proof is a public gist address (its id looks like a token); the handle is still checked.
+    const b = { ...(rec.body as Record<string, unknown>) };
+    const g = b.github as { handle?: string; proof?: string } | undefined;
+    if (g && typeof g.proof === 'string' && /^https:\/\/gist\.github\.com\/[A-Za-z0-9-]+\/[0-9a-f]{20,40}$/.test(g.proof)) b.github = { handle: g.handle };
+    return b;
+  }
   if (rec.kind !== 'identity_link' || !rec.body || typeof rec.body !== 'object') return rec.body;
   const b = { ...(rec.body as Record<string, unknown>) };
   for (const k of ['x0x_public_key', 'signature']) if (isPqKeyOrSig(b[k])) delete b[k];

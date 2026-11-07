@@ -12,6 +12,9 @@ import { join } from 'node:path';
 export interface GossipMessage { topic: string; payload: Uint8Array; sender: string; verified: boolean; trust_level?: string }
 export interface X0xTask { id: string; title: string; description?: string | null; state: string; claimed_by?: string | null; completed_by?: string | null }
 
+/** A public group someone listed in x0x's directory (a GroupCard, trimmed). */
+export interface DiscoveredGroup { id: string; name: string; description: string; tags: string[]; members: number; owner: string; updated: number }
+
 export class X0xError extends Error {
   constructor(readonly status: number, message: string) { super(`x0x ${status}: ${message}`); }
 }
@@ -104,8 +107,8 @@ export class X0xClient {
   /** Private direct message (durable by default in x0x ≥0.38). payload is base64. */
   // ── Spaces: public named groups (docs/skill/messaging.md §4.3). Response bodies are parsed
   // defensively: the docs give request shapes, not every response field. Untested against a real daemon.
-  async createSpace(name: string, preset: 'public_open' | 'public_announce' = 'public_open') {
-    const j = await this.req<Record<string, any>>('POST', '/groups', { name, preset });
+  async createSpace(name: string, preset: 'public_open' | 'public_announce' = 'public_open', description = '') {
+    const j = await this.req<Record<string, any>>('POST', '/groups', { name, preset, ...(description ? { description } : {}) });
     return String(j.group_id ?? j.id ?? j.group?.id ?? '');
   }
   spaceSend(groupId: string, body: string, opts: { threadRoot?: string; threadParent?: string } = {}) {
@@ -117,6 +120,30 @@ export class X0xClient {
     return list.map((m) => ({ id: String(m.msg_id ?? m.id ?? ''), from: String(m.sender ?? m.author ?? m.agent_id ?? m.from ?? ''), body: String(m.body ?? m.text ?? ''), at: String(m.timestamp ?? m.ts ?? m.created_at ?? m.at ?? new Date().toISOString()) }));
   }
   async spaceInvite(groupId: string) { const j = await this.req<any>('POST', `/groups/${groupId}/invite`, {}); return String(j.invite ?? j.link ?? j.url ?? ''); }
+  // ── Open directories (self_keyed stores, x0x ≥0.41): joined by topic alone; each agent writes only under its own id.
+  async joinDirectory(topic: string) {
+    try { await this.req('POST', `/stores/${encodeURIComponent(topic)}/join`, { policy: 'self_keyed' }); }
+    catch (e) { if (!(e instanceof X0xError && e.status === 409)) throw e; } // already joined is success
+  }
+  directoryPut(topic: string, key: string, value: Uint8Array) { return this.req('PUT', `/stores/${encodeURIComponent(topic)}/${encodeURIComponent(key)}`, { value: toB64(value), content_type: 'application/json' }); }
+  async directoryGet(topic: string, key: string): Promise<Uint8Array | null> {
+    try { return fromB64((await this.req<{ value: string }>('GET', `/stores/${encodeURIComponent(topic)}/${encodeURIComponent(key)}`)).value); }
+    catch (e) { if (e instanceof X0xError && e.status === 404) return null; throw e; }
+  }
+  async directoryKeys(topic: string): Promise<string[]> {
+    const j = await this.req<{ keys: ({ key: string } | string)[] }>('GET', `/stores/${encodeURIComponent(topic)}/keys`);
+    return (j.keys ?? []).map((k) => (typeof k === 'string' ? k : k.key));
+  }
+  // ── Public group discovery (x0x Phase C.2): signed group cards gossiped on tag / name / id shards.
+  discoverSubscribe(kind: 'tag' | 'name', key: string) { return this.req('POST', '/groups/discover/subscribe', { kind, key }); }
+  async discoverGroups(): Promise<DiscoveredGroup[]> {
+    const j = await this.req<any>('GET', '/groups/discover');
+    const list: any[] = Array.isArray(j) ? j : j.groups ?? j.cards ?? [];
+    return list.filter((c) => c && c.group_id && !c.withdrawn).map((c) => ({
+      id: String(c.group_id), name: String(c.name ?? ''), description: String(c.description ?? ''), tags: Array.isArray(c.tags) ? c.tags.map(String) : [],
+      members: Number(c.member_count ?? 0), owner: String(c.owner_agent_id ?? ''), updated: Number(c.updated_at ?? 0),
+    }));
+  }
   // ── Presence (docs/skill/messaging.md §4.1)
   async presenceOnline(): Promise<string[]> {
     const j = await this.req<any>('GET', '/presence/online');
