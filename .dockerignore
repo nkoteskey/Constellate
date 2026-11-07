@@ -1,0 +1,11 @@
+.git
+node_modules
+dist
+starter
+desktop
+!desktop/scripts
+docs
+evals
+distribution
+test
+*.log
