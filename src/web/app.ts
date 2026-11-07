@@ -501,7 +501,7 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
     const asksAboutWork = /happening|progress|status|how('s| is)|going|what about/i.test(q);
     const guide = asksAboutWork || !(failures.length || answers.length) ? await guide_.ask(q).catch(() => null) : null;
     const learned = hub.ledger.learned(q, { limit: 2 });
-    const skills = hub.skills.find(q, 2).map((k) => ({ id: k.id, name: k.name, description: k.description, source: hub.node.store.get(k.id)?.rec.evidence[0] ?? null }));
+    const skills = hub.skills.find(q, 2).map((k) => ({ id: k.id, name: k.name, description: k.description, source: k.source ?? hub.node.store.get(k.id)?.rec.evidence[0] ?? null, credit: k.credit ?? null, tests: k.tests }));
     return { q, failures, answers, learned, skills, guide, on_x0x: onX0x };
   });
 

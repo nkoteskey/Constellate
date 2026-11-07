@@ -241,6 +241,13 @@ Real money, **ready and off by default** (docs/MAINNET.md):
 - **Tests:** `test/gates/desktop.test.ts` (daemon start, discovery, healing, failure, agent configs) and `desktop/test/e2e.cjs`, which launches the app, and the packaged Linux build, under a virtual display. CI builds macOS, Windows and Linux installers on a tag and drafts a release; it also runs the packaged app against the real bundled x0xd, offline.
 - Also fixed: the built CLI was missing `graph/context.jsonld`; the top bar now turns solid when text scrolls behind it.
 
+### Public agent skills (Nov 7)
+- **63 openly licensed skills in the starter library** (`src/seed/agent-skills.ts`, `data/seed/agent-skills.json`): 13 from Anthropic, 19 from Hugging Face, 29 from OpenAI, plus the x0x skill (Saorsa Labs) and the Autonomi ant-sdk skill.
+- **Credit:** each record carries its source (pinned to a commit or tag), its licence and a notice of what changed. Licence texts and a NOTICE are in `data/seed/LICENSES/`.
+- **What was left out:** anything without an open licence, one organisation's own brand or course material, installers, and anything that fails the privacy check as written (the rule isn't relaxed for imports).
+- **Tests:** skills may now arrive without tests, but only imported ones with a source. They're labelled "no tests yet" and can't be trialled until someone adds tests.
+- The app labels them "Public skill", with credit, licence and instructions. `scripts/import-skills.mjs` refreshes the file, and `test/gates/agent_skills.test.ts` checks it. See docs/AGENT_SKILLS.md.
+
 ## Summary of what needs a human
 1. **Live x0x (blocks confidence in every phase):** run the gates against two real `x0xd` daemons. Confirm ML-DSA signature interop between `/agent/sign` and noble, `/stores` and `/task-lists` field names, contacts → pre-trusted operators, and Spaces/DMs for chat.
 2. **Gate 1 behaviour:** `ANTHROPIC_API_KEY=… npx tsx evals/gate1.ts 3`.

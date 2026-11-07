@@ -20,10 +20,14 @@ export const SkillCard = z.object({
   description: z.string().max(400),
   capabilities: z.array(z.string().max(40)).max(12),
   price: z.number().int().min(0).describe('micro-units per run'),
-  instructions: z.string().max(12_000),
-  tests: z.array(z.object({ input: z.string().max(2000), check: z.record(z.unknown()) })).min(1).max(20),
+  instructions: z.string().max(32_000),
+  /** Its own test cases. A skill imported from elsewhere may have none yet: it can't be trialled until someone adds them. */
+  tests: z.array(z.object({ input: z.string().max(2000), check: z.record(z.unknown()) })).max(20),
   verifier: z.string(),
   license: z.string().default('MIT'),
+  /** Where an imported skill came from, pinned to a commit, and what was changed (src/seed/agent-skills.ts). */
+  source: z.object({ org: z.string().max(80), repo: z.string().max(120), path: z.string().max(200), commit: z.string().max(64), url: z.string().url().max(400) }).optional(),
+  notice: z.string().max(800).optional(),
 });
 export type SkillCard = z.infer<typeof SkillCard>;
 
@@ -33,6 +37,7 @@ export class Skills {
   /** Publish a skill. `inherits` names parent skills it was derived from, so their authors share in its earnings. */
   async publish(card: z.input<typeof SkillCard>, opts: { inherits?: string[]; domain?: string[] } = {}) {
     const c = SkillCard.parse(card);
+    if (!c.tests.length && !c.source) throw new Error('a skill needs at least one test case (only imported skills, with their source, may have none yet)');
     if (!this.verifiers.get(c.verifier)) throw new Error(`unknown verifier ${c.verifier}`);
     return this.hub.node.submit({ kind: 'skill', context: { task: c.description, domain: opts.domain ?? c.capabilities, environment: '' }, body: c, refs: opts.inherits ?? [] }, { publish: true });
   }
@@ -47,7 +52,7 @@ export class Skills {
       const runs = this.runs(s.rec.id).map((r) => r.rec.body as { passed: number; total: number });
       const passRate = runs.length ? runs.reduce((n, r) => n + r.passed / r.total, 0) / runs.length : 0;
       const score = rel.get(s.rec.id)! * (0.3 + this.hub.trust.weight(s)) * (0.5 + passRate);
-      return { id: s.rec.id, name: b.name, description: b.description, price: b.price, runs: runs.length, pass_rate: Math.round(passRate * 100) / 100, author_reputation: this.hub.trust.explain(s).author_reputation, inherits: s.rec.refs, score };
+      return { id: s.rec.id, name: b.name, description: b.description, price: b.price, tests: b.tests.length, ...(b.source ? { source: b.source.url, credit: `${b.source.org} (${b.source.repo}), ${b.license}` } : {}), runs: runs.length, pass_rate: Math.round(passRate * 100) / 100, author_reputation: this.hub.trust.explain(s).author_reputation, inherits: s.rec.refs, score };
     }).sort((a, b) => b.score - a.score).slice(0, limit);
   }
 
@@ -56,6 +61,7 @@ export class Skills {
     const s = this.hub.node.store.get(skillId);
     if (!s || s.rec.kind !== 'skill') throw new Error('unknown skill');
     const card = s.rec.body as unknown as SkillCard;
+    if (!card.tests.length) throw new Error('this skill has no test cases yet, so it cannot be trialled; it can still be used');
     const v = this.verifiers.get(card.verifier)!;
     let passed = 0;
     for (const t of card.tests) {
