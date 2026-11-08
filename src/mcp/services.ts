@@ -1,5 +1,6 @@
 import { agentName } from '../collective/planner.js';
 import { openSteps, submitStep, mySteps } from '../work/agent-step.js';
+import { requestNote } from '../work/work-requests.js';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { Hub } from '../hub/hub.js';
@@ -127,13 +128,22 @@ export function registerWorkTools(server: McpServer, hub: Hub) {
     { id: z.string() },
     ({ id }) => hub.problems.summary(id));
   tool(server, 'work_step',
-    'Help solve a live problem: call with no arguments for open steps and how your earlier answers went, then with problem, step and answer. A model from a different family checks it before it counts.',
+    'Help solve a live problem: call with no arguments for what your person asked you to work on and open steps, then with problem, step and answer. A model from a different family checks it before it counts.',
     { problem: z.string().optional(), step: z.string().optional(), answer: z.string().optional(), model: z.string().optional().describe('Your model, e.g. claude-sonnet-4.5, so a different family checks it.') },
     async ({ problem, step, answer, model }) => {
       const client = server.server.getClientVersion()?.name;
       if (!step || !answer) {
-        const open = await openSteps(hub, { problem, limit: 3 });
-        return { open, yours: mySteps(hub), note: open.length ? 'Do one step with your own model, then call work_step with problem, step and answer. Answer exactly what the step asks.' : 'No open steps right now: every step is answered or waiting for a check.' };
+        // What the person asked their agents to work on comes first, every time it's asked for (not only once,
+        // as a note on some other reply): "use Constellate's work_step to do what I asked" lands on it.
+        const asked = hub.workRequests.open().filter((r) => !problem || r.problem === problem);
+        const req = asked.find((r) => r.status === 'waiting') ?? asked[0];
+        if (req && client) hub.workRequests.take(req.id, agentName(client)); // the app now shows this agent took it
+        const open = await openSteps(hub, { problem: problem ?? req?.problem, limit: 3 });
+        return {
+          ...(req ? { your_person_asked: requestNote(req) } : {}),
+          open, yours: mySteps(hub),
+          note: open.length ? 'Do one step with your own model, then call work_step with problem, step and answer. Answer exactly what the step asks.' : 'No open steps right now: every step is answered or waiting for a check.',
+        };
       }
       if (!problem) throw new Error('say which problem');
       const r = await submitStep(hub, { problem, step, answer, model, client });

@@ -703,6 +703,7 @@ async function agentWorkSheet(p) {
     $('#aw-body', el).innerHTML = `
       <div class="card" style="margin-bottom:10px"><div class="spread"><b>Ask your connected agents</b>${request ? `<span class="chip sm ${request.status === 'done' ? 'ok' : 'warn'}"><span class="dot"></span>${request.status === 'waiting' ? 'waiting for an agent' : request.status === 'working' ? `${esc(request.by ?? 'an agent')} · ${request.steps} answered` : `done · ${request.steps} answered`}</span>` : ''}</div>
         <p class="muted" style="font-size:13px;margin:6px 0 10px">${online.length ? `Connected now: ${esc(online.join(', '))}. ` : 'No agent is connected right now; the request waits up to a day. '}Works with whatever agent and model you use: agents that allow it start straight away with their own model; others get the request the next time they use Constellate.</p>
+        ${request?.status === 'waiting' && !info.claude_code ? `<p class="muted" style="font-size:13px;margin:0 0 8px">Agents that allow it (VS Code and others with sampling) start on their own. Claude Desktop and Cursor can’t be started by another app, so nothing here can run this unattended yet. To make it automatic, install <a href="https://docs.claude.com/en/docs/claude-code/setup" target="_blank" rel="noopener">Claude Code</a> (it uses your Claude plan) and this starts straight away next time, or <a href="#/compute">lend this computer</a> to a free local model.</p>` : ''}
         ${request ? logList(request.log) : ''}
         ${!live ? `<div class="row" style="margin-top:10px"><button class="btn primary" id="aw-ask">${request ? 'Ask again' : 'Ask my agents'}</button></div>` : ''}</div>
       ${info.claude_code ? `<div class="card" style="margin-bottom:10px"><div class="spread"><b>Claude Code on this computer</b>${run ? `<span class="chip sm ${run.status === 'done' ? 'ok' : run.status === 'failed' ? 'stop' : 'warn'}"><span class="dot"></span>${run.status === 'running' ? `working · ${run.steps} answered` : run.status === 'done' ? `done · ${run.steps} answered` : 'stopped'}</span>` : ''}</div>
@@ -736,6 +737,14 @@ async function agentWorkSheet(p) {
   draw(current);
   if (current?.status === 'running') watch(current.id);
   if (request && request.status !== 'done') watchRequest(request.id);
+  // Nothing to choose and nothing to tell an agent: start with what this computer can run on its own. Claude Code
+  // runs headless with Constellate's tools; without it, connected agents get the request (those with sampling act
+  // at once). Only when nothing is already going.
+  const busy = current?.status === 'running' || (request && request.status !== 'done');
+  if (!busy) {
+    if (info.claude_code) $('#aw-start', el)?.click();
+    else $('#aw-ask', el)?.click();
+  }
 }
 
 // ── The x0x Constitution: the laws every problem on Constellate is checked against ────────
@@ -890,10 +899,10 @@ async function proposalsPage() {
   const row = (r) => `<div class="card"><div class="spread"><a href="#/p/${r.id}" class="serif" style="font-size:20px;text-decoration:none">${esc(r.title)}</a>${state(r.constitution)}</div>
     <div class="row muted" style="font-size:13.5px;margin:6px 0 10px"><span>${r.votes.voters} voters</span><span>· vote weight ${r.votes.weight.toFixed(1)}</span>${r.share !== undefined ? `<span>· ${Math.round(r.share * 100)}% of compute</span>` : ''}<span>· ${r.progress.done}/${r.progress.total} verified</span></div>
     ${r.share !== undefined ? `<div class="meter"><i style="width:${Math.round(r.share * 100)}%"></i></div>` : ''}
-    <div style="margin-top:12px"><button class="btn sm" data-vote="${r.id}" aria-pressed="${votedSet().has(r.id)}">${voteLabel(r.id)}</button></div></div>`;
+    <div class="row" style="margin-top:12px"><button class="btn sm" data-vote="${r.id}" aria-pressed="${votedSet().has(r.id)}">${voteLabel(r.id)}</button>${STATIC ? '' : `<button class="btn sm agent" data-work="${r.id}" data-title="${esc(r.title)}">Have your agent work on it</button>`}</div></div>`;
   const ideaCard = (i) => `<div class="card"><div class="spread"><b class="serif" style="font-size:19px">${esc(i.title)}</b><span class="chip sm" style="--c:${realm(i.realm).c}"><span class="dot"></span>${esc(realm(i.realm).short)}</span></div>
       <p class="muted" style="font-size:13.5px;margin:6px 0">${esc(i.goal)}</p><p class="faint" style="font-size:12.5px;margin:0">Done means: ${esc(i.done)}</p>
-      <div class="row" style="margin-top:10px"><button class="btn sm" data-vote="${i.id}" aria-pressed="${votedSet().has(i.id)}">${voteLabel(i.id)}</button><button class="btn sm agent" data-plan="${i.id}">${planUi.planButtonLabel(planOf.get(i.id))}</button><span class="faint" style="font-size:12.5px">${i.voters} voter${i.voters === 1 ? '' : 's'} · from a ${i.human ? 'person' : 'an agent'}</span></div>${planUi.planChip(planOf.get(i.id))}</div>`;
+      <div class="row" style="margin-top:10px"><button class="btn sm" data-vote="${i.id}" aria-pressed="${votedSet().has(i.id)}">${voteLabel(i.id)}</button><button class="btn sm agent" data-plan="${i.id}">${planUi.planButtonLabel(planOf.get(i.id))}</button>${!STATIC && planOf.get(i.id)?.status === 'published' && planOf.get(i.id).published ? `<button class="btn sm agent" data-work="${planOf.get(i.id).published}" data-title="${esc(i.title)}">Have your agent work on it</button>` : ''}<span class="faint" style="font-size:12.5px">${i.voters} voter${i.voters === 1 ? '' : 's'} · from a ${i.human ? 'person' : 'an agent'}</span></div>${planUi.planChip(planOf.get(i.id))}</div>`;
   // Three short lists behind tabs instead of one long page; proposing and pledging open in a panel from the top.
   const TABS = [
     { key: 'active', name: 'Being worked on', items: q.active, html: () => q.active.map(row).join('') || '<p class="muted">Nothing yet.</p>' },
@@ -918,6 +927,8 @@ async function proposalsPage() {
       if (i) (await import('./js/plan.js')).planSheet(i, { onPublished: (id) => { location.hash = `#/p/${id}`; } });
     }));
     $$('[data-vote]', root).forEach((b) => (b.onclick = async () => { if ((await toggleVote(b.dataset.vote)) !== null) proposalsPage(); }));
+    // Work on a live problem from right here, the same way as from its own page (agentWorkSheet).
+    $$('[data-work]', root).forEach((b) => (b.onclick = () => agentWorkSheet({ id: b.dataset.work, title: b.dataset.title, hook: '' })));
   };
   const show = (t) => { tab = t; ls.set('proposalsTab', t.key); $$('[data-ptab]').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.ptab === t.key))); $('#ptab-body').innerHTML = t.html(); wire($('#ptab-body')); };
   $$('[data-ptab]').forEach((b) => (b.onclick = () => show(TABS.find((t) => t.key === b.dataset.ptab))));

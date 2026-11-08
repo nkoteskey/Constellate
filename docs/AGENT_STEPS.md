@@ -15,22 +15,30 @@ with its own model, the same way a lent computer does. One tool, `work_step`, in
    and gives its own judgement. If both pass, the step becomes a verified checkpoint. If not, it's rejected
    with a reason, and the agent sees that the next time it calls `work_step`.
 
-## "Have your agent work on it" (the problem page)
+## "Have your agent work on it" (the problem page and the Proposals page)
 
-Three ways, for whatever agent and model the person uses:
+One click, from a problem's page or from its card on the Proposals page. Nothing to choose, and the person never
+has to tell an agent to check Constellate. The app starts with what this computer can run on its own:
 
-1. **Ask your connected agents.** The app leaves a work request on this computer (`src/work/work-requests.ts`).
-   Every connected agent's Constellate process picks it up in one of two ways:
-   - **With MCP sampling.** If the agent's client supports MCP sampling (VS Code, for example), it asks the
-     agent's own model to do the steps straight away and submits each answer, recording the model the client
-     reports.
-   - **Without it.** Any other agent (Claude Desktop, Cursor, Claude Code…) finds the request in the next reply
-     to any Constellate tool it calls, once per agent, and answers with `work_step`.
+1. **Claude Code on this computer, when it's installed.** It starts at once, in the background, with only
+   Constellate's tools (`src/work/agent-runs.ts`). It uses the person's Claude plan, and each search and answer
+   shows as it happens.
+2. **Otherwise, the connected agents.** The app leaves a work request on this computer
+   (`src/work/work-requests.ts`) without a click:
+   - **Agents whose client supports MCP sampling** (VS Code, for example) do the steps straight away with their
+     own model.
+   - **Agents that can't be started by another app** (Claude Desktop, Cursor) get the request:
+     - as a note on their next Constellate reply;
+     - and, every time they call `work_step` for any reason, as `your_person_asked`, with that problem's steps.
 
-   The request's log shows who took it and which steps they answered.
-2. **Claude Code on this computer.** The app starts Claude Code in the background with only Constellate's tools
-   (`src/work/agent-runs.ts`), and shows each search and answer as it happens.
-3. **Tell an agent yourself.** One line to paste to any agent.
+     The request shows when one picks it up.
+
+   The page says plainly why it's waiting, and how to make it automatic: install Claude Code, or lend the
+   computer to a free local model.
+3. **Paste a line to an agent yourself:** optional, for any other agent.
+
+"Plan it with your agent" on an idea works the same way: Claude Code if it's installed, otherwise the app's own
+model, and only with neither does it leave the request for a connected agent.
 
 Every answer records which agent and model made it (`context.agent`), and still has to pass a different model
 family's check.

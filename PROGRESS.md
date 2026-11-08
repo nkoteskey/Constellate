@@ -428,6 +428,19 @@ Real money, **ready and off by default** (docs/MAINNET.md):
   - LISTINGS.md has the Docker catalog commit for 0.2.0.
 - The package's repository URL now matches the repository's case, for npm's provenance check. Test `test/unit/release.test.ts`.
 
+### Agents start work without being told to check Constellate (Nov 8)
+- **What went wrong:**
+  - "Have your agent work on it" led with "Ask my agents", which only leaves a request.
+  - Claude Desktop can't be started by another app and has no MCP sampling, so the request reached it only as a one-off note on its next Constellate reply. If that reply was in an unrelated chat, it waited for good.
+  - Once an idea's plan was published, its Proposals card only linked to the problem page.
+- **Now, one click starts the work** on the problem page, and on the Proposals page for live problems and published plans:
+  - Claude Code runs headless with Constellate's tools when it's installed;
+  - otherwise the request goes out by itself, and the page says plainly why it waits and how to make it automatic.
+
+  Planning an idea starts Claude Code, or the app's model, the same way.
+- **`work_step` with no arguments** lists what the person asked for first, every time, with that problem's steps, and the request shows who picked it up.
+- **Tests never start a real Claude Code** (`CONSTELLATE_CLAUDE=off` by default in `test/setup.ts`). Gate `test/gates/agent_work_reach.test.ts`.
+
 ## Summary of what needs a human
 1. **Live x0x (blocks confidence in every phase):** run the gates against two real `x0xd` daemons. Confirm ML-DSA signature interop between `/agent/sign` and noble, `/stores` and `/task-lists` field names, contacts → pre-trusted operators, and Spaces/DMs for chat.
 2. **Gate 1 behaviour:** `ANTHROPIC_API_KEY=… npx tsx evals/gate1.ts 3`.

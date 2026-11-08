@@ -62,7 +62,7 @@ export async function planSheet(idea, { onPublished } = {}) {
     }
     const rep = req.report;
     body.innerHTML = `<div class="spread" style="margin-bottom:10px"><span class="chip ${req.status === 'reported' || req.status === 'published' ? 'ok' : ''}"><span class="dot"></span>${STATUS[req.status] ?? req.status}</span><span class="faint" style="font-size:12px">${req.agent ? `from ${esc(req.agent)}` : ''}</span></div>
-      ${req.status === 'waiting' ? `<p class="muted" style="font-size:13.5px">Open your agent and say: <b>“check Constellate for planning requests”</b>. It finds this request with its <code>plan_report</code> tool, researches it and reports back here.</p><div class="row"><button class="btn sm" id="plan-copy">Copy that for your agent</button></div>` : ''}
+      ${req.status === 'waiting' ? `<p class="muted" style="font-size:13.5px">Waiting for a connected agent: those that allow it pick it up on their own. Claude Desktop and Cursor can’t be started by another app; with <a href="https://docs.claude.com/en/docs/claude-code/setup" target="_blank" rel="noopener">Claude Code</a> installed, planning starts straight away.</p><div class="row"><button class="btn sm" id="plan-copy">Copy a request to paste into an agent yourself</button></div>` : ''}
       ${req.status === 'running' ? `<p class="muted" style="font-size:13.5px">Researching related work and drafting checkable steps, for ${since(req.at)} so far. You can close this: the idea’s card on the Proposals page shows how it’s going.</p>` : ''}
       ${activity(req)}
       ${req.status === 'failed' ? `<p class="muted" style="font-size:13.5px">${esc(req.error ?? 'It didn’t finish.')}</p>` : ''}
@@ -97,4 +97,7 @@ export async function planSheet(idea, { onPublished } = {}) {
   const open = d.requests.find((r) => ['waiting', 'running', 'reported'].includes(r.status)) ?? (d.requests[0]?.status === 'failed' ? d.requests[0] : undefined);
   draw(open ?? null);
   if (open && open.status !== 'reported') watch(open.id);
+  // Nothing to choose: start with what this computer can run on its own (Claude Code, else the app's model). Only
+  // with neither does it list the ways in, including leaving it for a connected agent.
+  if (!open && (d.options.claude_code || d.options.model)) $(`[data-via="${d.options.claude_code ? 'claude_code' : 'model'}"]`, el)?.click();
 }
