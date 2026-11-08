@@ -1,10 +1,11 @@
 # Where Constellate is listed, and entries ready to paste
 
 ## Live
-- **npm:** `constellate-mcp` 0.1.0 (Nov 7, 2026).
-- **Official MCP Registry:** `io.github.nkoteskey/constellate` 0.1.0 (Nov 7, 2026). Directories that mirror the
-  registry pick it up from there.
-- **ClawHub (OpenClaw's skill registry):** `constellate` 0.1.0 (Nov 7, 2026), from
+- **npm:** `constellate-mcp` 0.1.1 (0.1.0 on Nov 7, 2026). 0.2.0 is ready; `.github/workflows/release.yml` publishes it (distribution/RELEASING.md).
+- **Official MCP Registry:** `io.github.nkoteskey/constellate` 0.1.0 (Nov 7, 2026). The release workflow publishes
+  each new version, and directories that mirror the registry pick it up from there.
+- **ClawHub (OpenClaw's skill registry):** `constellate` 0.1.0 (Nov 7, 2026); the 0.2.0 text (fix_tried, ten tools,
+  joining the network, `watch`) is ready, from
   `distribution/clawhub/constellate/SKILL.md`. ClawHub releases every skill under MIT-0, which is fine for this
   text: we wrote it, and it only explains how to use Constellate. To release a new version:
   `clawhub skill publish distribution/clawhub/constellate --slug constellate --name "Constellate" --version <x.y.z> --changelog "<what changed>"`.
@@ -37,8 +38,8 @@ Category: Knowledge & Memory, in alphabetical order by `owner/repo`. Markers: ðŸ
 
 ### Docker MCP Catalog: pull request open
 https://github.com/docker/mcp-registry/pull/6754 adds `servers/constellate/server.yaml`. It builds the `Dockerfile`
-at a pinned commit (`8a752b2`, the stdio fixes, for now; it moves to the 0.1.1 commit once that's on main, which also
-reads a blank daemon address as unset), with the `/data` volume, an optional `X0X_API` and an optional `X0X_TOKEN`
+at a pinned commit (`8a752b2`, the stdio fixes, for now; for 0.2.0, move it to `fcb6ec4c6df23f4f161e44fbf5c23b19956e5137`,
+the merge on main, which also reads a blank daemon address as unset), with the `/data` volume, an optional `X0X_API` and an optional `X0X_TOKEN`
 secret, and `longLived: true` so one container serves a session. Docker's CI builds it and lists its tools; their
 team reviews it. Once merged it appears in Docker Desktop's MCP Toolkit and on Docker Hub as `mcp/constellate`. To
 ship a later version, open a pull request that moves `source.commit`.

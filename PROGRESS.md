@@ -415,6 +415,19 @@ Real money, **ready and off by default** (docs/MAINNET.md):
 - **Result,** same setup: People about 30 ms, Me about 20 ms, Compute about 15 ms (was 265 ms).
 - Gate `test/gates/navigation_speed.test.ts`: every page under 400 ms with x0x 600 ms late, and no page errors.
 
+### Releasing from GitHub (Nov 8)
+- **`.github/workflows/release.yml`** publishes a version when a `v*` tag is pushed, or from Actions → Release → Run workflow:
+  - to npm with provenance, through npm trusted publishing, so no token or password is stored or typed;
+  - to the MCP Registry, signed in with GitHub's own OIDC.
+
+  It runs the full test suite first and skips anything already published.
+- **What needs the owner:** a one-time Trusted Publisher setting on npmjs.com (distribution/RELEASING.md).
+- **Listings brought up to 0.2.0:**
+  - the registry entry's variables describe joining the network;
+  - the ClawHub text covers `fix_tried`, ten tools and `watch`;
+  - LISTINGS.md has the Docker catalog commit for 0.2.0.
+- The package's repository URL now matches the repository's case, for npm's provenance check. Test `test/unit/release.test.ts`.
+
 ## Summary of what needs a human
 1. **Live x0x (blocks confidence in every phase):** run the gates against two real `x0xd` daemons. Confirm ML-DSA signature interop between `/agent/sign` and noble, `/stores` and `/task-lists` field names, contacts → pre-trusted operators, and Spaces/DMs for chat.
 2. **Gate 1 behaviour:** `ANTHROPIC_API_KEY=… npx tsx evals/gate1.ts 3`.
@@ -426,7 +439,7 @@ Real money, **ready and off by default** (docs/MAINNET.md):
 8. **Gate 6 for real:** five first-time users, unaided, timed to first contribution.
 9. **Open questions from the sketch, with current defaults:** hub name (working name "Constellate"); MCP server runs locally per agent; deposit and pricing levels (test values only); scrubbing strictness (strict by default in `fromEnv`, preview on); humans can browse the ledger (public reads); reputation bootstraps without a paywall (pre-trusted seeds plus confirming work; deposits optional).
 10. **Desktop release:** `v0.1.0` is tagged (Nov 7) and its release drafted by the Desktop workflow; review it and publish. Code-signing certificates (Apple Developer ID, Windows) would remove first-launch warnings. Check the app's x0x on a real home network.
-11. **npm 0.2.0:** the version is bumped (0.1.1 was never published). Once it's on main, `npm publish` (security-key sign-in), then `mcp-publisher publish` for the MCP Registry entry, and push the tag `v0.2.0` (docs/releases/v0.2.0.md). The ClawHub skill text hasn't changed, so it stays at 0.1.0.
+11. **npm 0.2.0:** once npm's Trusted Publisher is set for `release.yml` (distribution/RELEASING.md), run Actions → Release (or push the tag `v0.2.0`): it publishes to npm and the MCP Registry. Then `clawhub skill publish …` for the 0.2.0 skill text, and move the Docker catalog pull request to `fcb6ec4`.
 12. **Listings that need the owner's sign-in** (`distribution/LISTINGS.md`): Glama (then the `punkpeye/awesome-mcp-servers` pull request, which needs Glama's badge), cursor.directory, and the mcpservers.org form (it asks for a contact email). Decide whether to turn on GitHub's private vulnerability reporting; Docker's pull request template asks for a security contact.
 13. **Two-computer check:** run `node scripts/two-computer-check.mjs share` on one computer and `… wait <tag>` on another (docs/NETWORK.md), and note the delay.
 14. **Seed sources** (docs/SEED_SOURCES.md):
