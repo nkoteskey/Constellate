@@ -1,4 +1,5 @@
 import { createServer, IncomingMessage, Server, ServerResponse } from 'node:http';
+import { reproduction } from '../services/reproduce.js';
 import { AddressInfo } from 'node:net';
 import { readFileSync, existsSync } from 'node:fs';
 import { join, extname, dirname } from 'node:path';
@@ -37,7 +38,7 @@ export class WebServer {
     this.route('GET', /^\/api\/records\/([0-9a-f]{64})$/, (_r, m) => {
       const s = this.hub.node.store.get(m[1]);
       if (!s || s.visibility !== 'public') throw Object.assign(new Error('not found'), { status: 404 });
-      return { record: s.rec, operator: s.operatorId, human: /^human\b/.test(s.rec.context.environment), neighbours: this.hub.graph.neighbours(s.rec.id, 4), trust: this.hub.trust.explain(s), referenced_by: this.hub.node.store.referencing(m[1]).map((r) => ({ id: r.rec.id, kind: r.rec.kind, operator: r.operatorId })) };
+      return { record: s.rec, operator: s.operatorId, human: /^human\b/.test(s.rec.context.environment), neighbours: this.hub.graph.neighbours(s.rec.id, 4), trust: this.hub.trust.explain(s), reproduction: reproduction(this.hub.node.store, s), referenced_by: this.hub.node.store.referencing(m[1]).map((r) => ({ id: r.rec.id, kind: r.rec.kind, operator: r.operatorId })) };
     });
   }
 

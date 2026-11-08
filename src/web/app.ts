@@ -1,4 +1,5 @@
 import { readFileSync, existsSync } from 'node:fs';
+import { reproduction } from '../services/reproduce.js';
 import { homedir } from 'node:os';
 import { decodeCanonical } from '../core/canonical.js';
 import { ActivityLog, Presence } from '../hub/activity.js';
@@ -542,7 +543,7 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
     const q = String(url.searchParams.get('q') ?? '').slice(0, 500).trim();
     if (!q) return { q, failures: [], answers: [], learned: [], skills: [], guide: null };
     const failures = hub.ledger.searchFailures(q, { limit: 6 }).map((f) => ({ ...f, fixes: f.fixed_by.map((id) => { const a = hub.node.store.get(id); const b = a?.rec.body as { answer: string; headline?: string; proof?: { type: string; detail: string } } | undefined;
-      return a && b ? { id, answer: b.answer, headline: b.headline, proof: b.proof, source: a.rec.evidence[0] ?? null, confirmations: hub.trust.explain(a).confirmations, domain: a.rec.context.domain } : null; }).filter(Boolean) }));
+      return a && b ? { id, answer: b.answer, headline: b.headline, proof: b.proof, source: a.rec.evidence[0] ?? null, confirmations: hub.trust.explain(a).confirmations, confirmed: reproduction(hub.node.store, a).label, domain: a.rec.context.domain } : null; }).filter(Boolean) }));
     const answers = hub.ledger.lookupAnswers(q, { limit: 3 });
     const onX0x = await hub.x0xSkills.capabilities(q, 2).catch(() => []);
     const asksAboutWork = /happening|progress|status|how('s| is)|going|what about/i.test(q);

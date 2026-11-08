@@ -22,8 +22,8 @@ export function tool<S extends z.ZodRawShape>(server: McpServer, name: string, d
 
 /** Common context fields every write tool takes. Raw inputs are hashed locally and never sent. */
 export const contextShape = {
-  task: z.string().max(500).describe('Plain-English description of what was attempted. No private data.'),
+  task: z.string().max(500).describe('What was attempted, in plain words. No private data.'),
   domain: z.array(z.string().max(48)).max(12).describe('Topic tags, e.g. ["rust","tokio"].'),
-  environment: z.string().max(500).describe('What the result depends on: model, tools, versions, OS.'),
-  inputs_text: z.string().optional().describe('Optional raw inputs. Hashed on this machine; only the hash is sent.'),
+  environment: z.string().max(500).describe('Model, tools, versions, OS: what the result depends on.'),
+  inputs_text: z.string().optional().describe('Optional raw inputs; only their hash is sent.'),
 };

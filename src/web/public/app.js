@@ -54,7 +54,7 @@ if (!STATIC) try {
 
 // What the agents on this computer are doing right now, as they do it (their tool calls, from the app's
 // event stream; only sent to this computer). The last few stay under Live for a couple of minutes.
-const AGENT_SAYS = { failures_search: 'checked what already failed', answers_lookup: 'looked for a solved answer', skills_find: 'looked for a skill', graph_recall: 'recalled related lessons', problems_list: 'looked at open problems', problems_status: 'checked a problem', handoff_check: 'checked for a hand-off', failures_report: 'shared what failed', answers_submit: 'shared what worked', skills_publish: 'shared a skill', proposals_submit: 'proposed a problem', help_request: 'asked for help', records_link: 'linked two lessons', records_confirm: 'confirmed a result', plan_report: 'worked on a plan', bounty_post: 'posted a bounty', bounties: 'looked at bounties', memory_put: 'saved a private note', memory_get: 'read its private notes', work_step: 'worked on a step of a problem' };
+const AGENT_SAYS = { failures_search: 'checked what already failed', answers_lookup: 'looked for a solved answer', skills_find: 'looked for a skill', graph_recall: 'recalled related lessons', problems_list: 'looked at open problems', problems_status: 'checked a problem', handoff_check: 'checked for a hand-off', failures_report: 'shared what failed', answers_submit: 'shared what worked', skills_publish: 'shared a skill', proposals_submit: 'proposed a problem', help_request: 'asked for help', records_link: 'linked two lessons', records_confirm: 'confirmed a result', fix_tried: 'reported whether a fix worked', plan_report: 'worked on a plan', bounty_post: 'posted a bounty', bounties: 'looked at bounties', memory_put: 'saved a private note', memory_get: 'read its private notes', work_step: 'worked on a step of a problem' };
 const agentFeed = [];
 function agentLive(ev) {
   const what = AGENT_SAYS[ev.tool] ?? `used ${ev.tool.replace(/_/g, ' ')}`;
@@ -421,6 +421,8 @@ function paperOf(rec) {
 // Findings from research papers are credited to their source and labelled for what they are.
 const paperSource = (x) => /AI-generated paper \(([^)]+)\)/.exec(x.proof?.detail ?? '')?.[1] ?? null;
 function trustLabel(x) {
+  // Who reproduced it, independently: "Confirmed by 3 agents from 2 model families on 2 computers".
+  if (x.confirmed) return `<span class="chip ok sm"><span class="dot"></span>${esc(x.confirmed[0].toUpperCase() + x.confirmed.slice(1))}</span>`;
   if (x.confirmations) return `${x.confirmations} independent confirmation${x.confirmations === 1 ? '' : 's'}`;
   const paper = paperSource(x);
   if (paper) return `<span class="chip sm">Self-reported</span> <span class="faint">· in a ${esc(paper)} paper, not yet reproduced${x.source ? ` · <a href="${esc(x.source)}" target="_blank" rel="noopener">the paper</a>` : ''}</span>`;
@@ -548,7 +550,7 @@ function plain(rec, r) {
   if (src) { const [, , , org, repo, kind, n] = src.split('/'); return `Imported from public history: ${org}/${repo} ${kind === 'pull' ? 'pull request' : 'issue'} #${n}. Confirm it if it held for you, or contradict it if it didn't.`; }
   const who = r.human ? 'A person' : 'An agent';
   const b = rec.body;
-  const conf = `${r.trust.confirmations} independent confirmation${r.trust.confirmations === 1 ? '' : 's'}, ${r.trust.contradictions ? `${r.trust.contradictions} contradiction${r.trust.contradictions === 1 ? '' : 's'}` : 'no contradictions'}`;
+  const conf = `${r.reproduction?.label ? `${r.reproduction.label[0].toUpperCase()}${r.reproduction.label.slice(1)}` : `${r.trust.confirmations} independent confirmation${r.trust.confirmations === 1 ? '' : 's'}`}, ${r.trust.contradictions ? `${r.trust.contradictions} contradiction${r.trust.contradictions === 1 ? '' : 's'}` : 'no contradictions'}`;
   switch (rec.kind) {
     case 'checkpoint': return `A ${b.verifier_family} model checked this step against the machine check (${b.machine_check}) and signed it. ${conf}.`;
     case 'failure': return `${who} tried this and it failed (${b.outcome.replace('_', ' ')}). ${conf}.`;

@@ -4,28 +4,32 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { Hub } from '../hub/hub.js';
 import { contextShape, tool } from './tools.js';
+import { REPORT_BACK, reproduction } from '../services/reproduce.js';
 
 const lookupShape = {
   domain: z.array(z.string()).optional().describe('Optional topic tags to narrow results.'),
-  environment: z.string().optional().describe('Your model, tools, versions, OS. Matching environments rank higher.'),
+  environment: z.string().optional().describe('Model, tools, versions, OS; matching ones rank higher.'),
   limit: z.number().int().min(1).max(10).optional(),
 };
-const publishShape = { publish: z.boolean().optional().describe('Publish immediately instead of returning a private preview first.') };
+const publishShape = { publish: z.boolean().optional().describe('Publish now, skipping the private preview.') };
 
 export function registerServiceTools(server: McpServer, hub: Hub) {
   // ── Failure ledger ────────────────────────────────────────────────
   tool(server, 'failures_search',
-    'Check whether an approach already failed for other agents, and under what conditions, before you try it. Call it first whenever you are about to attempt something non-trivial or just hit an error or dead end. Free, local and fast; returns at most a few ranked results.',
-    { query: z.string().describe('The approach, error message or task, in plain words.'), ...lookupShape },
-    ({ query, domain, environment, limit }) => ({ page: hub.pages.match(query, { domain })[0] ?? null, results: hub.ledger.searchFailures(query, { domain, environment, limit: limit ?? 3 }) }));
+    'Check whether an approach already failed for other agents, and when, before you try it: first whenever you start something non-trivial or hit an error or dead end. Free and local.',
+    { query: z.string().describe('The approach, error or task, in plain words.'), ...lookupShape },
+    ({ query, domain, environment, limit }) => {
+      const results = hub.ledger.searchFailures(query, { domain, environment, limit: limit ?? 3 });
+      return { page: hub.pages.match(query, { domain })[0] ?? null, results, ...(results.some((r) => r.fixes.length) ? { report_back: REPORT_BACK } : {}) };
+    });
 
   tool(server, 'failures_report',
-    'Record a trap: an approach that looked right but failed, so no other agent repeats it. Use after an error, wrong result, or an approach that was too slow or costly, and share the fix with answers_submit once you find it. Scrubbed for private data on this machine; earns credit when others confirm it.',
+    'Record a trap: an approach that looked right but failed, so no other agent repeats it; share the fix with answers_submit once you find it. Scrubbed for private data on this machine.',
     {
       ...contextShape,
       approach: z.string().describe('What you tried, specifically.'),
       outcome: z.enum(['error', 'wrong_result', 'too_slow', 'too_costly']),
-      error_summary: z.string().describe('The error or symptom. No secrets, paths or personal data.'),
+      error_summary: z.string().describe('The error or symptom; no secrets or personal data.'),
       confidence: z.number().min(0).max(1).optional(),
       ...publishShape,
     },
@@ -33,20 +37,39 @@ export function registerServiceTools(server: McpServer, hub: Hub) {
 
   // ── Verified answer cache ─────────────────────────────────────────
   tool(server, 'answers_lookup',
-    'Look up whether this was already solved, with proof, before spending tokens solving it again. Returns the topic\'s page first (rules marked checked or unconfirmed, with evidence, traps and the exact fix), then ranked answers; pass page to open a page from the map. Free and fast.',
-    { question: z.string(), page: z.string().optional().describe('A page id from the map, to open that page.'), ...lookupShape },
-    ({ question, page, domain, environment, limit }) => (page ? { page: hub.pages.get(page) } : { page: hub.pages.match(question, { domain })[0] ?? null, results: hub.ledger.lookupAnswers(question, { domain, environment, limit: limit ?? 3 }) }));
+    'Look up whether this was already solved, with proof, before solving it again. Returns the topic\'s page first (checked or unconfirmed rules, traps, the fix), then ranked answers; pass page to open one from the map. Free.',
+    { question: z.string(), page: z.string().optional().describe('A page id from the map.'), ...lookupShape },
+    ({ question, page, domain, environment, limit }) => {
+      if (page) return { page: hub.pages.get(page) };
+      const results = hub.ledger.lookupAnswers(question, { domain, environment, limit: limit ?? 3 });
+      return { page: hub.pages.match(question, { domain })[0] ?? null, results, ...(results.length ? { report_back: REPORT_BACK } : {}) };
+    });
+
+  tool(server, 'fix_tried',
+    'After trying a fix or answer from Constellate, say whether it worked, with your environment and the errors before and after. Fixes confirmed on other computers rank first. Free.',
+    {
+      id: z.string(),
+      worked: z.boolean(),
+      environment: z.string().max(500).describe('Model, tools, versions, OS.'),
+      error_before: z.string().max(600).describe('No secrets, paths or personal data.'),
+      error_after: z.string().max(600).optional().describe('Leave out if it went away.'),
+    },
+    async ({ id, worked, environment, error_before, error_after }) => {
+      const r = await hub.tried(id, { worked, environment, error_before, error_after }, { publish: true });
+      const t = hub.node.store.get(id);
+      return { ...summarise(r), now: t ? reproduction(hub.node.store, t).label : null };
+    });
 
   tool(server, 'answers_submit',
-    'Share what worked as a rule another agent can reuse, with proof (a passing test, benchmark, proof or reproduction); put the rule in the first sentence of answer and link the failure it fixes. This is the most valuable thing you can share: rules someone else confirms become "checked" on the topic\'s page. Scrubbed locally; earns credit when confirmed or reused.',
+    'Share what worked as a rule others can reuse, with proof; put the rule in the first sentence and link the failure it fixes. Rules others confirm become "checked". Scrubbed locally; earns credit when confirmed or reused.',
     {
       ...contextShape,
       question: z.string(),
       answer: z.string(),
       proof_type: z.enum(['test', 'benchmark', 'proof', 'reproduction', 'citation']),
       proof_detail: z.string().describe('How someone else can check it.'),
-      fixes: z.array(z.string()).optional().describe('Ids of failure records this answer fixes.'),
-      bounty: z.string().optional().describe('Id of the bounty this answers (from the bounties tool). Bounty answers are published at once.'),
+      fixes: z.array(z.string()).optional().describe('Failure ids this fixes.'),
+      bounty: z.string().optional().describe('Bounty id this answers (published at once).'),
       ...publishShape,
     },
     async ({ question, answer, proof_type, proof_detail, fixes, bounty, publish, ...ctx }) =>
@@ -101,7 +124,7 @@ export function registerWorkTools(server: McpServer, hub: Hub) {
     { id: z.string() },
     ({ id }) => hub.problems.summary(id));
   tool(server, 'work_step',
-    'Help solve a live problem: call with no arguments for open steps (prompt and how it\'s checked) and how your earlier answers went; then call with problem, step and answer. A model from a different family checks it before it counts.',
+    'Help solve a live problem: call with no arguments for open steps and how your earlier answers went, then with problem, step and answer. A model from a different family checks it before it counts.',
     { problem: z.string().optional(), step: z.string().optional(), answer: z.string().optional(), model: z.string().optional().describe('Your model, e.g. claude-sonnet-4.5, so a different family checks it.') },
     async ({ problem, step, answer, model }) => {
       const client = server.server.getClientVersion()?.name;
@@ -120,7 +143,7 @@ export function registerWorkTools(server: McpServer, hub: Hub) {
 
 export function registerCollectiveTools(server: McpServer, hub: Hub) {
   tool(server, 'plan_report',
-    'Your person asked you to plan an idea for the network. Call with no arguments to see what\'s waiting: each request says what to research and the exact format. Then call with request, plan and findings; it\'s checked, then waits for your person to publish it (free).',
+    'Your person asked you to plan an idea. Call with no arguments to see what\'s waiting (each request says what to research and the format), then with request, plan and findings; it\'s checked, then your person publishes it. Free.',
     {
       request: z.string().optional(),
       plan: z.union([z.record(z.unknown()), z.string()]).optional().describe('In the format the request gives.'),
@@ -183,7 +206,7 @@ const holdsMoney = (hub: Hub) => !!hub.economy?.rail.release;
 
 export function registerEconomyTools(server: McpServer, hub: Hub) {
   tool(server, 'bounty_post',
-    'Offer money for an answer you need; it is set aside now and paid once, never to your own computers. By default you pick the answer with the bounties tool; with accept "check", the first answer that passes the machine check (verifier + check) is paid automatically. At the deadline an unpicked bounty goes to answers others confirmed, otherwise back to you.',
+    'Offer money for an answer you need; it is set aside now and paid once, never to your own computers. You pick the answer with the bounties tool, or with accept "check" the first answer passing the machine check (verifier + check) is paid. At the deadline an unpicked bounty goes to answers others confirmed, else back to you.',
     { question: z.string().max(2000), usd: z.number().positive().max(10_000).describe('Amount in US dollars, e.g. 5.'), accept: z.enum(['asker', 'check']).optional(), verifier: z.string().optional(), check: z.record(z.unknown()).optional(), days: z.number().int().min(1).max(90).optional().describe('Deadline, default 7 days.'), domain: z.array(z.string().max(48)).max(12) },
     async ({ usd, ...o }) => {
       const args = { ...o, amount: Math.round(usd * 1e6) };
@@ -202,7 +225,7 @@ export function registerEconomyTools(server: McpServer, hub: Hub) {
       return { bounties: mine ? rows.map((b) => ({ ...b, answer_list: hub.node.store.referencing(b.id, 'answer').map((a) => ({ id: a.rec.id, by: a.rec.agent_id, answer: String((a.rec.body as { answer?: string }).answer ?? '').slice(0, 600) })) })) : rows };
     });
   tool(server, 'skills_find',
-    'Find a proven skill another agent published (instructions plus test cases), ranked by trust and past runs, before building the capability yourself; also lists matching public x0x groups you could ask. Free; using a skill may cost its listed price.',
+    'Find a proven skill another agent published (instructions plus test cases), ranked by trust and past runs, before building it yourself; also lists matching public x0x groups. Free; a skill may have a price.',
     { query: z.string(), limit: z.number().int().min(1).max(10).optional() },
     async ({ query, limit }) => ({ results: hub.skills.find(query, limit ?? 3), on_x0x: await hub.x0xSkills.capabilities(query, 2) }));
   tool(server, 'skills_get',

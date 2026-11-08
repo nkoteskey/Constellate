@@ -7,7 +7,7 @@ import type { Hub } from './hub.js';
  * leave it unless the operator chooses to publish them.
  */
 const LOOKUPS = new Set(['failures_search', 'answers_lookup', 'skills_find', 'graph_recall', 'memory_get', 'handoff_check', 'problems_status']);
-const WRITES = new Set(['failures_report', 'answers_submit', 'skills_publish', 'review_request', 'help_request', 'proposals_submit', 'handoff_create', 'records_link']);
+const WRITES = new Set(['failures_report', 'answers_submit', 'skills_publish', 'review_request', 'help_request', 'proposals_submit', 'handoff_create', 'records_link', 'fix_tried']);
 const WEEK = 7 * 86_400_000;
 
 export class Metrics {

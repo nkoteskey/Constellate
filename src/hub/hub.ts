@@ -16,6 +16,7 @@ import { Ledger } from '../services/ledger.js';
 import { TrustModel } from '../services/trust.js';
 import { Reputation } from '../services/reputation.js';
 import { CtxInput, toContext } from '../services/ledger.js';
+import { TriedEvidence, triedBody } from '../services/reproduce.js';
 import { LiveState } from './livestate.js';
 import { Storage } from './storage.js';
 import { HistorySync } from './sync.js';
@@ -171,18 +172,31 @@ export class Hub {
   setTrust(t: TrustModel) { this.trust = t; this.ledger.setTrust(t); this.graph.setTrust(t); }
 
   /** Sign a confirmation: you hit the same failure, or verified the same answer. Confirmations, not votes. */
-  async confirm(id: string, ctx: Partial<CtxInput> & { note?: string } = {}, opts: { publish?: boolean } = {}) {
+  async confirm(id: string, ctx: Partial<CtxInput> & { note?: string; tried?: TriedEvidence } = {}, opts: { publish?: boolean } = {}) {
     const target = this.node.store.get(id);
     if (!target) throw new Error(`unknown record ${id}`);
     if (target.operatorId === this.node.operatorId) throw new Error('you cannot confirm your own operator\'s records');
-    return this.node.submit({ kind: 'confirmation', refs: [id], context: toContext({ task: ctx.task ?? target.rec.context.task, domain: ctx.domain ?? target.rec.context.domain, environment: ctx.environment ?? target.rec.context.environment, inputs_text: ctx.inputs_text }), body: { verdict: 'reproduced', note: ctx.note ?? '' } }, opts);
+    return this.node.submit({ kind: 'confirmation', refs: [id], context: toContext({ task: ctx.task ?? target.rec.context.task, domain: ctx.domain ?? target.rec.context.domain, environment: ctx.environment ?? target.rec.context.environment, inputs_text: ctx.inputs_text }), body: { verdict: 'reproduced', note: ctx.note ?? '', ...(ctx.tried ? { tried: triedBody(ctx.tried) } : {}) } }, opts);
+  }
+
+  /**
+   * Report trying a recorded fix (or meeting a recorded failure): it worked, so a confirmation; or it didn't,
+   * so a contradiction. Either way with the evidence (environment, error before and after), so the next agent
+   * sees "confirmed by N agents from M model families on K computers" (src/services/reproduce.ts).
+   */
+  async tried(id: string, t: TriedEvidence & { environment: string; note?: string }, opts: { publish?: boolean } = {}) {
+    const target = this.node.store.get(id);
+    if (!target) throw new Error(`unknown record ${id}`);
+    if (t.worked) return this.confirm(id, { environment: t.environment, note: t.note, tried: t }, opts);
+    const reason = (t.note?.trim() || (t.error_after?.trim() ? `Still failing after the fix: ${t.error_after.trim()}` : 'The fix did not work here.')).slice(0, 600);
+    return this.contradict(id, reason, { environment: t.environment }, opts, t);
   }
 
   /** Disagree with evidence. Both records stay visible with their environments; often both are right under different conditions. */
-  async contradict(id: string, reason: string, ctx: Partial<CtxInput> = {}, opts: { publish?: boolean } = {}) {
+  async contradict(id: string, reason: string, ctx: Partial<CtxInput> = {}, opts: { publish?: boolean } = {}, tried?: TriedEvidence) {
     const target = this.node.store.get(id);
     if (!target) throw new Error(`unknown record ${id}`);
-    return this.node.submit({ kind: 'contradiction', refs: [id], context: toContext({ task: ctx.task ?? target.rec.context.task, domain: ctx.domain ?? target.rec.context.domain, environment: ctx.environment ?? target.rec.context.environment, inputs_text: ctx.inputs_text }), body: { reason } }, opts);
+    return this.node.submit({ kind: 'contradiction', refs: [id], context: toContext({ task: ctx.task ?? target.rec.context.task, domain: ctx.domain ?? target.rec.context.domain, environment: ctx.environment ?? target.rec.context.environment, inputs_text: ctx.inputs_text }), body: { reason, ...(tried ? { tried: triedBody(tried) } : {}) } }, opts);
   }
 
   /** Record that a record (or a specific link) helped: use strengthens links. */

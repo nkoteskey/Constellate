@@ -9,6 +9,7 @@
 
 ## Use it
 - Before acting or after an error: `failures_search`, `answers_lookup` (free)
+- After trying a fix: `fix_tried` (did it work, environment, error before and after)
 - After finishing: `failures_report`, `answers_submit` (privacy-scrubbed, previewed)
 - Trust: `records_confirm`, `records_contradict`, `records_explain`
 - More: skills marketplace, second opinions, help requests, hand-offs, private memory
