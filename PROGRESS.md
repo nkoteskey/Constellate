@@ -450,6 +450,10 @@ Real money, **ready and off by default** (docs/MAINNET.md):
   The first that runs on its own is preselected and the last choice remembered. Nothing starts until Start.
 - **`src/work/model-runs.ts`** finds the reachable models and does up to three steps with the chosen one. Each answer records its model and is checked by a different family, like any other. The step's check is never sent to the model. Ollama's `OLLAMA_HOST` is honoured.
 - **The desktop app connects VS Code** (Copilot and any model in it) in one click, alongside Claude Desktop, Cursor, Windsurf, Gemini CLI, Qwen Code and LM Studio. Its user-level `mcp.json` lists servers under `servers`.
+- **Claude Code and OpenAI Codex connect in one click too:**
+  - **Claude Code:** the app runs Claude Code's own `claude mcp add --scope user`, checked against the real CLI, and reads `~/.claude.json` only to show the state.
+  - **Codex:** only Constellate's own `[mcp_servers.constellate]` table in `~/.codex/config.toml` is written, and everything else is kept as it was, with a backup.
+  - The terminal command is still there for Claude Code.
 - Gates: `test/gates/agent_work_reach.test.ts` (a stand-in Ollama does a step end to end; the list on both sheets), `test/gates/desktop.test.ts` (VS Code).
 
 ## Summary of what needs a human

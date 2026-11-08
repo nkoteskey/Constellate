@@ -1,4 +1,4 @@
-// Connecting AI agents (Claude Desktop, Cursor, Claude Code) to the Constellate in this app.
+// Connecting AI agents (Claude Desktop, Cursor, VS Code, Codex, Claude Code…) to the Constellate in this app.
 // Agents start Constellate's MCP server with this app's own runtime (Electron runs as plain
 // Node with ELECTRON_RUN_AS_NODE=1), so nothing else needs installing. Writing another app's
 // config happens only when the person clicks Connect, keeps a backup, and never overwrites a
@@ -33,6 +33,11 @@ export function agentConfigs({ platform = process.platform, home = homedir(), ap
     'qwen-code': { name: 'Qwen Code', file: join(home, '.qwen', 'settings.json'), present: existsSync(join(home, '.qwen')) },
     'lm-studio': { name: 'LM Studio (Qwen, DeepSeek, Llama… on this computer)', file: join(home, '.lmstudio', 'mcp.json'), present: existsSync(join(home, '.lmstudio')) },
     vscode: { name: 'VS Code (Copilot and any model in it)', file: join(codeDir, 'mcp.json'), present: existsSync(codeDir), key: 'servers' },
+    // OpenAI Codex (CLI, IDE extension and app share it): TOML, one [mcp_servers.<name>] table per server.
+    codex: { name: 'OpenAI Codex', file: join(home, '.codex', 'config.toml'), present: existsSync(join(home, '.codex')) },
+    // Claude Code keeps user-level servers in ~/.claude.json, a file it writes all the time: it's changed only
+    // through Claude Code's own `claude mcp add/remove` (desktop/main.mjs), and only read here to show the state.
+    'claude-code': { name: 'Claude Code', file: join(home, '.claude.json'), present: existsSync(join(home, '.claude')) || existsSync(join(home, '.claude.json')), cli: true },
   };
 }
 
@@ -49,6 +54,7 @@ function readConfig(file) {
 
 /** Is Constellate set up in this agent, and does it point at this app? */
 export function connection(file, entry, key = 'mcpServers') {
+  if (file.endsWith('.toml')) return tomlConnection(file, entry);
   try {
     const cur = readConfig(file)[key]?.[SERVER_NAME];
     if (!cur) return 'none';
@@ -58,6 +64,7 @@ export function connection(file, entry, key = 'mcpServers') {
 
 /** Add (or update) Constellate in an agent's config. Returns the backup path, if one was made. */
 export function connect(file, entry, key = 'mcpServers') {
+  if (file.endsWith('.toml')) return tomlConnect(file, entry);
   const cfg = readConfig(file);
   let backup = null;
   if (existsSync(file)) { backup = `${file}.before-constellate`; if (!existsSync(backup)) copyFileSync(file, backup); }
@@ -69,6 +76,7 @@ export function connect(file, entry, key = 'mcpServers') {
 
 /** Remove Constellate from an agent's config, leaving everything else as it was. */
 export function disconnect(file, key = 'mcpServers') {
+  if (file.endsWith('.toml')) return tomlDisconnect(file);
   const cfg = readConfig(file);
   if (!cfg[key]?.[SERVER_NAME]) return false;
   delete cfg[key][SERVER_NAME];
@@ -76,9 +84,60 @@ export function disconnect(file, key = 'mcpServers') {
   return true;
 }
 
-/** A Claude Code command to copy (Claude Code keeps its own config; we never edit it). */
+// ── Codex's config.toml: only Constellate's own table ([mcp_servers.constellate] and its .env) is read or
+// written; every other line stays exactly as it was. TOML basic strings take the same escapes as JSON.
+const OUR_TABLE = /^\s*\[\s*mcp_servers\s*\.\s*("constellate"|constellate)\s*(\.[^\]]*)?\]\s*(#.*)?$/;
+const ANY_TABLE = /^\s*\[/;
+function tomlSplit(text) {
+  const lines = text.split(/\r?\n/), kept = [], ours = [];
+  let inOurs = false;
+  for (const l of lines) {
+    if (ANY_TABLE.test(l)) inOurs = OUR_TABLE.test(l);
+    (inOurs ? ours : kept).push(l);
+  }
+  return { kept, ours };
+}
+const tomlStr = (s) => JSON.stringify(String(s));
+function tomlTable(entry) {
+  const env = Object.entries(entry.env ?? {});
+  return [`[mcp_servers.${SERVER_NAME}]`, `command = ${tomlStr(entry.command)}`, `args = [${entry.args.map(tomlStr).join(', ')}]`,
+    ...(env.length ? ['', `[mcp_servers.${SERVER_NAME}.env]`, ...env.map(([k, v]) => `${k} = ${tomlStr(v)}`)] : [])];
+}
+function tomlConnection(file, entry) {
+  if (!existsSync(file)) return 'none';
+  const { ours } = tomlSplit(readFileSync(file, 'utf8'));
+  if (!ours.length) return 'none';
+  const cmd = ours.find((l) => /^\s*command\s*=/.test(l))?.split('=').slice(1).join('=').trim();
+  const args = ours.find((l) => /^\s*args\s*=/.test(l))?.split('=').slice(1).join('=').trim();
+  try { return JSON.parse(cmd) === entry.command && JSON.stringify(JSON.parse(args)) === JSON.stringify(entry.args) ? 'connected' : 'other'; } catch { return 'other'; }
+}
+function tomlConnect(file, entry) {
+  let backup = null;
+  const text = existsSync(file) ? readFileSync(file, 'utf8') : '';
+  if (existsSync(file)) { backup = `${file}.before-constellate`; if (!existsSync(backup)) copyFileSync(file, backup); }
+  const { kept } = tomlSplit(text);
+  while (kept.length && !kept[kept.length - 1].trim()) kept.pop();
+  mkdirSync(dirname(file), { recursive: true });
+  writeFileSync(file, [...kept, ...(kept.length ? [''] : []), ...tomlTable(entry), ''].join('\n'));
+  return backup;
+}
+function tomlDisconnect(file) {
+  if (!existsSync(file)) return false;
+  const { kept, ours } = tomlSplit(readFileSync(file, 'utf8'));
+  if (!ours.length) return false;
+  while (kept.length && !kept[kept.length - 1].trim()) kept.pop();
+  writeFileSync(file, kept.join('\n') + '\n');
+  return true;
+}
+
+/** Claude Code's own command for adding Constellate for this user, as arguments (run by the app, or copied). */
+export function claudeCodeArgs(entry) {
+  return ['mcp', 'add', '--scope', 'user', SERVER_NAME, ...Object.entries(entry.env).flatMap(([k, v]) => ['-e', `${k}=${v}`]), '--', entry.command, ...entry.args];
+}
+
+/** A Claude Code command to copy, for people who'd rather run it themselves. */
 export function claudeCodeCommand(entry) {
   const q = (s) => (/[\s"'$`\\]/.test(s) ? `"${s.replace(/(["$`\\])/g, '\\$1')}"` : s);
   const env = Object.entries(entry.env).map(([k, v]) => `-e ${k}=${q(v)}`).join(' ');
-  return `claude mcp add ${SERVER_NAME} ${env} -- ${q(entry.command)} ${entry.args.map(q).join(' ')}`;
+  return `claude mcp add --scope user ${SERVER_NAME} ${env} -- ${q(entry.command)} ${entry.args.map(q).join(' ')}`;
 }

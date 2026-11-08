@@ -83,15 +83,15 @@ export async function connectCard(slot) {
   if (!desk || !slot) return;
   const draw = async () => {
     const s = await desk.status();
-    const row = (id, a) => `<div class="spread" style="padding:10px 0;border-top:1px solid var(--line)"><span><b>${esc(a.name)}</b><span class="faint" style="display:block;font-size:12.5px">${a.connection === 'connected' ? 'Connected. Restart it if it was open.' : a.connection === 'other' ? 'Set up with a different copy of Constellate.' : a.connection === 'unreadable' ? 'Its settings file isn’t valid JSON, so it was left alone.' : a.present ? 'Installed on this computer.' : 'Not found on this computer.'}</span></span>
+    const row = (id, a) => `<div class="spread" style="padding:10px 0;border-top:1px solid var(--line)"><span><b>${esc(a.name)}</b><span class="faint" style="display:block;font-size:12.5px">${a.connection === 'connected' ? 'Connected. Restart it if it was open.' : a.connection === 'other' ? 'Set up with a different copy of Constellate.' : a.connection === 'unreadable' ? 'Its settings file couldn’t be read, so it was left alone.' : a.present ? 'Installed on this computer.' : 'Not found on this computer.'}</span></span>
       ${a.connection === 'connected' ? `<button class="btn sm ghost" data-off="${id}">Disconnect</button>` : `<button class="btn sm ${a.present ? 'agent' : ''}" data-on="${id}" ${a.connection === 'unreadable' ? 'disabled' : ''}>Connect</button>`}</div>`;
     slot.innerHTML = `<div class="card"><div class="spread"><b>Connect with one click</b>${netLine(s.x0x)}</div>
       <p class="muted" style="font-size:13.5px;margin:6px 0 4px">Uses the Constellate inside this app, so there’s nothing else to install.</p>
       ${Object.entries(s.agents).map(([id, a]) => row(id, a)).join('')}
-      <div style="padding-top:10px;border-top:1px solid var(--line)"><b>Claude Code</b><p class="faint" style="font-size:12.5px;margin:2px 0 8px">Run this once in a terminal:</p>
-      <div class="copy-row"><pre class="code">${esc(s.claudeCode)}</pre><button class="btn" id="dk-cc">${icon.copy}Copy</button></div></div></div>`;
+      <details class="more-options" style="margin-top:10px"><summary><span>Claude Code from a terminal instead</span></summary>
+      <div class="copy-row" style="margin-top:8px"><pre class="code">${esc(s.claudeCode)}</pre><button class="btn" id="dk-cc">${icon.copy}Copy</button></div></details></div>`;
     $('#dk-cc', slot).onclick = () => copy(s.claudeCode, 'Command copied');
-    slot.querySelectorAll('[data-on]').forEach((b) => (b.onclick = async () => { const r = await desk.connectAgent(b.dataset.on); if (r.ok) toast(`Connected. Restart ${s.agents[b.dataset.on].name} to start using it.`); else if (r.error) toast(r.error); draw(); }));
+    slot.querySelectorAll('[data-on]').forEach((b) => (b.onclick = async () => { const r = await desk.connectAgent(b.dataset.on); if (r.ok) toast(b.dataset.on === 'claude-code' ? 'Connected. Start a new Claude Code session to use it.' : `Connected. Restart ${s.agents[b.dataset.on].name} to start using it.`); else if (r.error) toast(r.error); draw(); }));
     slot.querySelectorAll('[data-off]').forEach((b) => (b.onclick = async () => { const r = await desk.disconnectAgent(b.dataset.off); if (!r.ok && r.error) toast(r.error); draw(); }));
   };
   await draw();
