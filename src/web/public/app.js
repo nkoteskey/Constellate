@@ -1,7 +1,7 @@
 // Post-quantum crypto (~250 KB) loads only when someone signs, verifies or opens Me: the first screen stays light.
 const ID = () => import('./identity.js');
 const hasIdentity = () => { try { return !!localStorage.getItem('constellate.key'); } catch { return false; } };
-import { $, $$, esc, api, post, ls, ago, short, realm, REALM, identicon, constellation, icon, toast, sheet, closeSheet, copy, STATIC, loading } from './js/ui.js';
+import { $, $$, esc, api, post, ls, ago, short, realm, REALM, identicon, constellation, icon, toast, sheet, closeSheet, copy, STATIC, loading, newPage } from './js/ui.js';
 import { Sky } from './js/sky.js';
 import { DESKTOP, connectCard } from './js/desktop.js';
 
@@ -211,8 +211,10 @@ async function route() {
   $$('nav.views a').forEach((a) => a.classList.toggle('on', a.dataset.view === (['p'].includes(view) ? 'list' : view === 'd' ? 'deliberations' : view)));
   $('#sky-view').hidden = !!view;
   $('#page').hidden = !view;
-  // Moving to another page: the old one fades out at once instead of sitting there while the new one loads.
-  if (view && location.hash !== lastRoute) $('#page').classList.add('leaving');
+  // Moving to another page: a new request generation, so only this page's own requests can hold it back. The old
+  // page fades only if the new one takes a moment to draw; fast pages swap straight away.
+  clearTimeout(leaveT);
+  if (view && location.hash !== lastRoute) { newPage(); leaveT = setTimeout(() => { if (location.hash !== lastRoute) $('#page').classList.add('leaving'); }, 90); }
   else $('#page').classList.remove('leaving');
   $('#hover').hidden = true;
   closeSheet();
@@ -248,23 +250,27 @@ const page = (html) => {
 };
 
 /**
- * A new page is drawn while still faded out, and shown once it settles: most pages fill a section or two
- * a moment after they're drawn (the directory, bounties, a dashboard), and showing them at once made the
- * content jump. Shown once no request is in flight and nothing has changed for 80 ms, or after 900 ms at most.
+ * A new page is shown as soon as it's drawn. Pages that fill a section a moment later (the directory, bounties,
+ * a dashboard) get a short grace so the content doesn't jump: until this page's own requests are done and
+ * nothing has changed for 40 ms, and never more than 150 ms. Requests from other pages and background polls
+ * don't count (js/ui.js), so one slow call can't make every page feel slow.
  */
-let revealMo = null, revealT = 0, revealCap = 0;
+let revealMo = null, revealT = 0, revealCap = 0, leaveT = 0;
 function reveal() {
   const el = $('#page');
   revealMo?.disconnect(); clearTimeout(revealT); clearTimeout(revealCap);
+  clearTimeout(leaveT);
+  const wasHidden = el.classList.contains('leaving');
   const show = () => {
     revealMo?.disconnect(); clearTimeout(revealT); clearTimeout(revealCap);
     el.classList.remove('leaving');
-    if (!reduceMotion) { el.classList.remove('entering'); void el.offsetWidth; el.classList.add('entering'); setTimeout(() => el.classList.remove('entering'), 320); }
+    if (!reduceMotion && wasHidden) { el.classList.remove('entering'); void el.offsetWidth; el.classList.add('entering'); setTimeout(() => el.classList.remove('entering'), 200); }
   };
-  const settle = () => { clearTimeout(revealT); revealT = setTimeout(() => (loading() ? settle() : show()), 80); };
+  if (!wasHidden && !loading()) { show(); return; } // drawn with everything it needs: no waiting, no animation
+  const settle = () => { clearTimeout(revealT); revealT = setTimeout(() => (loading() ? settle() : show()), 40); };
   revealMo = new MutationObserver(settle);
   revealMo.observe(el, { childList: true, subtree: true, characterData: true });
-  settle(); revealCap = setTimeout(show, 900);
+  settle(); revealCap = setTimeout(show, 150);
 }
 
 // ── Home: the living sky ───────────────────────────────────────────
@@ -1153,7 +1159,8 @@ async function peoplePage() {
     filterDirectory();
     const qs = new URLSearchParams(Object.entries(f).filter(([, v]) => v)).toString();
     const people = await api(`/api/people${qs ? `?${qs}` : ''}`);
-    $('#people').innerHTML = people.map((x) => `<a class="card link" href="#/me/${x.operator}"><div class="row">${identicon(x.operator, x.human, 40)}<div>${x.role === 'starter' ? '<span class="tag">Starter library</span><span class="faint" style="font-size:12px;margin-left:6px">public lessons this app came with</span>' : `<span class="tag ${x.human ? 'human' : 'agent'}">${x.human ? 'Person' : x.role === 'this-computer' ? 'This computer' : 'Agent'}</span>`}${x.operator === me ? '<span class="badge-you">You</span>' : ''}${ls.get('followPeople', []).includes(x.operator) ? '<span class="faint" style="font-size:12px;margin-left:6px">Following</span>' : ''}<div class="num faint" style="margin-top:4px;font-size:12.5px">${short(x.operator)}</div></div></div>
+    const list = $('#people'); if (!list) return; // left the page while it loaded
+    list.innerHTML = people.map((x) => `<a class="card link" href="#/me/${x.operator}"><div class="row">${identicon(x.operator, x.human, 40)}<div>${x.role === 'starter' ? '<span class="tag">Starter library</span><span class="faint" style="font-size:12px;margin-left:6px">public lessons this app came with</span>' : `<span class="tag ${x.human ? 'human' : 'agent'}">${x.human ? 'Person' : x.role === 'this-computer' ? 'This computer' : 'Agent'}</span>`}${x.operator === me ? '<span class="badge-you">You</span>' : ''}${ls.get('followPeople', []).includes(x.operator) ? '<span class="faint" style="font-size:12px;margin-left:6px">Following</span>' : ''}<div class="num faint" style="margin-top:4px;font-size:12.5px">${short(x.operator)}</div></div></div>
       ${x.problems.map(titleFor).filter(Boolean).slice(0, 2).map((t) => `<div class="serif" style="font-size:16.5px;margin-top:10px;line-height:1.3">${esc(t)}</div>`).join('')}
       <div class="muted" style="font-size:13px;margin-top:8px">${x.contributions} contribution${x.contributions === 1 ? '' : 's'}${x.realms.length ? ` · ${x.realms.map((r) => esc(realm(r).short)).join(', ')}` : ''}</div></a>`).join('') || '<p class="muted">No one matches yet.</p>';
   };

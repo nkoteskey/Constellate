@@ -401,6 +401,20 @@ Real money, **ready and off by default** (docs/MAINNET.md):
 - **Tied into the network:** turning it on publishes a `compute_pledge` of the night's hours × 7, and turning it off sets it back to 0. Its steps are ordinary work steps, and votes count the pledge once it's delivered as checked work.
 - See docs/DESKTOP.md "Lend this computer"; gate `test/gates/lend.test.ts`, including the card in a browser with a stand-in for the desktop bridge. Not yet run inside the packaged Electron app on a real laptop.
 
+### Faster navigation (Nov 8)
+- **Measured first,** with the full starter library and x0x answering 400 ms late:
+  - People took about 1 s to appear: the page waited on the directory and the group list, which both go to the x0x daemon.
+  - Me took about 0.5 s, though it makes no request of its own: the reveal waited for *every* request in flight, including the one People left running and background polls.
+  - Every page also paid about 400 ms of fade-out, wait and fade-in.
+- **Now:**
+  - A page shows as soon as it's drawn. It waits at most 150 ms for its *own* requests, counted per page (`js/ui.js`).
+  - The old page fades only if the new one is slow to draw, and the entrance is a 160 ms fade.
+  - The directory and x0x groups answer from their last result and refresh in the background (`src/web/swr.ts`, `?fresh=1` to wait). They're warmed at start and cleared when you edit your profile.
+  - The storage status and the sky's threads are cached until they change.
+  - Two late responses that wrote into a page you'd already left are guarded.
+- **Result,** same setup: People about 30 ms, Me about 20 ms, Compute about 15 ms (was 265 ms).
+- Gate `test/gates/navigation_speed.test.ts`: every page under 400 ms with x0x 600 ms late, and no page errors.
+
 ## Summary of what needs a human
 1. **Live x0x (blocks confidence in every phase):** run the gates against two real `x0xd` daemons. Confirm ML-DSA signature interop between `/agent/sign` and noble, `/stores` and `/task-lists` field names, contacts → pre-trusted operators, and Spaces/DMs for chat.
 2. **Gate 1 behaviour:** `ANTHROPIC_API_KEY=… npx tsx evals/gate1.ts 3`.

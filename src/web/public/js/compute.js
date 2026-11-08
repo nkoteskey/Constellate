@@ -283,6 +283,7 @@ export function computePage(page) {
     if (DESKTOP) void lendCard($('#desk-slot'));
     void import('./fund.js').then((m) => m.fundCard($('#fund-slot')));
     api('/api/storage').then((st) => {
+      if (!$('#storage-slot')) return; // left the page while it loaded
       const mb = (n) => `${(n / 1e6).toFixed(n < 1e6 ? 2 : 1)} MB`;
       $('#storage-slot').innerHTML = `<div style="font-size:13.5px;display:grid;gap:6px">
         <div><b>${st.records.public.toLocaleString()}</b> shared lessons from ${st.records.authors} ${st.records.authors === 1 ? 'computer' : 'computers'}, <b>${mb(st.disk.total)}</b> on disk.</div>

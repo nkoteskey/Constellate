@@ -1,4 +1,5 @@
 import { readFileSync, existsSync } from 'node:fs';
+import { swr } from './swr.js';
 import { reproduction } from '../services/reproduce.js';
 import { networkSavings, operatorSavings } from '../hub/savings.js';
 import { homedir } from 'node:os';
@@ -141,7 +142,16 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
   });
   web.route('GET', /^\/api\/presence$/, async () => ({ via: spaces.available ? 'x0x' : 'none', online: [...(await spaces.onlineIds())] }));
   web.route('GET', /^\/api\/problems\/([0-9a-f]{64})\/space$/, async (_r, m) => ({ available: spaces.available, invite: spaces.available ? await spaces.invite(m[1]) : null }));
+  // The sky's threads only change when records arrive: kept until the store changes (and at most 30 s), since
+  // walking the whole graph on every visit to the home page made returning there slow on a large store.
+  let graphMemo: { size: number; at: number; v: unknown } | undefined;
   web.route('GET', /^\/api\/graph$/, () => {
+    if (graphMemo && graphMemo.size === hub.node.store.size && Date.now() - graphMemo.at < 30_000) return graphMemo.v;
+    const v = skyThreads();
+    graphMemo = { size: hub.node.store.size, at: Date.now(), v };
+    return v;
+  });
+  const skyThreads = () => {
     // Threads between nebulae: real links between records in different problems, strongest first.
     const rootOf = (id: string) => { let s = hub.node.store.get(id); for (let i = 0; i < 6 && s && !['problem', 'proposal'].includes(s.rec.kind); i++) s = s.rec.refs[0] ? hub.node.store.get(s.rec.refs[0]) : undefined; return s && ['problem', 'proposal'].includes(s.rec.kind) ? s.rec.id : null; };
     const threads = new Map<string, { a: string; b: string; weight: number; bridge: boolean }>();
@@ -156,7 +166,7 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
       threads.set(k, t);
     }
     return { threads: [...threads.values()].sort((x, y) => y.weight - x.weight).slice(0, 60), bridges: hub.graph.bridges().slice(0, 10) };
-  });
+  };
   web.route('GET', /^\/api\/metrics$/, () => hub.metrics.report());
   web.route('POST', /^\/api\/metrics\/event$/, async (_r, _m, _u, body) => {
     const b = await body();
@@ -317,20 +327,31 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
   // a few tags once and read what arrives; nothing is joined or sent until the person chooses to.
   const WATCH = [['tag', 'ai'], ['tag', 'agents'], ['tag', 'llm'], ['tag', 'code-review'], ['tag', 'research'], ['tag', 'science'], ['tag', 'x0x'], ['name', 'constellate'], ['name', 'agents'], ['name', 'swarm']] as const;
   let watching: Promise<unknown> | null = null;
-  web.route('GET', /^\/api\/x0x\/groups$/, async () => {
-    if (!hub.x0x) return { via: 'none', groups: [] };
+  // Both lists below come from the x0x daemon, which can take a second or more to answer: served from the last
+  // result and refreshed in the background (src/web/swr.ts), so the pages never wait on the network.
+  const x0xGroups = swr(async () => {
+    if (!hub.x0x) return { via: 'none', groups: [] as unknown[] };
     watching ??= Promise.allSettled(WATCH.map(([k, v]) => hub.x0x!.discoverSubscribe(k, v)));
     await watching;
     const groups = await hub.x0x.discoverGroups().catch(() => []);
     return { via: 'x0x', watching: WATCH.map(([k, v]) => `${k}:${v}`), groups: groups.sort((a, b) => b.members - a.members || b.updated - a.updated).slice(0, 60).map((g) => ({ ...g, ours: /^constellate\b/i.test(g.name) })) };
-  });
+  }, { maxAgeMs: 30_000, firstWaitMs: 1200, fallback: () => ({ via: hub.x0x ? 'x0x' : 'none', groups: [], loading: true }) });
+  web.route('GET', /^\/api\/x0x\/groups$/, (_r, _m, url) => (hub.x0x ? (url.searchParams.get('fresh') ? x0xGroups.fresh() : x0xGroups()) : { via: 'none', groups: [] }));
+  hub.onOnline(() => { x0xGroups.clear(); x0xGroups.warm(); });
 
   // Profiles: an open x0x directory of who's who (handles, what they do, what they're open to), plus who's online.
   const profiles = new Profiles(hub);
   hub.onOnline(() => void profiles.publishAgent({ open_to: { messages: true, invites: true, reviews: true }, reach: 'app' }).catch(() => {})); // this computer, listed
-  web.route('GET', /^\/api\/directory$/, async () => {
-    const [list, online] = await Promise.all([profiles.list(), profiles.online()]);
-    const count = (id: string) => hub.node.store.all().filter((s) => s.operatorId === id && s.visibility === 'public').length;
+  const directoryData = swr(async () => { const [list, online] = await Promise.all([profiles.list(), profiles.online()]); return { list, online }; },
+    { maxAgeMs: 15_000, firstWaitMs: 1200 });
+  hub.onOnline(() => { directoryData.clear(); directoryData.warm(); });
+  setTimeout(() => directoryData.warm(), 2_000).unref?.();
+  web.route('GET', /^\/api\/directory$/, async (_r, _m, url) => {
+    const { list, online } = await (url.searchParams.get('fresh') ? directoryData.fresh() : directoryData());
+    // Contributions per operator, counted in one pass rather than one pass per profile.
+    const counts = new Map<string, number>();
+    for (const s of hub.node.store.all()) if (s.visibility === 'public') counts.set(s.operatorId, (counts.get(s.operatorId) ?? 0) + 1);
+    const count = (id: string) => counts.get(id) ?? 0;
     // A person's profile is published by the computer (x0x agent) they use, so the two belong together: the
     // person's card names their computer, and that computer doesn't get a card of its own.
     const hosts = new Set(list.filter((p) => p.kind === 'person').map((p) => p.host));
@@ -381,6 +402,7 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
     if (bad) return new HttpReply(400, { error: bad });
     const p = scrub({ context: { task: 'profile', domain: [], environment: '' }, body: next }, hub.node.privacy);
     if (!p.ok) return new HttpReply(400, { error: 'blocked by privacy check', findings: p.findings });
+    directoryData.clear(); // the next directory read shows the change
     return { published: await profiles.publishAgent({ handle: handle || '', ...(next.about !== undefined ? { about: next.about } : {}) }), handle: handle || null };
   });
   web.route('POST', /^\/api\/profile$/, async (req, _m, _u, body) => {
@@ -391,7 +413,7 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
     if (bad) return new HttpReply(400, { error: bad });
     const p = scrub({ context: rec.context, body: readableBody(rec) }, hub.node.privacy);
     if (!p.ok) return new HttpReply(400, { error: 'blocked by privacy check', findings: p.findings });
-    try { return { published: await profiles.publishPerson(rec) }; } catch (e) { return new HttpReply(400, { error: (e as Error).message }); }
+    try { const published = await profiles.publishPerson(rec); directoryData.clear(); return { published }; } catch (e) { return new HttpReply(400, { error: (e as Error).message }); }
   });
 
   // Bounties (docs/BOUNTIES.md): anyone sees the open ones; only this computer posts, lists its own and picks answers,
@@ -453,9 +475,10 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
   web.route('POST', /^\/api\/plans\/([0-9a-f]{12})\/discard$/, async (req, m) => local(req) ? tryIt(() => planner.discard(m[1])) : deny());
 
   // Storage on THIS computer: what it holds, on disk and per record (docs/STORAGE.md).
+  const storageStatus = swr(() => hub.storage.status(), { maxAgeMs: 15_000 });
   web.route('GET', /^\/api\/storage$/, (req) => {
     if (!/^(127\.|::1$|::ffff:127\.)/.test(req.socket.remoteAddress ?? '')) return new HttpReply(403, { error: 'only on this computer' });
-    return hub.storage.status();
+    return storageStatus(); // walks the disk: kept for a few seconds
   });
 
   // What the agents connected on THIS computer have done (from agent-activity.jsonl). Answers only this computer.
