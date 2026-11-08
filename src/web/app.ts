@@ -1,7 +1,7 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { decodeCanonical } from '../core/canonical.js';
-import { ActivityLog } from '../hub/activity.js';
+import { ActivityLog, Presence } from '../hub/activity.js';
 import { X0xError, directSendProblem } from '../x0x/client.js';
 import { agentName, Planner } from '../collective/planner.js';
 import { openBundle, isBundle } from '../store/bundle.js';
@@ -419,8 +419,10 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
     const sum = agentLog.summary();
     const title = (id: string) => { const b = hub.node.store.get(id)?.rec.body as { approach?: string; question?: string; title?: string; name?: string } | undefined; return b ? String(b.title ?? b.approach ?? b.question ?? b.name ?? '').slice(0, 90) : null; };
     const LABEL: Record<string, string> = { failures_search: 'checked what failed before', answers_lookup: 'looked for a verified answer', skills_find: 'looked for a skill', graph_recall: 'recalled related lessons', problems_list: 'looked at open problems', problems_status: 'checked a problem', handoff_check: 'checked for a hand-off', failures_report: 'shared what failed', answers_submit: 'shared an answer', skills_publish: 'shared a skill', proposals_submit: 'proposed a problem', help_request: 'asked for help', records_link: 'linked two lessons' };
+    const online = new Presence().online();
     return {
-      agents: sum.agents,
+      online,
+      agents: sum.agents.map((x) => ({ ...x, online: online.some((o) => o.client === x.client) })),
       recent: sum.recent.map((e) => ({ ...e, label: `${LABEL[e.tool] ?? e.tool.replace(/_/g, ' ')}${e.results !== undefined ? ` (${e.results} found)` : ''}`, titles: (e.ids ?? []).map((id) => ({ id, title: title(id) })).filter((t) => t.title) })),
     };
   });

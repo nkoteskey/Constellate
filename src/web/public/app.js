@@ -1210,9 +1210,9 @@ async function agentsPanel(slot) {
     return;
   }
   const when = (t) => ago(t);
-  slot.innerHTML = `<div class="stack">${a.agents.map((x) => `<div class="card"><div class="spread"><b>${esc(x.client)}</b><span class="faint" style="font-size:12.5px">last active ${when(x.last)}</span></div>
-      <div class="row" style="gap:18px;margin-top:8px;font-size:13.5px"><span><b class="num">${x.today.lookups}</b> <span class="muted">checks today</span></span><span><b class="num">${x.today.found}</b> <span class="muted">found something useful</span></span><span><b class="num">${x.today.shared}</b> <span class="muted">lessons shared</span></span><span class="faint">${x.lookups} checks in all</span></div></div>`).join('')}
-    ${a.recent.length ? `<details class="raw"><summary>Latest activity</summary><div class="feed" style="margin-top:8px">${a.recent.slice(0, 12).map((e) => `<div class="item"><div><div class="meta"><span>${esc(e.client)}</span><span>${when(e.at)}</span></div><div class="body">${esc(e.label)}${(e.titles ?? []).length ? `: ${e.titles.map((t) => `<button class="claim" data-rec="${t.id}">${esc(t.title)}</button>`).join(', ')}` : ''}</div></div></div>`).join('')}</div></details>` : ''}</div>`;
+  slot.innerHTML = `<div class="stack">${a.agents.map((x) => `<div class="card"><div class="spread"><b>${esc(x.client)}</b><span class="faint" style="font-size:12.5px">${x.online ? '<span class="chip sm ok"><span class="dot"></span>connected now</span> · ' : ''}last active ${when(x.last)}</span></div>
+      <div class="row" style="gap:18px;margin-top:8px;font-size:13.5px"><span><b class="num">${x.today.lookups}</b> <span class="muted">${x.today.lookups === 1 ? 'check' : 'checks'} today</span></span><span><b class="num">${x.today.found}</b> <span class="muted">found something useful</span></span><span><b class="num">${x.today.shared}</b> <span class="muted">${x.today.shared === 1 ? 'lesson' : 'lessons'} shared</span></span><span class="faint">${x.lookups} ${x.lookups === 1 ? 'check' : 'checks'} in all</span></div></div>`).join('')}
+    ${a.recent.length ? `<details class="raw"><summary>Latest activity</summary><div class="feed" style="margin-top:8px">${a.recent.slice(0, 12).map((e) => `<div class="item plain"><div><div class="meta"><span>${esc(e.client)}</span><span>${when(e.at)}</span></div><div class="body">${esc(e.label)}${(e.titles ?? []).length ? `: ${e.titles.map((t) => `<button class="claim" data-rec="${t.id}">${esc(t.title)}</button>`).join(', ')}` : ''}</div></div></div>`).join('')}</div></details>` : ''}</div>`;
   bindClaims(slot);
 }
 
@@ -1283,15 +1283,16 @@ blocked: github_token at approach   ← fix it, then publish`)}</pre>
 async function refreshConnectButton() {
   if (STATIC) return;
   const a = await api('/api/agents/activity').catch(() => null);
-  const live = (a?.agents ?? []).filter((x) => Date.now() - Date.parse(x.last) < 7 * 86_400_000);
+  // Connected means connected now: an agent whose Constellate process is running (not one that used it last week).
+  const live = [...new Map((a?.online ?? []).map((x) => [x.client, x])).values()];
   const btn = $('#connect-top'); if (!btn) return;
   if (!live.length) { $('#connect-label').textContent = 'Connect your agent'; $('#connect-short').textContent = 'Connect'; btn.title = ''; return; }
   $('#connect-label').textContent = `${live.length} agent${live.length === 1 ? '' : 's'} connected`;
   $('#connect-short').textContent = String(live.length);
-  btn.title = `${live.map((x) => x.client).join(', ')}. Connect more from here.`;
+  btn.title = `Connected now: ${live.map((x) => x.client).join(', ')}. Connect more from here.`;
 }
 
 route();
 guideButton();
-void refreshConnectButton(); setInterval(refreshConnectButton, 60_000);
+void refreshConnectButton(); setInterval(refreshConnectButton, 20_000);
 setTimeout(onboarding, 900);

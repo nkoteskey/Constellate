@@ -1,4 +1,4 @@
-import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync, readdirSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { homedir } from 'node:os';
 
@@ -86,5 +86,34 @@ export class ActivityLog {
       agents.set(e.client, a);
     }
     return { agents: [...agents.values()].sort((a, b) => b.last.localeCompare(a.last)), recent: ev.slice(-20).reverse() };
+  }
+}
+
+/**
+ * Which agents are connected RIGHT NOW. Each agent's Constellate process (constellate mcp) keeps a small file
+ * here while it runs, refreshed every 20 seconds and removed when it stops. "Connected" in the app means one
+ * of these is fresh and its process is alive, not that the agent used Constellate at some point.
+ */
+export class Presence {
+  constructor(readonly dir = join(process.env.CONSTELLATE_HOME ?? join(homedir(), '.constellate'), 'agents-online')) {}
+  private file(pid = process.pid) { return join(this.dir, `${pid}.json`); }
+  beat(client: string | undefined, since: string) {
+    try { mkdirSync(this.dir, { recursive: true }); writeFileSync(this.file(), JSON.stringify({ client: clientName(client), pid: process.pid, since, beat: new Date().toISOString() })); } catch { /* best-effort */ }
+  }
+  leave() { try { rmSync(this.file(), { force: true }); } catch { /* gone */ } }
+  online(): { client: string; since: string }[] {
+    let names: string[] = [];
+    try { names = readdirSync(this.dir).filter((f) => f.endsWith('.json')); } catch { return []; }
+    const out: { client: string; since: string }[] = [];
+    for (const f of names) {
+      try {
+        const p = JSON.parse(readFileSync(join(this.dir, f), 'utf8')) as { client: string; pid: number; since: string; beat: string };
+        let alive = Date.now() - Date.parse(p.beat) < 70_000;
+        if (alive) { try { process.kill(p.pid, 0); } catch (e) { alive = (e as NodeJS.ErrnoException).code === 'EPERM'; } }
+        if (alive) out.push({ client: p.client, since: p.since });
+        else rmSync(join(this.dir, f), { force: true }); // a process that died without saying goodbye
+      } catch { /* half-written: next time */ }
+    }
+    return out;
   }
 }

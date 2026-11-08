@@ -63,6 +63,13 @@ async function main(argv: string[]) {
     const hub = argv.includes('--private') ? await Hub.privateMode() : await Hub.fromEnv();
     if (!argv.includes('--private')) importStarter(hub);
     const server = createMcpServer(hub);
+    // While this runs, the app on this computer counts this agent as connected (src/hub/activity.ts Presence).
+    const { Presence } = await import('./hub/activity.js');
+    const presence = new Presence(), since = new Date().toISOString();
+    const beat = () => presence.beat(server.server.getClientVersion()?.name, since);
+    server.server.oninitialized = beat;
+    setInterval(beat, 20_000).unref();
+    process.on('exit', () => presence.leave());
     await server.connect(new StdioServerTransport());
     // MCP stdio shutdown: the client closes our stdin, then signals. Exit on either, saving first. As a
     // container's first process, Node ignores SIGTERM unless it is handled, so the server would linger.

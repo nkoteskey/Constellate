@@ -240,6 +240,7 @@ nav.views a.on { color: var(--fg); background: var(--surface-3); }
 
 .feed .item { display: grid; grid-template-columns: 34px 1fr; gap: 12px; padding: 14px 0; border-top: 1px solid var(--line); }
 .feed .item:first-child { border-top: 0; }
+.feed .item.plain { grid-template-columns: 1fr; } /* no avatar column: agent activity has none */
 .feed .item .meta { font-size: var(--t-xs); color: var(--muted); display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .feed .item .body { margin-top: 2px; }
 
