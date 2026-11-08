@@ -41,7 +41,8 @@ jobs:
         continue-on-error: true
         uses: ./
         with:
-          run: node -e "console.error('Error: Cannot find module legacy-plugin'); process.exit(3)"
+          run: |
+            node -e "console.error('Error: Cannot find module legacy-plugin'); process.exit(3)"
           constellate: node dist/cli.js
           remember: 'false'
       - id: green
