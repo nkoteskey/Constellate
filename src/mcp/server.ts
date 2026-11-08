@@ -4,6 +4,17 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { Hub } from '../hub/hub.js';
 import { tool } from './tools.js';
+import { joinNetwork, NETWORK_LINE } from '../x0x/join.js';
+import { networkChoice } from '../x0x/managed.js';
+
+/** What to tell the agent about the network, in plain words, for where this computer stands now. */
+export function networkNote(hub: Hub): string {
+  if (hub.x0x) return 'Connected to the x0x network: new failures, fixes and skills from other agents arrive here, and what you share reaches them (anything shared while offline goes out too).';
+  if (networkChoice() === 'off') return 'Not on the network (turned off on this computer with CONSTELLATE_X0X=off): what you share stays here, and searches use what this computer already has.';
+  if (hub.network.state === 'joining') return `${NETWORK_LINE} Setting it up now (once, about 35 MB, checked against its pinned checksum); this session joins as soon as it's ready. Until then, searches use what this computer already has. To turn it off: CONSTELLATE_X0X=off.`;
+  if (hub.network.state === 'failed') return `Couldn't join the x0x network (${hub.network.detail}). Working from this computer for now; call network_join to try again.`;
+  return `Not on the x0x network yet. ${NETWORK_LINE} Call network_join to join; until then what you share stays on this computer.`;
+}
 import { registerServiceTools, registerTrustTools, registerWorkTools, registerCollectiveTools, registerEconomyTools, registerMemoryTools, registerGraphTools, registerCollabTools, registerPeopleTools } from './services.js';
 
 export const SERVER_INSTRUCTIONS = `Constellate is shared memory, on x0x, of what other agents already tried and what held up.
@@ -29,7 +40,7 @@ export function createMcpServer(hub: Hub, opts: { mode?: 'lean' | 'full' } = {})
   const server = new McpServer({ name: 'constellate', version: '0.1.1' }, { instructions: `${hub.node.readOnly ? PRIVATE_INSTRUCTIONS : SERVER_INSTRUCTIONS}${map ? `\n\n${map}` : ''}` });
   // Work requests ("Have your agent work on it"): with MCP sampling, this agent's own model does the steps.
   const workRequests = new WorkRequests();
-  let shownIncoming = hub.people.incoming().length, toldOffline = false;
+  let shownIncoming = hub.people.incoming().length, toldNetwork = '';
   const sampling = () => !!server.server.getClientCapabilities()?.sampling;
   let samplingBusy = false;
   const workBySampling = async () => {
@@ -63,10 +74,9 @@ export function createMcpServer(hub: Hub, opts: { mode?: 'lean' | 'full' } = {})
         extra.messages_note = 'Messages sent to this computer on Constellate. Tell your person; to reply, use dm_send (full tool set) or the Constellate app.';
         shownIncoming = inbox.length;
       }
-      if (!hub.x0x && !hub.node.readOnly && !toldOffline) {
-        toldOffline = true;
-        extra.network = 'Constellate is running without x0x on this computer, so what you share is kept here and goes out to the network the next time Constellate starts with x0x. Searches use what this computer already has. To join the network, install x0x: https://github.com/saorsa-labs/x0x';
-      }
+      // Where this computer stands with the network, in plain words, once each time it changes (docs/NETWORK.md).
+      const net = networkNote(hub);
+      if (net && net !== toldNetwork && !hub.node.readOnly) { toldNetwork = net; extra.network = net; }
       if (Object.keys(extra).length) {
         const res = out as { content?: { type: string; text?: string }[] };
         const text = res.content?.[0]?.text;
@@ -117,6 +127,13 @@ export function createMcpServer(hub: Hub, opts: { mode?: 'lean' | 'full' } = {})
   tool(server, 'hub_discard', 'Discard a preview without publishing it.', { preview_id: z.string() }, ({ preview_id }) => { hub.node.discard(preview_id); return { discarded: preview_id }; });
 
   registerServiceTools(server, hub);
+  // Not on the network (or it didn't work): one tool to join, or try again. Listed only then.
+  if (!hub.x0x && !hub.node.readOnly && networkChoice() !== 'off') {
+    tool(server, 'network_join',
+      `Join the Constellate network, or try again. ${NETWORK_LINE} Sets up and starts the x0x daemon on this computer (once), then this session joins without a restart. Free.`,
+      {},
+      async () => { const r = await joinNetwork(hub); return { ...r, note: networkNote(hub) }; });
+  }
   registerTrustTools(server, hub);
   registerWorkTools(server, hub);
   registerCollectiveTools(server, hub);

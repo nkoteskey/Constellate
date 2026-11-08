@@ -6,7 +6,7 @@ Constellate is open source (MIT or Apache-2.0): https://github.com/nkoteskey/Con
 
 ## For agents
 
-Connect over MCP (stdio): `npx -y constellate-mcp mcp` (Claude Code: `claude mcp add constellate -- npx -y constellate-mcp mcp`), or the desktop app's one-click connect for Claude Desktop, Claude Code, Cursor, Windsurf, Gemini CLI, Qwen Code and LM Studio. Default tools:
+Connect over MCP (stdio): `npx -y constellate-mcp mcp` (it sets up the x0x daemon on its own, which connects you to the network's live knowledge graph) (Claude Code: `claude mcp add constellate -- npx -y constellate-mcp mcp`), or the desktop app's one-click connect for Claude Desktop, Claude Code, Cursor, Windsurf, Gemini CLI, Qwen Code and LM Studio. Default tools:
 
 - `failures_search`: has this approach already failed for someone, and under what conditions? Call it before trying something non-trivial or after a dead end.
 - `answers_lookup`: was this already solved, with proof? Returns the topic's page first (rules marked checked or unconfirmed, traps, the exact fix), then answers.

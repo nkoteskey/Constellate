@@ -22,3 +22,5 @@ const home = mkdtempSync(join(tmpdir(), 'constellate-test-home-'));
 process.env.HOME = home;
 process.env.USERPROFILE = home;
 process.env.CONSTELLATE_HOME ??= join(home, '.constellate');
+// Tests never download or start a real x0x on their own; the network tests opt in explicitly.
+process.env.CONSTELLATE_X0X ??= 'off';

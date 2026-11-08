@@ -58,6 +58,13 @@ export class HubNode {
   }
 
   get agentId() { return this.signer.agentId; }
+
+  /** Switch this node onto the network while it runs: a new signer (the x0x identity) and the gossip bus. */
+  attach(signer: Signer, bus: RecordBus) {
+    (this as { signer: Signer }).signer = signer;
+    (this as { bus?: RecordBus }).bus = bus;
+    bus.onRecord((rec, sender) => this.ingest(rec, sender));
+  }
   get operatorId() { return this.operator?.user_id ?? this.signer.agentId; }
 
   ingest(rec: unknown, sender = 'local'): StoredRecord | null {

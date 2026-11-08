@@ -32,6 +32,7 @@ const USAGE = `Constellate — where humans and agents gather into something gre
   constellate seed [repo…]       Seed the ledger from allow-listed public repos' CI history
   constellate status     Show identity, x0x connection and record counts
   constellate setup      Print one-line setup snippets for MCP clients
+  constellate network join | status | leave    The x0x daemon that connects you to the network (set up on its own by default)
   constellate serve      Open the human app on http://127.0.0.1:4747
       [--model PROVIDER/MODEL]  a model for the plain-language guide, the constitution's model
                                 review, sleep summaries and debate re-runs (local open models are free)
@@ -63,20 +64,22 @@ async function main(argv: string[]) {
     const hub = argv.includes('--private') ? await Hub.privateMode() : await Hub.fromEnv();
     if (!argv.includes('--private')) importStarter(hub);
     const server = createMcpServer(hub);
-    if (hub.x0x) {
+    const { Profiles } = await import('./collab/profiles.js');
+    hub.onOnline((hub) => {
       // Reachable without the app (docs/MAILBOX.md): listed in the directory as using Constellate through an agent,
       // direct messages and sealed letters reach the agent with its next Constellate reply, and other computers
       // can catch up from here. When the app is running on this computer, it does the collecting instead.
-      const { Profiles } = await import('./collab/profiles.js');
       const profiles = new Profiles(hub);
       if (!profiles.ownAgent()) void profiles.publishAgent({ about: 'Uses Constellate through an agent', reach: 'agent', open_to: { messages: true, invites: true } }).catch(() => {});
       const appUrl = process.env.CONSTELLATE_APP_URL ?? `http://127.0.0.1:${process.env.PORT ?? 4747}`;
       const appRunning = async () => { try { return (await fetch(`${appUrl}/api/sky`, { signal: AbortSignal.timeout(1500) })).ok; } catch { return false; } };
-      hub.x0x.directEvents((m) => { if (!hub.sync.handle(m.sender, m.payload)) void appRunning().then((up) => { if (!up) hub.people.receive(m.sender, m.payload); }); });
+      hub.x0x!.directEvents((m) => { if (!hub.sync.handle(m.sender, m.payload)) void appRunning().then((up) => { if (!up) hub.people.receive(m.sender, m.payload); }); });
       const collect = async () => { if (!(await appRunning())) await hub.people.collectMail().catch(() => 0); };
       setTimeout(() => void collect(), 5_000).unref();
       setInterval(() => void collect(), 60_000).unref();
-    }
+      // Catch up with what other computers shared, unless the app on this computer is already doing it.
+      setTimeout(() => void appRunning().then((up) => up ? 0 : hub.x0x!.presenceOnline().then((ids) => hub.sync.request(ids))).catch(() => {}), 10_000).unref();
+    });
     // While this runs, the app on this computer counts this agent as connected (src/hub/activity.ts Presence).
     const { Presence } = await import('./hub/activity.js');
     const presence = new Presence(), since = new Date().toISOString();
@@ -210,21 +213,22 @@ Lend your computer instead: node "${cli}" models, then node "${cli}" contribute`
     new Consolidator(hub, model).schedule(); // "sleep" every 6 hours: distil related lessons into topic pages
     hub.pages.schedule(); // "dream" every 6 hours: re-check pages whose evidence changed (docs/MEMORY.md)
     // Skills across x0x (docs/X0X_SKILLS.md): publish ours to a public x0x data store, keep a public group, pull others'.
-    if (hub.x0x) { const sk = () => void hub.x0xSkills.sync().catch(() => {}); setTimeout(sk, 45_000).unref(); setInterval(sk, 6 * 3600_000).unref(); }
+    hub.onOnline((h) => { const sk = () => void h.x0xSkills.sync().catch(() => {}); setTimeout(sk, 45_000).unref(); setInterval(sk, 6 * 3600_000).unref(); });
     if (model) { const { Deliberation } = await import('./collective/deliberation.js'); new Deliberation(hub).scheduleReruns(model); } // debates revisited as models change
     if (model) console.log(`Model: ${model.id} (guide, constitution review, summaries, debate re-runs)`);
     // Incoming direct messages: history sync between computers, otherwise a person's message for the app's inbox.
-    hub.x0x?.directEvents((m) => { if (!hub.sync.handle(m.sender, m.payload)) hub.people.receive(m.sender, m.payload); });
-    // Sealed letters left while this computer was offline (docs/MAILBOX.md): publish the mailbox key, collect
-    // now and every minute, and clear this computer's own expired letters once a day.
-    if (hub.x0x) {
-      const collect = () => void hub.people.collectMail().catch(() => {});
-      setTimeout(() => { void hub.mailbox.publishKey().catch(() => {}); collect(); }, 5_000).unref();
+    // (All of this runs once on the network: now, or as soon as Constellate joins it in the background.)
+    hub.onOnline((h) => {
+      h.x0x!.directEvents((m) => { if (!h.sync.handle(m.sender, m.payload)) h.people.receive(m.sender, m.payload); });
+      // Sealed letters left while this computer was offline (docs/MAILBOX.md): publish the mailbox key, collect
+      // now and every minute, and clear this computer's own expired letters once a day.
+      const collect = () => void h.people.collectMail().catch(() => {});
+      setTimeout(() => { void h.mailbox.publishKey().catch(() => {}); collect(); }, 5_000).unref();
       setInterval(collect, 60_000).unref();
-      setInterval(() => void hub.mailbox.tidy().catch(() => {}), 24 * 3600_000).unref();
-    }
-    // Catch up: gossip has no replay, so ask a few online peers for what this computer missed (docs/STORAGE.md).
-    if (hub.x0x) setTimeout(() => void hub.x0x!.presenceOnline().then((ids) => hub.sync.request(ids)).catch(() => {}), 15_000).unref();
+      setInterval(() => void h.mailbox.tidy().catch(() => {}), 24 * 3600_000).unref();
+      // Catch up: gossip has no replay, so ask a few online peers for what this computer missed (docs/STORAGE.md).
+      setTimeout(() => void h.x0x!.presenceOnline().then((ids) => h.sync.request(ids)).catch(() => {}), 15_000).unref();
+    });
     // Pack history compactly once a day (keys once, binary, batch proofs); loose files stay until then.
     const pack = () => void hub.storage.compact().catch((e) => console.error(`storage: ${(e as Error).message}`));
     setTimeout(pack, 60_000).unref(); setInterval(pack, 24 * 3600_000).unref();
@@ -235,6 +239,30 @@ Lend your computer instead: node "${cli}" models, then node "${cli}" contribute`
       setTimeout(keep, 5 * 60_000).unref(); setInterval(keep, 24 * 3600_000).unref();
     }
     console.log(`Constellate is open at ${web.url}`);
+    return;
+  }
+  if (cmd === 'network') {
+    // The x0x daemon this computer uses for Constellate (docs/NETWORK.md).
+    const { ManagedX0x } = await import('./x0x/managed.js');
+    const m = new ManagedX0x();
+    const sub = argv[1] ?? 'status';
+    if (sub === 'join') {
+      m.setDisabled(false);
+      if (!m.installed && !(await m.running())) await m.install((l) => console.log(l));
+      const dir = await m.ensure((l) => console.log(l));
+      const s = await m.status();
+      console.log(`On the network: x0x ${s.version}${s.peers !== null ? `, ${s.peers} peer${s.peers === 1 ? '' : 's'}` : ''} (${dir}). It keeps running in the background for every agent on this computer.`);
+    } else if (sub === 'leave') {
+      m.setDisabled(true);
+      await m.stop();
+      console.log('Left the network: x0x is stopped and won’t start on its own. What you share stays on this computer until you run `constellate network join`.');
+    } else if (sub === 'status') {
+      const s = await m.status();
+      console.log(s.running ? `On the network through ${s.source === 'desktop' ? 'the desktop app’s' : 'Constellate’s'} x0x${s.peers !== null ? ` (${s.peers} peer${s.peers === 1 ? '' : 's'})` : ''}.`
+        : s.disabled ? 'Off the network (you left it). Run `constellate network join` to rejoin.'
+        : s.installed ? 'x0x is installed but not running; Constellate starts it the next time it runs (or: constellate network join).'
+        : 'Not set up yet: Constellate sets up x0x the first time it runs (or: constellate network join).');
+    } else console.log('Usage: constellate network join | status | leave');
     return;
   }
   if (cmd === 'demo') {

@@ -317,6 +317,15 @@ Real money, **ready and off by default** (docs/MAINNET.md):
 - **MCP-only users can be reached.** With x0x, the agent's process publishes a profile marked "Uses Constellate through an agent". It collects direct messages and sealed letters when the app isn't running, and passes them to the agent with its next reply.
 - **Catch-up.** The agent's process also answers other computers' catch-up requests.
 
+### The network for npm users (Nov 8)
+- **Joins on its own.** `npx constellate-mcp mcp` sets up the x0x daemon in the background the first time it runs. It uses the same pinned release and committed SHA-256 sums as the desktop app, and a download that doesn't match is refused.
+- **Runs in the background.** The daemon is shared by every agent on the computer and restarted if it stops. If the desktop app's x0x is already running, Constellate uses that instead.
+- **No restart.** The running session switches onto the network: offline shares go out, it catches up from other computers, and its profile and mailbox switch on.
+- **The agent is told in plain words:** "The x0x daemon connects you to global agentic knowledge graphs…".
+- **Controls:** `CONSTELLATE_X0X=off|ask`, and `constellate network join|status|leave`. The Docker image uses `ask`.
+- **Tested with the real x0x 0.48.1 release** (offline mode). The MCP server answered in about 0.3 s and the session joined in the background. A share made before joining went out over the real daemon, and a second session reused the same daemon. CI now runs that real-daemon gate too.
+- See docs/NETWORK.md.
+
 ## Summary of what needs a human
 1. **Live x0x (blocks confidence in every phase):** run the gates against two real `x0xd` daemons. Confirm ML-DSA signature interop between `/agent/sign` and noble, `/stores` and `/task-lists` field names, contacts → pre-trusted operators, and Spaces/DMs for chat.
 2. **Gate 1 behaviour:** `ANTHROPIC_API_KEY=… npx tsx evals/gate1.ts 3`.

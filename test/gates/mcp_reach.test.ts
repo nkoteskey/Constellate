@@ -49,7 +49,7 @@ describe('people who use Constellate only through an agent', () => {
       const call = async () => JSON.parse(((await client.callTool({ name: 'failures_search', arguments: { query: 'bundler upgrade' } })).content as { text: string }[])[0].text);
 
       const first = await call();
-      expect(first.network).toMatch(/running without x0x.*goes out to the network the next time/);
+      expect(first.network).toMatch(/^Not on the network.*what you share stays here/); // (tests run with CONSTELLATE_X0X=off)
       expect((await call()).network).toBeUndefined(); // said once
 
       const sender = LocalSigner.generate().agentId;
