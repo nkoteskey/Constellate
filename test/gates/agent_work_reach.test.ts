@@ -3,6 +3,7 @@ import { chmodSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createRequire } from 'node:module';
+import { createServer } from 'node:http';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { Hub } from '../../src/hub/hub.js';
@@ -77,19 +78,12 @@ describe('your agent works on a problem without you asking it to check Constella
     } finally { delete process.env.CONSTELLATE_HOME; }
   });
 
-  it('with Claude Code on this computer, one click on the Proposals page starts it: nothing to choose, nothing to tell an agent', async () => {
-    const home = mkdtempSync(join(tmpdir(), 'reach-cc-'));
+  it('the choices are one list: Claude Code first, then any model this computer reaches, then agents you start yourself', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'reach-list-'));
     process.env.CONSTELLATE_HOME = home;
-    // A stand-in for Claude Code that answers the step through work_step, as the real one does.
-    const fake = join(home, 'claude');
-    const lines = [
-      { type: 'system', subtype: 'init', model: 'claude-sonnet', mcp_servers: [{ name: 'constellate', status: 'connected' }] },
-      { type: 'assistant', message: { content: [{ type: 'tool_use', name: 'mcp__constellate__work_step', input: { problem: 'x', step: 'first', answer: '42' } }] } },
-      { type: 'result', duration_ms: 3000, total_cost_usd: 0.02 },
-    ];
-    writeFileSync(fake, `#!/usr/bin/env node\nfor (const l of ${JSON.stringify(lines.map((x) => JSON.stringify(x)))}) console.log(l);\n`);
-    chmodSync(fake, 0o755);
-    process.env.CONSTELLATE_CLAUDE = fake;
+    process.env.CONSTELLATE_CLAUDE = fakeClaude(home);
+    const ollama = await fakeOllama();
+    process.env.OLLAMA_HOST = ollama.url;
     const hub = new Hub({ signer: LocalSigner.generate(), store: new RecordStore(), preview: false });
     const id = (await hub.collective.propose(problemBody())).problem!.id;
     const web = new WebServer(hub);
@@ -97,17 +91,25 @@ describe('your agent works on a problem without you asking it to check Constella
     await web.listen(0);
     const { browser, page, errors } = await openFromProposals(web.url, id);
     try {
+      await page.waitForSelector('input[name="aw-who"]');
+      const names = await page.$$eval('input[name="aw-who"]', (rs) => rs.map((r) => (r as HTMLInputElement).value));
+      expect(names).toEqual(['claude_code', 'model:ollama/qwen3:8b', 'any']);
+      expect(await page.$eval('input[name="aw-who"]:checked', (r) => (r as HTMLInputElement).value)).toBe('claude_code');
+      const text = await page.textContent('#aw-body');
+      expect(text).not.toMatch(/default/i); // first in the list, not singled out
+      expect(text).toMatch(/You have to start it yourself/);
+      expect(hub.agentRuns.forProblem(id)).toEqual([]); // nothing starts until Start
+      await page.click('#aw-go');
       for (let i = 0; i < 100 && hub.agentRuns.forProblem(id)[0]?.status !== 'done'; i++) await wait(50);
       expect(hub.agentRuns.forProblem(id)[0]).toMatchObject({ status: 'done', steps: 1 });
-      await page.waitForFunction(() => document.querySelector('#aw-body')?.textContent?.includes('done · 1 answered'));
-      expect(await page.textContent('#aw-body')).not.toMatch(/Open it and say|check Constellate/i);
-      expect(hub.workRequests.forProblem(id)).toEqual([]); // no request left waiting for anyone
       expect(errors).toEqual([]);
-    } finally { await browser.close(); await web.close(); process.env.CONSTELLATE_CLAUDE = 'off'; delete process.env.CONSTELLATE_HOME; }
+    } finally { await browser.close(); await web.close(); ollama.close(); delete process.env.OLLAMA_HOST; process.env.CONSTELLATE_CLAUDE = 'off'; delete process.env.CONSTELLATE_HOME; }
   }, 60_000);
 
-  it('without anything here that can run on its own, the request goes out by itself and the page says plainly why it waits', async () => {
-    process.env.CONSTELLATE_HOME = mkdtempSync(join(tmpdir(), 'reach-ui-'));
+  it('any make and model: without Claude Code, a model this computer reaches does the steps, and its answer is checked like any other', async () => {
+    process.env.CONSTELLATE_HOME = mkdtempSync(join(tmpdir(), 'reach-model-'));
+    const ollama = await fakeOllama();
+    process.env.OLLAMA_HOST = ollama.url;
     const hub = new Hub({ signer: LocalSigner.generate(), store: new RecordStore(), preview: false });
     const id = (await hub.collective.propose(problemBody())).problem!.id;
     const web = new WebServer(hub);
@@ -115,25 +117,49 @@ describe('your agent works on a problem without you asking it to check Constella
     await web.listen(0);
     const { browser, page, errors } = await openFromProposals(web.url, id);
     try {
-      await page.waitForFunction(() => document.querySelector('#aw-body')?.textContent?.includes('waiting for an agent'));
-      expect(hub.workRequests.forProblem(id)[0].status).toBe('waiting'); // asked without a click
+      await page.waitForSelector('input[name="aw-who"]');
+      expect(await page.$eval('input[name="aw-who"]:checked', (r) => (r as HTMLInputElement).value)).toBe('model:ollama/qwen3:8b');
+      await page.click('#aw-go');
+      await page.waitForFunction(() => document.querySelector('#aw-body')?.textContent?.includes('done · 1 answered'), undefined, { timeout: 15_000 });
+      const result = hub.node.store.ofKind('task_result')[0].rec;
+      expect(result.body).toMatchObject({ problem: id, chunk: 'first', output: '6 × 7 is\n42', model: 'qwen3:8b', family: 'qwen' }); // the check reads the last line
+      expect(result.context.agent).toMatchObject({ client: 'Ollama', model: 'qwen3:8b' });
+      expect(ollama.prompts[0]).toContain('What is 6 × 7?');
+      expect(ollama.prompts.join(' ')).not.toMatch(/expected/); // the check, which holds the answer, is never sent
+      expect(errors).toEqual([]);
+    } finally { await browser.close(); await web.close(); ollama.close(); delete process.env.OLLAMA_HOST; delete process.env.CONSTELLATE_HOME; }
+  }, 60_000);
+
+  it('Claude Desktop is a choice with a note that you start it yourself', async () => {
+    process.env.CONSTELLATE_HOME = mkdtempSync(join(tmpdir(), 'reach-desk-'));
+    const hub = new Hub({ signer: LocalSigner.generate(), store: new RecordStore(), preview: false });
+    const id = (await hub.collective.propose(problemBody())).problem!.id;
+    const web = new WebServer(hub);
+    registerAppRoutes(web);
+    await web.listen(0);
+    const { browser, page, errors } = await openFromProposals(web.url, id);
+    try {
+      await page.waitForSelector('input[name="aw-who"]');
+      expect(await page.$$eval('input[name="aw-who"]', (rs) => rs.map((r) => (r as HTMLInputElement).value))).toEqual(['any']);
       const text = await page.textContent('#aw-body');
-      expect(text).toMatch(/Claude Desktop and Cursor can’t be started by another app/);
-      expect(text).toMatch(/install Claude Code/);
-      expect(text).not.toMatch(/Open it and say|check Constellate/i);
+      expect(text).toMatch(/Claude Desktop, Cursor or another connected agent/);
+      expect(text).toMatch(/You have to start it yourself/);
+      expect(text).toMatch(/install Claude Code, run a model with Ollama or LM Studio, or save a provider key/);
+      await page.click('#aw-go');
+      await page.waitForFunction(() => document.querySelector('#aw-body')?.textContent?.includes('waiting for you to start it'));
+      expect(hub.workRequests.forProblem(id)[0].status).toBe('waiting');
       expect(errors).toEqual([]);
     } finally { await browser.close(); await web.close(); delete process.env.CONSTELLATE_HOME; }
   }, 60_000);
 });
 
-describe('planning an idea without telling an agent anything', () => {
-  it('with Claude Code on this computer, "Plan it with your agent" starts it at once', async () => {
+describe('planning an idea: the same list', () => {
+  it('Claude Code first, then models, then agents you start yourself; Start plans it with the chosen one', async () => {
     const home = mkdtempSync(join(tmpdir(), 'reach-plan-'));
     process.env.CONSTELLATE_HOME = home;
-    const fake = join(home, 'claude');
-    writeFileSync(fake, `#!/usr/bin/env node\nconsole.log(JSON.stringify({ type: 'system', subtype: 'init', model: 'claude-sonnet', mcp_servers: [{ name: 'constellate', status: 'connected' }] }));\nconsole.log(JSON.stringify({ type: 'result', duration_ms: 1000 }));\n`);
-    chmodSync(fake, 0o755);
-    process.env.CONSTELLATE_CLAUDE = fake;
+    process.env.CONSTELLATE_CLAUDE = fakeClaude(home);
+    const ollama = await fakeOllama();
+    process.env.OLLAMA_HOST = ollama.url;
     const hub = new Hub({ signer: LocalSigner.generate(), store: new RecordStore(), preview: false });
     const { record: idea } = await hub.node.submit({ kind: 'proposal', context: { task: 'idea', domain: ['maths_physics'], environment: 'human (browser)' }, body: { title: 'Count small primes', goal: 'Count primes below a bound, checked exactly.', done: 'Every count matches.', check: 'exact', realm: 'maths_physics' } }, { publish: true });
     const web = new WebServer(hub);
@@ -148,11 +174,46 @@ describe('planning an idea without telling an agent anything', () => {
       await page.goto(`${web.url}/#/proposals`);
       await page.click('[data-ptab="ideas"]');
       await page.click(`[data-plan="${idea.id}"]`);
-      for (let i = 0; i < 100; i++) { const r = await (await fetch(`${web.url}/api/plans?idea=${idea.id}`)).json() as { requests: { via: string }[] }; if (r.requests.length) break; await wait(50); }
-      const { requests } = await (await fetch(`${web.url}/api/plans?idea=${idea.id}`)).json() as { requests: { via: string }[] };
-      expect(requests[0]?.via).toBe('claude_code'); // started on its own, no option picked
-      expect(await page.textContent('#plan-body')).not.toMatch(/check Constellate for planning requests/i);
+      await page.waitForSelector('input[name="plan-who"]');
+      expect(await page.$$eval('input[name="plan-who"]', (rs) => rs.map((r) => (r as HTMLInputElement).value))).toEqual(['claude_code', 'model:ollama/qwen3:8b', 'any_agent']);
+      expect(await page.textContent('#plan-body')).toMatch(/You have to start it yourself/);
+      await page.check('input[name="plan-who"][value="model:ollama/qwen3:8b"]');
+      await page.click('#plan-go');
+      for (let i = 0; i < 100; i++) { const r = await (await fetch(`${web.url}/api/plans?idea=${idea.id}`)).json() as { requests: unknown[] }; if (r.requests.length) break; await wait(50); }
+      const { requests } = await (await fetch(`${web.url}/api/plans?idea=${idea.id}`)).json() as { requests: { via: string; log: { text: string }[] }[] };
+      expect(requests[0].via).toBe('model');
+      expect(requests[0].log[0].text).toMatch(/ollama:qwen3:8b/);
       expect(errors).toEqual([]);
-    } finally { await browser.close(); await web.close(); process.env.CONSTELLATE_CLAUDE = 'off'; delete process.env.CONSTELLATE_HOME; }
+    } finally { await browser.close(); await web.close(); ollama.close(); delete process.env.OLLAMA_HOST; process.env.CONSTELLATE_CLAUDE = 'off'; delete process.env.CONSTELLATE_HOME; }
   }, 60_000);
 });
+
+/** A stand-in for Claude Code that answers the step through work_step, as the real one does. */
+function fakeClaude(home: string) {
+  const fake = join(home, 'claude');
+  const lines = [
+    { type: 'system', subtype: 'init', model: 'claude-sonnet', mcp_servers: [{ name: 'constellate', status: 'connected' }] },
+    { type: 'assistant', message: { content: [{ type: 'tool_use', name: 'mcp__constellate__work_step', input: { problem: 'x', step: 'first', answer: '42' } }] } },
+    { type: 'result', duration_ms: 3000, total_cost_usd: 0.02 },
+  ];
+  writeFileSync(fake, `#!/usr/bin/env node\nfor (const l of ${JSON.stringify(lines.map((x) => JSON.stringify(x)))}) console.log(l);\n`);
+  chmodSync(fake, 0o755);
+  return fake;
+}
+
+/** A stand-in for Ollama: lists one model and answers chat completions with "42", keeping the prompts it saw. */
+async function fakeOllama() {
+  const prompts: string[] = [];
+  const server = createServer((req, res) => {
+    let body = '';
+    req.on('data', (d) => (body += d));
+    req.on('end', () => {
+      res.setHeader('content-type', 'application/json');
+      if (req.url === '/api/tags') return res.end(JSON.stringify({ models: [{ name: 'qwen3:8b' }, { name: 'nomic-embed-text' }] }));
+      if (req.url === '/v1/chat/completions') { const j = JSON.parse(body); prompts.push(j.messages.map((m: { content: string }) => m.content).join('\n')); return res.end(JSON.stringify({ choices: [{ message: { content: '6 × 7 is\n42' } }] })); }
+      res.statusCode = 404; res.end('{}');
+    });
+  });
+  await new Promise<void>((r) => server.listen(0, '127.0.0.1', () => r()));
+  return { url: `http://127.0.0.1:${(server.address() as { port: number }).port}`, prompts, close: () => server.close() };
+}

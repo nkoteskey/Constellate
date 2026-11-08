@@ -1,4 +1,6 @@
 import { readFileSync, existsSync } from 'node:fs';
+import { ModelRuns, reachableModels, appVault } from '../work/model-runs.js';
+import { runnerFromSpec } from '../contributor/catalog.js';
 import { swr } from './swr.js';
 import { reproduction } from '../services/reproduce.js';
 import { networkSavings, operatorSavings } from '../hub/savings.js';
@@ -379,17 +381,26 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
 
   // "Have your agent work on it": what's possible on this computer for a problem, and Claude Code runs.
   const here = (req: { socket: { remoteAddress?: string } }) => /^(127\.|::1$|::ffff:127\.)/.test(req.socket.remoteAddress ?? '');
-  web.route('GET', /^\/api\/problems\/([0-9a-f]{64})\/agents$/, (req, m) => here(req)
-    ? { claude_code: hub.agentRuns.available(), online: new Presence().online(), prompt: hub.agentRuns.prompt(m[1]), runs: hub.agentRuns.forProblem(m[1]).slice(0, 3), requests: hub.workRequests.forProblem(m[1]).slice(0, 3) }
+  // Any make and model: Claude Code when it's installed (the default for Claude); otherwise any model this computer
+  // reaches (local, or a saved key); otherwise a request for connected agents (src/work/model-runs.ts).
+  const modelRuns = () => hub.modelRuns(() => new ModelRuns(hub));
+  const runsFor = (id: string) => [...hub.agentRuns.forProblem(id).map((r) => ({ ...r, via: 'claude_code' })), ...modelRuns().forProblem(id)].sort((a, b) => b.at.localeCompare(a.at)).slice(0, 3);
+  web.route('GET', /^\/api\/problems\/([0-9a-f]{64})\/agents$/, async (req, m) => here(req)
+    ? { claude_code: hub.agentRuns.available(), models: await reachableModels({ appModel: opts.guideModel }), online: new Presence().online(), prompt: hub.agentRuns.prompt(m[1]), runs: runsFor(m[1]), requests: hub.workRequests.forProblem(m[1]).slice(0, 3) }
     : new HttpReply(403, { error: 'only on this computer' }));
   web.route('POST', /^\/api\/problems\/([0-9a-f]{64})\/agents$/, async (req, m, _u, body) => {
     if (!here(req)) return new HttpReply(403, { error: 'only on this computer' });
-    const j = (await body().catch(() => ({}))) as { via?: string };
+    const j = (await body().catch(() => ({}))) as { via?: string; spec?: string };
     if (j.via === 'any') return tryIt(() => { const p = hub.problems.get(m[1]); if (!p) throw new Error('unknown problem'); return hub.workRequests.create(m[1], (p.rec.body as { title: string }).title); });
-    return tryIt(() => hub.agentRuns.start(m[1]));
+    if (j.via === 'model') return tryIt(async () => {
+      const spec = String(j.spec ?? '');
+      if (!(await reachableModels({ appModel: opts.guideModel })).some((x) => x.spec === spec)) throw new Error('that model isn’t available on this computer');
+      return modelRuns().start(m[1], spec);
+    });
+    return tryIt(() => ({ ...hub.agentRuns.start(m[1]), via: 'claude_code' }));
   });
   web.route('GET', /^\/api\/work-requests\/([0-9a-f]{12})$/, (req, m) => here(req) ? (hub.workRequests.get(m[1]) ?? new HttpReply(404, { error: 'unknown request' })) : new HttpReply(403, { error: 'only on this computer' }));
-  web.route('GET', /^\/api\/agent-runs\/([0-9a-f]{12})$/, (req, m) => here(req) ? (hub.agentRuns.get(m[1]) ?? new HttpReply(404, { error: 'unknown run' })) : new HttpReply(403, { error: 'only on this computer' }));
+  web.route('GET', /^\/api\/agent-runs\/([0-9a-f]{12})$/, (req, m) => here(req) ? (hub.agentRuns.get(m[1]) ?? modelRuns().get(m[1]) ?? new HttpReply(404, { error: 'unknown run' })) : new HttpReply(403, { error: 'only on this computer' }));
 
   // This computer's agent: its name (handle) and one line about it, set by the person using this computer.
   web.route('GET', /^\/api\/profile\/agent$/, (req) => /^(127\.|::1$|::ffff:127\.)/.test(req.socket.remoteAddress ?? '') ? { id: hub.node.agentId, ...(profiles.ownAgent() ?? { kind: 'agent' }) } : new HttpReply(403, { error: 'only on this computer' }));
@@ -461,14 +472,25 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
   const local = (req: { socket: { remoteAddress?: string } }) => /^(127\.|::1$|::ffff:127\.)/.test(req.socket.remoteAddress ?? '');
   const deny = () => new HttpReply(403, { error: 'planning runs on the computer that owns the agents' });
   const tryIt = async <T>(f: () => Promise<T> | T) => { try { return await f(); } catch (e) { return new HttpReply(400, { error: (e as Error).message }); } };
-  web.route('GET', /^\/api\/plans$/, (req, _m, url) => local(req) ? { options: planner.options(), requests: planner.list(url.searchParams.get('idea') ?? undefined) } : deny());
+  web.route('GET', /^\/api\/plans$/, async (req, _m, url) => local(req) ? { options: { ...planner.options(), models: await reachableModels({ appModel: opts.guideModel }) }, requests: planner.list(url.searchParams.get('idea') ?? undefined) } : deny());
   web.route('GET', /^\/api\/plans\/pending$/, (req, _m, url) => {
     if (!local(req)) return deny();
     const list = planner.pending().map((r) => ({ id: r.id, title: r.title, brief: planner.brief(r.id) }));
     const agent = url.searchParams.get('agent'); if (agent) planner.pickedUp(agentName(agent));
     return list;
   });
-  web.route('POST', /^\/api\/plans$/, async (req, _m, _u, body) => { if (!local(req)) return deny(); const j = await body() as { idea?: string; via?: 'claude_code' | 'model' | 'any_agent' }; return tryIt(() => planner.start(String(j.idea ?? ''), j.via ?? 'any_agent')); });
+  web.route('POST', /^\/api\/plans$/, async (req, _m, _u, body) => {
+    if (!local(req)) return deny();
+    const j = await body() as { idea?: string; via?: 'claude_code' | 'model' | 'any_agent'; spec?: string };
+    return tryIt(async () => {
+      // Any model this computer reaches can write the plan, not only the one the app was started with.
+      if (j.via === 'model' && j.spec) {
+        if (!(await reachableModels({ appModel: opts.guideModel })).some((x) => x.spec === j.spec)) throw new Error('that model isn’t available on this computer');
+        return planner.start(String(j.idea ?? ''), 'model', { runner: runnerFromSpec(j.spec, { vault: appVault() }) });
+      }
+      return planner.start(String(j.idea ?? ''), j.via ?? 'any_agent');
+    });
+  });
   web.route('GET', /^\/api\/plans\/([0-9a-f]{12})$/, (req, m) => local(req) ? (planner.get(m[1]) ?? new HttpReply(404, { error: 'unknown planning request' })) : deny());
   web.route('POST', /^\/api\/plans\/([0-9a-f]{12})\/report$/, async (req, m, _u, body) => { if (!local(req)) return deny(); const j = await body() as { report?: unknown; agent?: string }; return tryIt(() => planner.report(m[1], j.report, j.agent)); });
   web.route('POST', /^\/api\/plans\/([0-9a-f]{12})\/publish$/, async (req, m) => local(req) ? tryIt(async () => ({ problem: await planner.publish(m[1]) })) : deny());

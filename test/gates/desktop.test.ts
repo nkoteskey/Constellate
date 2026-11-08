@@ -97,6 +97,26 @@ describe('connecting agents from the desktop app', () => {
     expect(JSON.parse(readFileSync(file, 'utf8')).mcpServers).toEqual({ other: { command: 'x' } });
   });
 
+  it('connects VS Code (Copilot and any model in it), which lists servers under "servers"', () => {
+    const home = tmp();
+    const vs = agentConfigs({ platform: 'darwin', home }).vscode;
+    expect(vs.file).toBe(join(home, 'Library', 'Application Support', 'Code', 'User', 'mcp.json'));
+    expect(vs.key).toBe('servers');
+    expect(agentConfigs({ platform: 'linux', home }).vscode.file).toBe(join(home, '.config', 'Code', 'User', 'mcp.json'));
+    expect(agentConfigs({ platform: 'win32', home, appData: join(home, 'Roaming') }).vscode.file).toBe(join(home, 'Roaming', 'Code', 'User', 'mcp.json'));
+    const dir = tmp(); const file = join(dir, 'mcp.json');
+    writeFileSync(file, JSON.stringify({ servers: { github: { type: 'http', url: 'https://example.com/mcp' } }, inputs: [] }));
+    expect(connection(file, entry, 'servers')).toBe('none');
+    connect(file, entry, 'servers');
+    const cfg = JSON.parse(readFileSync(file, 'utf8'));
+    expect(cfg.servers.constellate).toEqual({ type: 'stdio', ...entry });
+    expect(cfg.servers.github).toEqual({ type: 'http', url: 'https://example.com/mcp' });
+    expect(cfg.mcpServers).toBeUndefined();
+    expect(connection(file, entry, 'servers')).toBe('connected');
+    expect(disconnect(file, 'servers')).toBe(true);
+    expect(JSON.parse(readFileSync(file, 'utf8')).servers).toEqual({ github: { type: 'http', url: 'https://example.com/mcp' } });
+  });
+
   it('creates the file when the agent has none, and never overwrites one it can’t read', () => {
     const dir = tmp();
     const fresh = join(dir, 'new', 'mcp.json');

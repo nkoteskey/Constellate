@@ -17,6 +17,11 @@ export function mcpEntry({ execPath, cliPath, x0xDataDir, starter, appUrl }) {
 
 /** Config files of the agents we can connect with one click. */
 export function agentConfigs({ platform = process.platform, home = homedir(), appData = process.env.APPDATA } = {}) {
+  // VS Code keeps one user-level MCP file (servers under "servers", not "mcpServers"), used by Copilot and any
+  // model or extension in it.
+  const codeDir = platform === 'darwin' ? join(home, 'Library', 'Application Support', 'Code', 'User')
+    : platform === 'win32' ? join(appData ?? join(home, 'AppData', 'Roaming'), 'Code', 'User')
+      : join(home, '.config', 'Code', 'User');
   const claudeDir = platform === 'darwin' ? join(home, 'Library', 'Application Support', 'Claude')
     : platform === 'win32' ? join(appData ?? join(home, 'AppData', 'Roaming'), 'Claude')
       : join(home, '.config', 'Claude');
@@ -27,6 +32,7 @@ export function agentConfigs({ platform = process.platform, home = homedir(), ap
     'gemini-cli': { name: 'Gemini CLI', file: join(home, '.gemini', 'settings.json'), present: existsSync(join(home, '.gemini')) },
     'qwen-code': { name: 'Qwen Code', file: join(home, '.qwen', 'settings.json'), present: existsSync(join(home, '.qwen')) },
     'lm-studio': { name: 'LM Studio (Qwen, DeepSeek, Llama… on this computer)', file: join(home, '.lmstudio', 'mcp.json'), present: existsSync(join(home, '.lmstudio')) },
+    vscode: { name: 'VS Code (Copilot and any model in it)', file: join(codeDir, 'mcp.json'), present: existsSync(codeDir), key: 'servers' },
   };
 }
 
@@ -42,30 +48,30 @@ function readConfig(file) {
 }
 
 /** Is Constellate set up in this agent, and does it point at this app? */
-export function connection(file, entry) {
+export function connection(file, entry, key = 'mcpServers') {
   try {
-    const cur = readConfig(file).mcpServers?.[SERVER_NAME];
+    const cur = readConfig(file)[key]?.[SERVER_NAME];
     if (!cur) return 'none';
     return cur.command === entry.command && JSON.stringify(cur.args) === JSON.stringify(entry.args) ? 'connected' : 'other';
   } catch { return 'unreadable'; }
 }
 
 /** Add (or update) Constellate in an agent's config. Returns the backup path, if one was made. */
-export function connect(file, entry) {
+export function connect(file, entry, key = 'mcpServers') {
   const cfg = readConfig(file);
   let backup = null;
   if (existsSync(file)) { backup = `${file}.before-constellate`; if (!existsSync(backup)) copyFileSync(file, backup); }
-  cfg.mcpServers = { ...(cfg.mcpServers ?? {}), [SERVER_NAME]: entry };
+  cfg[key] = { ...(cfg[key] ?? {}), [SERVER_NAME]: key === 'servers' ? { type: 'stdio', ...entry } : entry };
   mkdirSync(dirname(file), { recursive: true });
   writeFileSync(file, JSON.stringify(cfg, null, 2) + '\n');
   return backup;
 }
 
 /** Remove Constellate from an agent's config, leaving everything else as it was. */
-export function disconnect(file) {
+export function disconnect(file, key = 'mcpServers') {
   const cfg = readConfig(file);
-  if (!cfg.mcpServers?.[SERVER_NAME]) return false;
-  delete cfg.mcpServers[SERVER_NAME];
+  if (!cfg[key]?.[SERVER_NAME]) return false;
+  delete cfg[key][SERVER_NAME];
   writeFileSync(file, JSON.stringify(cfg, null, 2) + '\n');
   return true;
 }

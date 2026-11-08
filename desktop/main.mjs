@@ -131,7 +131,7 @@ async function setContribute(on) {
 // ── What the app can see and do (only from the local app, never from other sites) ──
 function status() {
   const entry = mcpEntry({ execPath: process.execPath, cliPath: CLI, x0xDataDir: x0x.dataDir, starter: STARTER, appUrl: APP_URL });
-  const agents = Object.fromEntries(Object.entries(agentConfigs()).map(([id, a]) => [id, { name: a.name, present: a.present, connection: connection(a.file, entry) }]));
+  const agents = Object.fromEntries(Object.entries(agentConfigs()).map(([id, a]) => [id, { name: a.name, present: a.present, connection: connection(a.file, entry, a.key) }]));
   return {
     version: app.getVersion(), platform: process.platform,
     x0x: x0x.status(), server: externalServer ? { state: 'external' } : server.status(),
@@ -167,7 +167,7 @@ handle('desktop:connectAgent', async (_e, id) => {
     detail: `This adds Constellate to ${a.name}'s settings file:\n${a.file}\n\nA copy of the file as it is now is kept next to it. Restart ${a.name} afterwards.`,
   });
   if (response !== 0) return { ok: false, cancelled: true };
-  try { const backup = connect(a.file, mcpEntry({ execPath: process.execPath, cliPath: CLI, x0xDataDir: x0x.dataDir, starter: STARTER, appUrl: APP_URL })); return { ok: true, backup }; }
+  try { const backup = connect(a.file, mcpEntry({ execPath: process.execPath, cliPath: CLI, x0xDataDir: x0x.dataDir, starter: STARTER, appUrl: APP_URL }), a.key); return { ok: true, backup }; }
   catch (err) { return { ok: false, error: err.message }; }
 });
 // One-click x0x link: this computer's x0x agent vouches for the person's browser key. The daemon signs the
@@ -182,7 +182,7 @@ handle('desktop:linkX0x', async (_e, browserId) => {
   if (!r.ok || !j.signature_b64) return { ok: false, error: `x0x couldn’t sign (${j.error ?? r.status}).` };
   return { ok: true, x0x_agent_id: j.agent_id, x0x_public_key: j.public_key_b64, signature: j.signature_b64, context: LINK_CONTEXT };
 });
-handle('desktop:disconnectAgent', (_e, id) => { const a = agentConfigs()[id]; if (!a) throw new Error('Unknown agent'); try { return { ok: disconnect(a.file) }; } catch (err) { return { ok: false, error: err.message }; } });
+handle('desktop:disconnectAgent', (_e, id) => { const a = agentConfigs()[id]; if (!a) throw new Error('Unknown agent'); try { return { ok: disconnect(a.file, a.key) }; } catch (err) { return { ok: false, error: err.message }; } });
 
 // ── Lifecycle ────────────────────────────────────────────────────────────
 async function boot() {

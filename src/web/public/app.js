@@ -691,42 +691,49 @@ async function agentWorkSheet(p) {
   if (info.error) { toast(info.error, 6000); return; }
   const el = sheet(`<div class="spread"><div class="eyebrow">Have your agent work on it</div><button class="btn ghost sm" data-close>Close</button></div>
     <h2 style="margin:6px 0 6px">${esc(p.hook || p.title)}</h2>
-    <p class="muted" style="font-size:13.5px;margin:0 0 14px">Your agent takes open steps with its own model and submits each answer. It counts once a computer running a different model family checks it, so no agent marks its own work. It uses your agent’s plan or API budget.</p>
+    <p class="muted" style="font-size:13.5px;margin:0 0 14px">Pick who works on it. Each answer counts once a computer running a different model family checks it, so no agent marks its own work.</p>
     <div id="aw-body"></div>`, { label: 'Have your agent work on it' });
   let timer = 0, reqTimer = 0;
   let request = info.requests?.[0] ?? null;
-  const logList = (log) => `<ol class="plan-log">${log.map((l) => `<li><span class="faint num">${new Date(l.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })}</span> ${esc(l.text)}</li>`).join('')}</ol>`;
+  // Every way to do the work, as one list (docs/AGENT_STEPS.md): Claude Code first, then any other model this
+  // computer reaches (local, or a saved key), then agents the person has to start themselves.
+  const choices = [
+    ...(info.claude_code ? [{ id: 'claude_code', name: 'Claude Code', note: 'Runs on this computer with only Constellate’s tools; uses your Claude plan.' }] : []),
+    ...(info.models ?? []).map((m) => ({ id: `model:${m.spec}`, name: m.name, note: `${m.note[0].toUpperCase()}${m.note.slice(1)}. The app does the steps with it.` })),
+    { id: 'any', name: 'Claude Desktop, Cursor or another connected agent', note: 'You have to start it yourself: these apps can’t be started by another app. After Start, open it and say “Use Constellate’s work_step tool to do the work I asked for.”' },
+  ];
+  let pick = ls.get('workChoice', '');
+  if (!choices.some((c) => c.id === pick)) pick = choices[0].id; // the first one that runs on its own, if any
+  const time = (at) => new Date(at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' });
+  const logList = (log) => `<ol class="plan-log">${log.map((l) => `<li><span class="faint num">${time(l.at)}</span> ${esc(l.text)}</li>`).join('')}</ol>`;
+  const runName = (run) => (run?.via && run.via !== 'claude_code' ? run.via.split('/').slice(1).join('/') : 'Claude Code');
+  const chip = (state, text) => `<span class="chip sm ${state}"><span class="dot"></span>${esc(text)}</span>`;
   const draw = (run) => {
     if (!document.body.contains(el)) { clearInterval(timer); clearInterval(reqTimer); return; }
     const online = [...new Set(info.online.map((o) => o.client))];
-    const live = request && request.status !== 'done';
+    const running = run?.status === 'running';
+    const waiting = request && request.status !== 'done';
     $('#aw-body', el).innerHTML = `
-      <div class="card" style="margin-bottom:10px"><div class="spread"><b>Ask your connected agents</b>${request ? `<span class="chip sm ${request.status === 'done' ? 'ok' : 'warn'}"><span class="dot"></span>${request.status === 'waiting' ? 'waiting for an agent' : request.status === 'working' ? `${esc(request.by ?? 'an agent')} · ${request.steps} answered` : `done · ${request.steps} answered`}</span>` : ''}</div>
-        <p class="muted" style="font-size:13px;margin:6px 0 10px">${online.length ? `Connected now: ${esc(online.join(', '))}. ` : 'No agent is connected right now; the request waits up to a day. '}Works with whatever agent and model you use: agents that allow it start straight away with their own model; others get the request the next time they use Constellate.</p>
-        ${request?.status === 'waiting' && !info.claude_code ? `<p class="muted" style="font-size:13px;margin:0 0 8px">Agents that allow it (VS Code and others with sampling) start on their own. Claude Desktop and Cursor can’t be started by another app, so nothing here can run this unattended yet. To make it automatic, install <a href="https://docs.claude.com/en/docs/claude-code/setup" target="_blank" rel="noopener">Claude Code</a> (it uses your Claude plan) and this starts straight away next time, or <a href="#/compute">lend this computer</a> to a free local model.</p>` : ''}
-        ${request ? logList(request.log) : ''}
-        ${!live ? `<div class="row" style="margin-top:10px"><button class="btn primary" id="aw-ask">${request ? 'Ask again' : 'Ask my agents'}</button></div>` : ''}</div>
-      ${info.claude_code ? `<div class="card" style="margin-bottom:10px"><div class="spread"><b>Claude Code on this computer</b>${run ? `<span class="chip sm ${run.status === 'done' ? 'ok' : run.status === 'failed' ? 'stop' : 'warn'}"><span class="dot"></span>${run.status === 'running' ? `working · ${run.steps} answered` : run.status === 'done' ? `done · ${run.steps} answered` : 'stopped'}</span>` : ''}</div>
-        <p class="muted" style="font-size:13px;margin:6px 0 10px">Starts in the background with Constellate connected, takes up to 3 steps, and can only use Constellate’s tools.</p>
-        ${run ? `<ol class="plan-log">${run.log.map((l) => `<li><span class="faint num">${new Date(l.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })}</span> ${esc(l.text)}</li>`).join('')}</ol>` : ''}
-        ${!run || run.status !== 'running' ? `<div class="row" style="margin-top:10px"><button class="btn primary" id="aw-start">${run ? 'Run again' : 'Start Claude Code'}</button></div>` : ''}</div>` : ''}
-      <div class="card"><b>Or tell an agent yourself</b>
-        <p class="muted" style="font-size:13px;margin:6px 0 8px">Paste this to any agent connected to Constellate, to start it now.</p>
-        <div class="copy-row"><pre class="code" style="white-space:pre-wrap">${esc(info.prompt)}</pre><button class="btn" id="aw-copy">${icon.copy}Copy</button></div></div>`;
+      ${run ? `<div class="card" style="margin-bottom:10px"><div class="spread"><b>${esc(runName(run))}</b>${chip(run.status === 'done' ? 'ok' : run.status === 'failed' ? 'stop' : 'warn', run.status === 'running' ? `working · ${run.steps} answered` : run.status === 'done' ? `done · ${run.steps} answered` : 'stopped')}</div>${logList(run.log)}</div>` : ''}
+      ${request ? `<div class="card" style="margin-bottom:10px"><div class="spread"><b>Connected agents</b>${chip(request.status === 'done' ? 'ok' : 'warn', request.status === 'waiting' ? 'waiting for you to start it' : request.status === 'working' ? `${request.by ?? 'an agent'} · ${request.steps} answered` : `done · ${request.steps} answered`)}</div>${logList(request.log)}</div>` : ''}
+      <div class="card"><div class="stack" role="radiogroup" aria-label="Who works on it" style="gap:8px">
+        ${choices.map((c) => `<label class="row" style="align-items:flex-start;gap:10px;cursor:pointer"><input type="radio" name="aw-who" value="${esc(c.id)}"${c.id === pick ? ' checked' : ''} style="margin-top:4px"><span><b>${esc(c.name)}</b><span class="muted" style="display:block;font-size:13px">${esc(c.note)}</span></span></label>`).join('')}
+      </div>
+      ${online.length ? `<p class="faint" style="font-size:12.5px;margin:10px 0 0">Connected now: ${esc(online.join(', '))}.</p>` : ''}
+      <div class="row" style="margin-top:12px"><button class="btn primary" id="aw-go"${running || (pick === 'any' && waiting) ? ' disabled' : ''}>Start</button>${pick === 'any' ? `<button class="btn ghost sm" id="aw-say">${icon.copy}Copy what to say</button>` : ''}</div></div>
+      ${!info.claude_code && !(info.models ?? []).length ? `<p class="faint" style="font-size:12.5px;margin:10px 0 0">To have this run on its own, install <a href="https://docs.claude.com/en/docs/claude-code/setup" target="_blank" rel="noopener">Claude Code</a>, run a model with Ollama or LM Studio, or save a provider key (<code>constellate keys set openai</code>, for example).</p>` : ''}
+      <details class="more-options" style="margin-top:10px"><summary><span>Paste a line to an agent yourself</span></summary>
+        <div class="copy-row" style="margin-top:8px"><pre class="code" style="white-space:pre-wrap">${esc(info.prompt)}</pre><button class="btn" id="aw-copy">${icon.copy}Copy</button></div></details>`;
     $('#aw-copy', el).onclick = () => copy(info.prompt, 'Copied. Paste it to your agent');
-    const ask = $('#aw-ask', el);
-    if (ask) ask.onclick = async () => {
-      ask.disabled = true;
-      const r = await api(`/api/problems/${p.id}/agents`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ via: 'any' }) }).catch((e) => ({ error: e.message }));
-      if (r.error) { ask.disabled = false; toast(r.error, 6000); return; }
-      request = r; draw(run); watchRequest(r.id);
-    };
-    const start = $('#aw-start', el);
-    if (start) start.onclick = async () => {
-      start.disabled = true;
-      const r = await api(`/api/problems/${p.id}/agents`, { method: 'POST' }).catch((e) => ({ error: e.message }));
-      if (r.error) { start.disabled = false; toast(r.error, 6000); return; }
-      lastRun = r; draw(r); watch(r.id);
+    const say = $('#aw-say', el); if (say) say.onclick = () => copy('Use Constellate’s work_step tool to do the work I asked for.', 'Copied. Paste it to your agent');
+    $$('input[name="aw-who"]', el).forEach((r) => (r.onchange = () => { pick = r.value; ls.set('workChoice', pick); draw(lastRun); }));
+    const go = $('#aw-go', el);
+    go.onclick = async () => {
+      go.disabled = true;
+      const payload = pick === 'any' ? { via: 'any' } : pick === 'claude_code' ? {} : { via: 'model', spec: pick.slice('model:'.length) };
+      const r = await api(`/api/problems/${p.id}/agents`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) }).catch((e) => ({ error: e.message }));
+      if (r.error) { go.disabled = false; toast(r.error, 6000); return; }
+      if (pick === 'any') { request = r; draw(lastRun); watchRequest(r.id); } else { lastRun = r; draw(r); watch(r.id); }
     };
   };
   const watchRequest = (id) => { clearInterval(reqTimer); reqTimer = setInterval(async () => { const r = await api(`/api/work-requests/${id}`).catch(() => null); if (!r) return; request = r; draw(lastRun); if (r.status === 'done') clearInterval(reqTimer); }, 2500); };
@@ -737,14 +744,6 @@ async function agentWorkSheet(p) {
   draw(current);
   if (current?.status === 'running') watch(current.id);
   if (request && request.status !== 'done') watchRequest(request.id);
-  // Nothing to choose and nothing to tell an agent: start with what this computer can run on its own. Claude Code
-  // runs headless with Constellate's tools; without it, connected agents get the request (those with sampling act
-  // at once). Only when nothing is already going.
-  const busy = current?.status === 'running' || (request && request.status !== 'done');
-  if (!busy) {
-    if (info.claude_code) $('#aw-start', el)?.click();
-    else $('#aw-ask', el)?.click();
-  }
 }
 
 // ── The x0x Constitution: the laws every problem on Constellate is checked against ────────

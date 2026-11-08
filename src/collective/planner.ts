@@ -121,12 +121,14 @@ If plan_report isn't available or keeps failing, end your reply with the same { 
   }
 
   /** Start planning an idea with one of the available agents. */
-  async start(ideaId: string, via: PlanVia) {
+  async start(ideaId: string, via: PlanVia, opts: { runner?: ModelRunner } = {}) {
     const i = this.idea(ideaId);
     const now = new Date().toISOString();
-    const first = via === 'any_agent' ? 'Waiting for a connected agent. Open Claude Desktop, Cursor or another agent connected to Constellate and say: “check Constellate for planning requests”.'
-      : via === 'model' ? `Asked ${this.model?.id ?? 'this app’s model'} to write the plan.` : 'Starting Claude Code on this computer…';
+    const model = opts.runner ?? this.model;
+    const first = via === 'any_agent' ? 'Waiting for a connected agent. Claude Desktop, Cursor and others can’t be started by another app: open it and ask it to check Constellate for planning requests.'
+      : via === 'model' ? `Asked ${model?.id ?? 'this app’s model'} to write the plan.` : 'Starting Claude Code on this computer…';
     const r = this.put({ id: randomBytes(6).toString('hex'), idea: ideaId, title: i.title, via, status: via === 'any_agent' ? 'waiting' : 'running', at: now, updated: now, log: [{ at: now, text: first }] });
+    if (opts.runner) this.runners.set(r.id, opts.runner);
     if (via === 'model') void this.runModel(r.id);
     if (via === 'claude_code') this.runClaudeCode(r.id);
     return r;
@@ -171,14 +173,17 @@ If plan_report isn't available or keeps failing, end your reply with the same { 
   private fail(id: string, error: string) { const r = this.get(id); if (r && r.status === 'running') this.put({ ...r, status: 'failed', error, log: [...(r.log ?? []), { at: new Date().toISOString(), text: `Stopped: ${error}`.slice(0, 300) }].slice(-60) }); }
 
   /** The model this app uses writes the plan (JSON in its reply), and it's validated like any report. */
+  /** Models chosen for particular requests (any make and model this computer reaches; src/work/model-runs.ts). */
+  private runners = new Map<string, ModelRunner>();
   private async runModel(id: string) {
-    if (!this.model) return this.fail(id, 'no model is set up for this app');
+    const model = this.runners.get(id) ?? this.model;
+    if (!model) return this.fail(id, 'no model is set up for this app');
     try {
       const t0 = Date.now();
-      const out = await this.model.run(`${this.brief(id)}\n\nYou can't call tools here: reply with ONLY the JSON object { "plan": …, "findings": … } described above.`, { maxTokens: 4000 });
-      this.note(id, `${this.model.id} replied after ${Math.round((Date.now() - t0) / 1000)} s; checking the plan.`);
+      const out = await model.run(`${this.brief(id)}\n\nYou can't call tools here: reply with ONLY the JSON object { "plan": …, "findings": … } described above.`, { maxTokens: 4000 });
+      this.note(id, `${model.id} replied after ${Math.round((Date.now() - t0) / 1000)} s; checking the plan.`);
       const json = out.slice(out.indexOf('{'), out.lastIndexOf('}') + 1);
-      await this.report(id, JSON.parse(json), this.model.id);
+      await this.report(id, JSON.parse(json), model.id);
     } catch (e) { this.fail(id, `the model's plan couldn't be used: ${(e as Error).message.slice(0, 300)}`); }
   }
 

@@ -441,6 +441,17 @@ Real money, **ready and off by default** (docs/MAINNET.md):
 - **`work_step` with no arguments** lists what the person asked for first, every time, with that problem's steps, and the request shows who picked it up.
 - **Tests never start a real Claude Code** (`CONSTELLATE_CLAUDE=off` by default in `test/setup.ts`). Gate `test/gates/agent_work_reach.test.ts`.
 
+### Any make and model, as one list; VS Code connects in one click (Nov 8)
+- **Who works on a problem, or plans an idea, is one list** with one Start button:
+  - Claude Code;
+  - every other model this computer reaches (Ollama or LM Studio models, any provider with a saved key, the app's own model);
+  - Claude Desktop, Cursor or another connected agent, noted as "you have to start it yourself".
+
+  The first that runs on its own is preselected and the last choice remembered. Nothing starts until Start.
+- **`src/work/model-runs.ts`** finds the reachable models and does up to three steps with the chosen one. Each answer records its model and is checked by a different family, like any other. The step's check is never sent to the model. Ollama's `OLLAMA_HOST` is honoured.
+- **The desktop app connects VS Code** (Copilot and any model in it) in one click, alongside Claude Desktop, Cursor, Windsurf, Gemini CLI, Qwen Code and LM Studio. Its user-level `mcp.json` lists servers under `servers`.
+- Gates: `test/gates/agent_work_reach.test.ts` (a stand-in Ollama does a step end to end; the list on both sheets), `test/gates/desktop.test.ts` (VS Code).
+
 ## Summary of what needs a human
 1. **Live x0x (blocks confidence in every phase):** run the gates against two real `x0xd` daemons. Confirm ML-DSA signature interop between `/agent/sign` and noble, `/stores` and `/task-lists` field names, contacts → pre-trusted operators, and Spaces/DMs for chat.
 2. **Gate 1 behaviour:** `ANTHROPIC_API_KEY=… npx tsx evals/gate1.ts 3`.
