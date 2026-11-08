@@ -80,6 +80,7 @@ async function dmSheet(to, opts = {}) {
   const load = async () => { if (!meId && hasIdentity()) meId = (await ID()).identity().agentId; return meId ? (await api(`/api/dm/${meId}`)).messages.filter((m) => m.to === to || m.from === to) : []; };
   const el = sheet(`<div class="spread"><div class="eyebrow">Message ${esc(opts.name ?? short(to))}</div><button class="btn ghost sm" data-close>Close</button></div>
     <p class="faint" style="font-size:12.5px;margin:6px 0 12px">Private: sent over x0x direct messages, never stored as a public record.</p>
+    ${opts.offline ? '<p class="card" style="font-size:13px;margin:0 0 12px;padding:10px 12px">They’re offline right now. x0x delivers a direct message only while both computers are online, so this may not go through. You’ll see “Delivered” if it does; if not, nothing was sent and you can try again when they’re online.</p>' : ''}
     <div class="feed" id="dm-list" style="max-height:40vh;overflow:auto"></div>
     <form class="chat-form" id="dm-form"><input class="field" id="dm-text" maxlength="2000" placeholder="Say hello" aria-label="Message" required><button class="btn">Send</button></form>`, { label: 'Direct message' });
   if (opts.draft) { $('#dm-text', el).value = opts.draft; $('#dm-text', el).focus(); }
@@ -765,7 +766,9 @@ async function galleryPage(id) {
 async function proposalsPage() {
   const [q, ideas, plans, planUi] = await Promise.all([api('/api/proposals'), api('/api/ideas').catch(() => []), STATIC ? null : api('/api/plans').catch(() => null), import('./js/plan.js')]);
   // The latest plan for each idea (newest first from the server), so its card says where planning stands.
-  const planOf = new Map(); for (const r of plans?.requests ?? []) if (!planOf.has(r.idea)) planOf.set(r.idea, r);
+  // The newest attempt per idea (by when it started, so an old attempt failing late doesn't hide a new one).
+  const latestPlans = (reqs) => { const m = new Map(); for (const r of reqs ?? []) { const cur = m.get(r.idea); if (!cur || r.at > cur.at) m.set(r.idea, r); } return m; };
+  const planOf = latestPlans(plans?.requests);
   const state = (c) => c.state === 'cleared' ? '' : c.state === 'awaiting_review' ? '<span class="chip warn"><span class="dot"></span>Awaiting safety review</span>' : `<span class="chip stop"><span class="dot"></span>${esc(c.state)}</span>`;
   const row = (r) => `<div class="card"><div class="spread"><a href="#/p/${r.id}" class="serif" style="font-size:20px;text-decoration:none">${esc(r.title)}</a>${state(r.constitution)}</div>
     <div class="row muted" style="font-size:13.5px;margin:6px 0 10px"><span>${r.votes.voters} voters</span><span>· vote weight ${r.votes.weight.toFixed(1)}</span>${r.share !== undefined ? `<span>· ${Math.round(r.share * 100)}% of compute</span>` : ''}<span>· ${r.progress.done}/${r.progress.total} verified</span></div>
@@ -802,17 +805,21 @@ async function proposalsPage() {
   const show = (t) => { tab = t; ls.set('proposalsTab', t.key); $$('[data-ptab]').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.ptab === t.key))); $('#ptab-body').innerHTML = t.html(); wire($('#ptab-body')); };
   $$('[data-ptab]').forEach((b) => (b.onclick = () => show(TABS.find((t) => t.key === b.dataset.ptab))));
   show(tab);
-  // While an agent is planning, keep the Ideas tab current so its progress shows without reopening anything.
-  if ([...planOf.values()].some((r) => ['waiting', 'running'].includes(r.status))) {
+  // Keep the Ideas tab current while it's open (a plan started from the popup, an agent's progress), redrawing
+  // only when something changed.
+  if (!STATIC) {
     const here = location.hash;
+    let seen = JSON.stringify([...planOf.values()].map((r) => [r.id, r.status, r.log?.length ?? 0]));
     const tick = setInterval(async () => {
       if (location.hash !== here || !$('#ptab-body')) return clearInterval(tick);
       if (tab.key !== 'ideas' || document.getElementById('sheet')) return;
       const fresh = await api('/api/plans').catch(() => null); if (!fresh) return;
-      planOf.clear(); for (const r of fresh.requests) if (!planOf.has(r.idea)) planOf.set(r.idea, r);
+      const next = latestPlans(fresh.requests);
+      const sig = JSON.stringify([...next.values()].map((r) => [r.id, r.status, r.log?.length ?? 0]));
+      if (sig === seen) return;
+      seen = sig; planOf.clear(); for (const [k, v] of next) planOf.set(k, v);
       show(tab);
-      if (![...planOf.values()].some((r) => ['waiting', 'running'].includes(r.status))) clearInterval(tick);
-    }, 4000);
+    }, 3000);
   }
   $('#open-propose').onclick = () => {
     const el = sheet(`<div class="spread"><div class="eyebrow">Propose a problem</div><button class="btn ghost sm" data-close>Close</button></div>
@@ -857,23 +864,25 @@ function profileCard(p, meId) {
   const canMsg = !mine && p.open_to?.messages !== false;
   return `<div class="card profile-card" data-pid="${p.id}" data-pkind="${p.kind === 'person' ? 'human' : 'agent'}" data-prealms="${esc((p.realms ?? []).join(' '))}" data-ptext="${esc(`${p.handle ?? ''} ${p.about ?? ''} ${(p.can ?? []).join(' ')}`.toLowerCase())}">
     <div class="row">${identicon(p.id, p.kind === 'person', 40)}<div style="min-width:0">
-      <div class="row" style="gap:6px"><b>${esc(profName(p))}</b>${p.online ? '<span class="chip sm ok"><span class="dot"></span>online</span>' : ''}${mine ? '<span class="badge-you">You</span>' : ''}</div>
+      <div class="row" style="gap:6px"><b>${esc(profName(p))}</b>${p.online ? '<span class="chip sm ok"><span class="dot"></span>online</span>' : mine ? '' : '<span class="chip sm">offline</span>'}${mine ? '<span class="badge-you">You</span>' : ''}</div>
       <div class="faint" style="font-size:12.5px">${p.kind === 'person' ? 'Person' : p.this_computer ? 'This computer' : p.owner ? `@${esc(p.owner.handle)}’s computer` : 'Agent on someone’s computer'}${p.contributions ? ` · ${p.contributions} contribution${p.contributions === 1 ? '' : 's'}` : ''}${p.github ? ` · <span class="gh-check" data-handle="${esc(p.github.handle)}" data-proof="${esc(p.github.proof)}" data-id="${p.id}">GitHub @${esc(p.github.handle)}</span>` : ''}</div></div></div>
     ${p.machine ? `<div class="machine-line" title="x0x agent ${esc(p.machine.id)}"><span class="machine-dot${p.machine.online ? ' on' : ''}"></span>${p.machine.this_computer ? 'On this computer' : 'Their computer'}: ${p.machine.handle ? `@${esc(p.machine.handle)}` : `agent ${short(p.machine.id)}`} · ${p.machine.online ? 'online' : 'offline'}</div>` : ''}
     ${p.about ? `<p class="muted" style="margin:8px 0 0;font-size:13.5px">${esc(p.about)}</p>` : ''}
     ${(p.realms ?? []).length || (p.can ?? []).length ? `<div class="row" style="gap:6px;margin-top:8px">${(p.realms ?? []).map((r) => `<span class="chip sm" style="--c:${realm(r).c}"><span class="dot"></span>${esc(realm(r).short)}</span>`).join('')}${(p.can ?? []).map((c) => `<span class="chip sm">${esc(c)}</span>`).join('')}</div>` : ''}
-    ${canMsg ? `<div class="row" style="gap:6px;margin-top:10px"><button class="btn sm" data-msg="${p.host}" data-name="${esc(profName(p))}">Message</button><button class="btn sm agent" data-connect="${p.host}" data-name="${esc(profName(p))}" ${ls.get('connected', []).includes(p.id) ? 'disabled' : ''}>${ls.get('connected', []).includes(p.id) ? 'Request sent' : 'Ask to connect'}</button>${p.open_to?.invites ? `<button class="btn sm ghost" data-invite="${p.host}" data-name="${esc(profName(p))}">Invite to a problem</button>` : ''}</div>` : ''}
+    ${canMsg ? `<div class="row" style="gap:6px;margin-top:10px"><button class="btn sm" data-msg="${p.host}" data-name="${esc(profName(p))}"${p.online ? '' : ' data-offline="1"'}>Message</button><button class="btn sm agent" data-connect="${p.host}" data-name="${esc(profName(p))}"${p.online ? '' : ' data-offline="1"'} ${ls.get('connectSent', []).includes(p.id) ? 'disabled' : ''}>${ls.get('connectSent', []).includes(p.id) ? 'Request sent' : 'Ask to connect'}</button>${p.open_to?.invites ? `<button class="btn sm ghost" data-invite="${p.host}" data-name="${esc(profName(p))}">Invite to a problem</button>` : ''}</div>` : ''}
   </div>`;
 }
 
 /** Wire Message / Ask to connect / Invite, and check GitHub badges in this browser. */
 function wireProfiles(root, problems = []) {
-  $$('[data-msg]', root).forEach((b) => (b.onclick = () => dmSheet(b.dataset.msg, { name: b.dataset.name })));
+  $$('[data-msg]', root).forEach((b) => (b.onclick = () => dmSheet(b.dataset.msg, { name: b.dataset.name, offline: !!b.dataset.offline })));
   $$('[data-connect]', root).forEach((b) => (b.onclick = async () => {
     const mine = await myHandle();
     const card = b.closest('[data-pid]');
-    await dmSheet(b.dataset.connect, { name: b.dataset.name, draft: `Hi ${b.dataset.name.startsWith('@') ? b.dataset.name : 'there'}! I found you on Constellate${mine ? ` (I’m @${mine})` : ''}. Want to connect and work on something together?` });
-    if (card) { ls.set('connected', [...new Set([...ls.get('connected', []), card.dataset.pid])]); b.textContent = 'Request sent'; b.disabled = true; }
+    // "Request sent" only once the message actually went: x0x can't deliver to a computer that's offline.
+    await dmSheet(b.dataset.connect, { name: b.dataset.name, offline: !!b.dataset.offline, draft: `Hi ${b.dataset.name.startsWith('@') ? b.dataset.name : 'there'}! I found you on Constellate${mine ? ` (I’m @${mine})` : ''}. Want to connect and work on something together?`, onSent: () => {
+      if (card) { ls.set('connectSent', [...new Set([...ls.get('connectSent', []), card.dataset.pid])]); b.textContent = 'Request sent'; b.disabled = true; }
+    } });
   }));
   $$('[data-invite]', root).forEach((b) => (b.onclick = () => {
     if (!problems.length) { toast('No open problems to invite them to yet.'); return; }
