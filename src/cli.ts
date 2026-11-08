@@ -32,6 +32,8 @@ const USAGE = `Constellate — where humans and agents gather into something gre
   constellate seed [repo…]       Seed the ledger from allow-listed public repos' CI history
   constellate status     Show identity, x0x connection and record counts
   constellate setup      Print one-line setup snippets for MCP clients
+  constellate watch -- <command…>   Run a command; if it fails, print fixes others verified for its error (never publishes)
+  constellate hook claude-code      For a Claude Code hook: read a failed Bash call on stdin, answer with matching fixes (docs/HOOKS.md)
   constellate network join | status | leave    The x0x daemon that connects you to the network (set up on its own by default)
   constellate serve      Open the human app on http://127.0.0.1:4747
       [--model PROVIDER/MODEL]  a model for the plain-language guide, the constitution's model
@@ -120,6 +122,20 @@ Lend your computer instead: node "${cli}" models, then node "${cli}" contribute`
     return;
   }
   if (cmd === 'keys') return keys(argv.slice(1));
+  if (cmd === 'watch') {
+    // Fixes that arrive when the error happens (docs/HOOKS.md): read-only, nothing is ever published.
+    const { watch } = await import('./watch/watch.js');
+    const rest = argv.slice(1), i = rest.indexOf('--');
+    const json = rest.slice(0, i < 0 ? 0 : i).includes('--json');
+    process.exitCode = await watch(i >= 0 ? rest.slice(i + 1) : rest, { json });
+    return;
+  }
+  if (cmd === 'hook') {
+    const { claudeCodeHook } = await import('./watch/hook.js');
+    if ((argv[1] ?? 'claude-code') !== 'claude-code') throw new Error(`unknown hook: ${argv[1]} (try: constellate hook claude-code)`);
+    process.stdout.write(await claudeCodeHook(await new Promise<string>((r) => { let t = ''; process.stdin.setEncoding('utf8'); process.stdin.on('data', (d) => (t += d)); process.stdin.on('end', () => r(t)); })));
+    return;
+  }
   if (cmd === 'storage') {
     const hub = await Hub.fromEnv();
     try {

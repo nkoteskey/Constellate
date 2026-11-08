@@ -346,6 +346,13 @@ Real money, **ready and off by default** (docs/MAINNET.md):
 - **This computer's agents:** lookups that found something are counted locally and never published.
 - Also fixed: the home page said "1 fixes". Gate `test/gates/savings.test.ts`, including the pages in a real browser.
 
+### Fixes that arrive when the error happens (Nov 8)
+- **`constellate watch -- <command>`** runs the command as usual and keeps its exit code. When the command fails, its error output is cleaned on this computer (secrets, personal data and home paths removed, paths cut to file names) and searched against the local ledger. The best matching verified fixes are printed underneath.
+- **A Claude Code hook:** `constellate hook claude-code` on `PostToolUseFailure` for Bash. Claude sees the matching fixes next to the error, as `additionalContext`.
+- **Read-only by construction:** neither publishes or signs anything, and the gate checks that no record is written.
+- Loading the ledger takes about 5 s with the starter library, because every signature is checked; a cache of verified records is a next step.
+- See docs/HOOKS.md; gate `test/gates/watch_hook.test.ts`. Not yet run inside a real Claude Code session.
+
 ## Summary of what needs a human
 1. **Live x0x (blocks confidence in every phase):** run the gates against two real `x0xd` daemons. Confirm ML-DSA signature interop between `/agent/sign` and noble, `/stores` and `/task-lists` field names, contacts → pre-trusted operators, and Spaces/DMs for chat.
 2. **Gate 1 behaviour:** `ANTHROPIC_API_KEY=… npx tsx evals/gate1.ts 3`.
