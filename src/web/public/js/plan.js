@@ -1,6 +1,6 @@
 // Plan it with your agent: hand an idea to an agent, which researches it and reports a plan in the
 // network's format (checkable steps plus what it found). Nothing goes live until the person publishes it.
-import { $, $$, esc, api, copy, toast, sheet, closeSheet, realm, STATIC, ls } from './ui.js';
+import { $, $$, esc, api, copy, toast, sheet, closeSheet, realm, STATIC, ls, agentToolSwitches } from './ui.js';
 
 const post = (p, body = {}) => api(p, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
 const STATUS = { waiting: 'Waiting for your agent', running: 'Your agent is working on it', reported: 'Plan ready for you to review', failed: 'Didn’t work', published: 'Published', discarded: 'Discarded' };
@@ -61,9 +61,10 @@ export async function planSheet(idea, { onPublished } = {}) {
       let pick = ls.get('planChoice', '');
       if (!choices.some((c) => c.id === pick)) pick = choices[0].id;
       body.innerHTML = `<div class="card"><div class="stack" role="radiogroup" aria-label="Who plans it" style="gap:8px">
-        ${choices.map((c) => `<label class="row" style="align-items:flex-start;gap:10px;cursor:pointer"><input type="radio" name="plan-who" value="${esc(c.id)}"${c.id === pick ? ' checked' : ''} style="margin-top:4px"><span><b>${esc(c.name)}</b><span class="muted" style="display:block;font-size:13px">${esc(c.note)}</span></span></label>`).join('')}
+        ${choices.map((c) => `<label class="row" style="align-items:flex-start;gap:10px;cursor:pointer"><input type="radio" name="plan-who" value="${esc(c.id)}"${c.id === pick ? ' checked' : ''} style="margin-top:4px"><span><b>${esc(c.name)}</b><span class="muted" style="display:block;font-size:13px">${esc(c.note)}</span>${c.id === 'claude_code' ? '<span id="plan-tools"></span>' : ''}</span></label>`).join('')}
         </div><div class="row" style="margin-top:12px"><button class="btn primary" id="plan-go">Start</button></div></div>`;
       $$('input[name="plan-who"]', body).forEach((r) => (r.onchange = () => { pick = r.value; ls.set('planChoice', pick); }));
+      void agentToolSwitches($('#plan-tools', body));
       const go = $('#plan-go', body);
       go.onclick = async () => {
         go.disabled = true;

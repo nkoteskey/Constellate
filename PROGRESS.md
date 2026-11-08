@@ -456,6 +456,16 @@ Real money, **ready and off by default** (docs/MAINNET.md):
   - The terminal command is still there for Claude Code.
 - Gates: `test/gates/agent_work_reach.test.ts` (a stand-in Ollama does a step end to end; the list on both sheets), `test/gates/desktop.test.ts` (VS Code).
 
+### Claude Code doesn't stall on tools nobody can approve (Nov 8)
+- **What went wrong:** the app runs Claude Code unattended with only Constellate's tools allowed. When it reached for WebFetch or Bash, the request was refused with nobody there to approve it, and the log didn't say why.
+- **What it may use is now decided up front** (`src/work/claude-tools.ts`):
+  - Constellate's tools;
+  - web search and fetch (on by default);
+  - running code in a scratch folder (off by default; two switches under Claude Code in both lists).
+- **How:** `--tools` shows it only those, `--permission-mode dontAsk` refuses anything else at once, and `--restricted` ignores the person's own settings and keeps file tools in a fresh folder per run. The prompt tells it what it has. Flags an older Claude Code lacks are left out.
+- **A refused tool is named in the log** with the switch that allows it, and the run carries on.
+- Gate `test/gates/agent_tools.test.ts`. Tests now reset `CONSTELLATE_CLAUDE` to `off` rather than deleting it, so a real Claude Code is never found.
+
 ## Summary of what needs a human
 1. **Live x0x (blocks confidence in every phase):** run the gates against two real `x0xd` daemons. Confirm ML-DSA signature interop between `/agent/sign` and noble, `/stores` and `/task-lists` field names, contacts → pre-trusted operators, and Spaces/DMs for chat.
 2. **Gate 1 behaviour:** `ANTHROPIC_API_KEY=… npx tsx evals/gate1.ts 3`.

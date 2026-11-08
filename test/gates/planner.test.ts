@@ -100,11 +100,11 @@ describe('plan it with your agent', () => {
       expect(args[0]).toBe('-p');
       expect(args[1]).toContain(`request "${r.id}"`);
       expect(args).toContain('--strict-mcp-config');
-      expect(args[args.indexOf('--allowedTools') + 1].split(',')).toEqual(['mcp__constellate__plan_report', 'mcp__constellate__failures_search', 'mcp__constellate__answers_lookup', 'mcp__constellate__skills_find']);
+      expect(args[args.indexOf('--allowedTools') + 1].split(',')).toEqual(['mcp__constellate__plan_report', 'mcp__constellate__failures_search', 'mcp__constellate__answers_lookup', 'mcp__constellate__skills_find', 'WebSearch', 'WebFetch']); // web research is on by default (src/work/claude-tools.ts)
       expect(JSON.parse(args[args.indexOf('--mcp-config') + 1]).mcpServers.constellate.args.at(-1)).toBe('mcp');
       expect(hub.planner.get(r.id)).toMatchObject({ status: 'failed', error: 'Claude Code finished without reporting a plan.' });
       expect(args.slice(args.indexOf('--output-format'), args.indexOf('--output-format') + 3)).toEqual(['--output-format', 'stream-json', '--verbose']);
-    } finally { delete process.env.CONSTELLATE_HOME; delete process.env.CONSTELLATE_CLAUDE; }
+    } finally { delete process.env.CONSTELLATE_HOME; process.env.CONSTELLATE_CLAUDE = 'off'; }
   });
 
   it('the person can see what actually happened: who picked the request up, each search, and how it ended', async () => {
@@ -139,13 +139,14 @@ describe('plan it with your agent', () => {
       for (let i = 0; i < 100 && hub.planner.get(c.id)?.status === 'running'; i++) await wait(30);
       expect(hub.planner.get(c.id)!.log!.map((l) => l.text)).toEqual([
         'Starting Claude Code on this computer…',
+        'It may use Constellate\'s tools, web search and web fetch.',
         'Claude Code started (claude-sonnet) with Constellate connected.',
         'Searched what already failed: “Ramsey lower bounds”',
         'Looked for solved answers: “best known R(5,5) lower bound”',
         'Claude Code finished in 3 s (about $0.04 of your Claude usage).',
         'Stopped: Claude Code finished without reporting a plan. Its last words: “thinking”',
       ]);
-    } finally { delete process.env.CONSTELLATE_HOME; delete process.env.CONSTELLATE_APP_URL; delete process.env.CONSTELLATE_CLAUDE; }
+    } finally { delete process.env.CONSTELLATE_HOME; delete process.env.CONSTELLATE_APP_URL; process.env.CONSTELLATE_CLAUDE = 'off'; }
   });
 
   it('when Claude Code ends without plan_report, it says why, and a plan written in its reply still counts', async () => {
@@ -177,7 +178,7 @@ describe('plan it with your agent', () => {
       const written = await run([{ type: 'result', duration_ms: 1000, result: `Here is the plan:\n${JSON.stringify(good)}` }]);
       expect(written).toMatchObject({ status: 'reported', problems: [], agent: 'Claude Code' });
       expect(written.log!.at(-1)!.text).toMatch(/Took the plan from Claude Code’s reply/);
-    } finally { delete process.env.CONSTELLATE_HOME; delete process.env.CONSTELLATE_CLAUDE; }
+    } finally { delete process.env.CONSTELLATE_HOME; process.env.CONSTELLATE_CLAUDE = 'off'; }
   });
 
   it('plan_report accepts the plan as JSON text as well as an object (models often send it that way)', async () => {

@@ -77,12 +77,13 @@ describe('names, and which agent made what', () => {
       expect(r).toMatchObject({ status: 'done', steps: 1 });
       expect(r.log.map((l) => l.text)).toEqual([
         'Starting Claude Code on this computer…',
+        'It may use Constellate\'s tools, web search and web fetch.',
         'Claude Code started (claude-sonnet) with Constellate connected.',
         'Looked at the open steps.',
         'Answered step “first”; it now waits for a different model family to check it.',
         'Claude Code finished in 4 s (about $0.03 of your Claude usage).',
         'Answered 1 step. Each waits for a computer running a different model family to check it.',
       ]);
-    } finally { delete process.env.CONSTELLATE_HOME; delete process.env.CONSTELLATE_CLAUDE; }
+    } finally { delete process.env.CONSTELLATE_HOME; process.env.CONSTELLATE_CLAUDE = 'off'; }
   });
 });

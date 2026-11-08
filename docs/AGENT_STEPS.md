@@ -44,6 +44,28 @@ to an agent yourself".
 
 "Plan it with your agent" on an idea uses the same list.
 
+### What Claude Code may use when it runs on its own
+
+When the app starts Claude Code, nobody is there to approve a tool while it works, so what it may use is set
+up front (`src/work/claude-tools.ts`), with two switches under Claude Code in the list:
+
+- **Always:** Constellate's tools.
+- **Search and read the web** (on by default): WebSearch and WebFetch, which are read-only.
+- **Run code in a scratch folder** (off by default): Bash and the file tools. It runs code on this computer
+  without asking, so the person turns it on. Some open problems need it, for example searching for a witness.
+
+How it's held to that:
+- **It only sees those tools** (`--tools`).
+- **Anything else is refused at once** (`--permission-mode dontAsk`), instead of waiting for an approval
+  nobody can give.
+- **The person's own Claude Code settings don't apply,** and the file tools stay inside a fresh folder for each
+  run (`--restricted`, working in `~/.constellate/agent-work/`).
+- **The prompt says what it has,** so it doesn't spend turns trying other tools.
+- **If it still asks for something it can't have,** the log names the tool and the switch that would allow it,
+  and the run carries on.
+- **Older Claude Code versions** without these flags get only the ones they know, read once from
+  `claude --help`.
+
 Every answer records which agent and model made it (`context.agent`), and still has to pass a different model
 family's check.
 

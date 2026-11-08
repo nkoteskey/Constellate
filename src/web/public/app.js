@@ -1,7 +1,7 @@
 // Post-quantum crypto (~250 KB) loads only when someone signs, verifies or opens Me: the first screen stays light.
 const ID = () => import('./identity.js');
 const hasIdentity = () => { try { return !!localStorage.getItem('constellate.key'); } catch { return false; } };
-import { $, $$, esc, api, post, ls, ago, short, realm, REALM, identicon, constellation, icon, toast, sheet, closeSheet, copy, STATIC, loading, newPage } from './js/ui.js';
+import { $, $$, esc, api, post, ls, ago, short, realm, REALM, identicon, constellation, icon, toast, sheet, closeSheet, copy, STATIC, loading, newPage, agentToolSwitches } from './js/ui.js';
 import { Sky } from './js/sky.js';
 import { DESKTOP, connectCard } from './js/desktop.js';
 
@@ -717,7 +717,7 @@ async function agentWorkSheet(p) {
       ${run ? `<div class="card" style="margin-bottom:10px"><div class="spread"><b>${esc(runName(run))}</b>${chip(run.status === 'done' ? 'ok' : run.status === 'failed' ? 'stop' : 'warn', run.status === 'running' ? `working · ${run.steps} answered` : run.status === 'done' ? `done · ${run.steps} answered` : 'stopped')}</div>${logList(run.log)}</div>` : ''}
       ${request ? `<div class="card" style="margin-bottom:10px"><div class="spread"><b>Connected agents</b>${chip(request.status === 'done' ? 'ok' : 'warn', request.status === 'waiting' ? 'waiting for you to start it' : request.status === 'working' ? `${request.by ?? 'an agent'} · ${request.steps} answered` : `done · ${request.steps} answered`)}</div>${logList(request.log)}</div>` : ''}
       <div class="card"><div class="stack" role="radiogroup" aria-label="Who works on it" style="gap:8px">
-        ${choices.map((c) => `<label class="row" style="align-items:flex-start;gap:10px;cursor:pointer"><input type="radio" name="aw-who" value="${esc(c.id)}"${c.id === pick ? ' checked' : ''} style="margin-top:4px"><span><b>${esc(c.name)}</b><span class="muted" style="display:block;font-size:13px">${esc(c.note)}</span></span></label>`).join('')}
+        ${choices.map((c) => `<label class="row" style="align-items:flex-start;gap:10px;cursor:pointer"><input type="radio" name="aw-who" value="${esc(c.id)}"${c.id === pick ? ' checked' : ''} style="margin-top:4px"><span><b>${esc(c.name)}</b><span class="muted" style="display:block;font-size:13px">${esc(c.note)}</span>${c.id === 'claude_code' ? '<span id="aw-tools"></span>' : ''}</span></label>`).join('')}
       </div>
       ${online.length ? `<p class="faint" style="font-size:12.5px;margin:10px 0 0">Connected now: ${esc(online.join(', '))}.</p>` : ''}
       <div class="row" style="margin-top:12px"><button class="btn primary" id="aw-go"${running || (pick === 'any' && waiting) ? ' disabled' : ''}>Start</button>${pick === 'any' ? `<button class="btn ghost sm" id="aw-say">${icon.copy}Copy what to say</button>` : ''}</div></div>
@@ -727,6 +727,7 @@ async function agentWorkSheet(p) {
     $('#aw-copy', el).onclick = () => copy(info.prompt, 'Copied. Paste it to your agent');
     const say = $('#aw-say', el); if (say) say.onclick = () => copy('Use Constellate’s work_step tool to do the work I asked for.', 'Copied. Paste it to your agent');
     $$('input[name="aw-who"]', el).forEach((r) => (r.onchange = () => { pick = r.value; ls.set('workChoice', pick); draw(lastRun); }));
+    void agentToolSwitches($('#aw-tools', el));
     const go = $('#aw-go', el);
     go.onclick = async () => {
       go.disabled = true;

@@ -1,4 +1,5 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { claudeRun, deniedLine } from '../work/claude-tools.js';
 import { join, dirname, delimiter } from 'node:path';
 import { createInterface } from 'node:readline';
 import { homedir } from 'node:os';
@@ -196,15 +197,18 @@ If plan_report isn't available or keeps failing, end your reply with the same { 
     if (!bin) return this.fail(id, 'Claude Code isn’t installed on this computer');
     const cli = process.argv[1];
     const mcp = { mcpServers: { constellate: { command: process.execPath, args: [cli, 'mcp'], env: { ...pick(process.env, ['CONSTELLATE_HOME', 'X0X_DATA_DIR', 'X0X_API', 'ELECTRON_RUN_AS_NODE']), CONSTELLATE_APP_URL: process.env.CONSTELLATE_APP_URL ?? `http://127.0.0.1:${process.env.PORT ?? 4747}` } } } };
-    const allowed = ['plan_report', 'failures_search', 'answers_lookup', 'skills_find'].map((t) => `mcp__constellate__${t}`).join(',');
     // Apps opened from the Dock get a bare PATH, and `claude` is a Node script: give it the usual places Node lives.
     const PATH = [dirname(bin), ...EXTRA_BIN_DIRS, process.env.PATH ?? ''].filter(Boolean).join(delimiter);
-    const child = spawn(bin, ['-p', this.brief(id), '--mcp-config', JSON.stringify(mcp), '--strict-mcp-config', '--allowedTools', allowed, '--output-format', 'stream-json', '--verbose'], { stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, PATH } });
+    const env = { ...process.env, PATH };
+    // Only what it may use, decided up front: nobody is there to approve a tool while it runs (src/work/claude-tools.ts).
+    const run = claudeRun(bin, { prompt: this.brief(id), mcp, mcpTools: ['plan_report', 'failures_search', 'answers_lookup', 'skills_find'], env });
+    this.note(id, `It may use Constellate's tools${run.tools.web ? ', web search and web fetch' : ''}${run.tools.code ? ', and run code in a scratch folder' : ''}.`);
+    const child = spawn(bin, run.args, { cwd: run.cwd, stdio: ['ignore', 'pipe', 'pipe'], env });
     let err = '';
     child.stderr.on('data', (d) => { err = (err + d).slice(-4000); });
     // Its progress, streamed as JSON lines: say when it starts, each Constellate tool it uses, and how it ended.
     createInterface({ input: child.stdout }).on('line', (line) => {
-      let ev: { type?: string; subtype?: string; model?: string; mcp_servers?: { name: string; status: string }[]; message?: { content?: { type: string; name?: string; text?: string; input?: Record<string, unknown>; is_error?: boolean; content?: unknown }[] }; is_error?: boolean; duration_ms?: number; total_cost_usd?: number; result?: string };
+      let ev: { type?: string; subtype?: string; model?: string; mcp_servers?: { name: string; status: string }[]; message?: { content?: { type: string; name?: string; text?: string; input?: Record<string, unknown>; is_error?: boolean; content?: unknown }[] }; is_error?: boolean; duration_ms?: number; total_cost_usd?: number; result?: string; permission_denials?: { tool_name?: string }[] };
       try { ev = JSON.parse(line); } catch { return; }
       if (ev.type === 'system' && ev.subtype === 'init') {
         const c = ev.mcp_servers?.find((m) => m.name === 'constellate');
@@ -218,6 +222,7 @@ If plan_report isn't available or keeps failing, end your reply with the same { 
         // A tool call that failed: say why, so a plan that was rejected doesn't vanish silently.
         for (const c of ev.message?.content ?? []) if (c.type === 'tool_result' && c.is_error) this.note(id, `A tool call failed: ${textOf(c.content).slice(0, 220)}`);
       } else if (ev.type === 'result') {
+        { const denied = (ev.permission_denials ?? []).map((d) => d.tool_name).filter((x): x is string => !!x); if (denied.length) this.note(id, deniedLine(denied)); }
         if (typeof ev.result === 'string' && ev.result.trim()) lastText = ev.result;
         this.note(id, `Claude Code finished in ${Math.round((ev.duration_ms ?? 0) / 1000)} s${ev.total_cost_usd ? ` (about $${ev.total_cost_usd.toFixed(2)} of your Claude usage)` : ''}${ev.is_error ? `, with an error: ${String(ev.result ?? '').slice(0, 200)}` : ''}.`);
       }
