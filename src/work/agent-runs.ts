@@ -4,6 +4,7 @@ import { dirname, delimiter } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import type { Hub } from '../hub/hub.js';
 import { claudeBinary, EXTRA_BIN_DIRS, pick, textOf, toolLine } from '../collective/planner.js';
+import { claudeRun, deniedLine } from './claude-tools.js';
 
 /**
  * "Have your agent work on it" (docs/AGENT_STEPS.md): starts Claude Code on this computer, in the background
@@ -42,13 +43,16 @@ export class AgentRuns {
     this.note(r, 'Starting Claude Code on this computer…');
     const cli = process.argv[1];
     const mcp = { mcpServers: { constellate: { command: process.execPath, args: [cli, 'mcp'], env: { ...pick(process.env, ['CONSTELLATE_HOME', 'X0X_DATA_DIR', 'X0X_API', 'ELECTRON_RUN_AS_NODE']), CONSTELLATE_APP_URL: process.env.CONSTELLATE_APP_URL ?? `http://127.0.0.1:${process.env.PORT ?? 4747}` } } } };
-    const allowed = ['work_step', 'failures_search', 'answers_lookup', 'skills_find'].map((t) => `mcp__constellate__${t}`).join(',');
     const PATH = [dirname(bin), ...EXTRA_BIN_DIRS, process.env.PATH ?? ''].filter(Boolean).join(delimiter);
-    const child = spawn(bin, ['-p', this.prompt(problem), '--mcp-config', JSON.stringify(mcp), '--strict-mcp-config', '--allowedTools', allowed, '--output-format', 'stream-json', '--verbose'], { stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, PATH } });
+    const env = { ...process.env, PATH };
+    // Only what it may use, decided up front: nobody is there to approve a tool while it runs (src/work/claude-tools.ts).
+    const run = claudeRun(bin, { prompt: this.prompt(problem), mcp, mcpTools: ['work_step', 'failures_search', 'answers_lookup', 'skills_find'], env });
+    this.note(r, `It may use Constellate's tools${run.tools.web ? ', web search and web fetch' : ''}${run.tools.code ? ', and run code in a scratch folder' : ''}.`);
+    const child = spawn(bin, run.args, { cwd: run.cwd, stdio: ['ignore', 'pipe', 'pipe'], env });
     let err = '', last = '';
     child.stderr.on('data', (d) => { err = (err + d).slice(-2000); });
     createInterface({ input: child.stdout }).on('line', (line) => {
-      let ev: { type?: string; subtype?: string; model?: string; mcp_servers?: { name: string; status: string }[]; message?: { content?: { type: string; name?: string; text?: string; input?: Record<string, unknown>; is_error?: boolean; content?: unknown }[] }; result?: string; duration_ms?: number; total_cost_usd?: number; is_error?: boolean };
+      let ev: { type?: string; subtype?: string; model?: string; mcp_servers?: { name: string; status: string }[]; message?: { content?: { type: string; name?: string; text?: string; input?: Record<string, unknown>; is_error?: boolean; content?: unknown }[] }; result?: string; duration_ms?: number; total_cost_usd?: number; is_error?: boolean; permission_denials?: { tool_name?: string }[] };
       try { ev = JSON.parse(line); } catch { return; }
       if (ev.type === 'system' && ev.subtype === 'init') {
         const c = ev.mcp_servers?.find((m) => m.name === 'constellate');
@@ -62,6 +66,8 @@ export class AgentRuns {
         for (const c of ev.message?.content ?? []) if (c.type === 'tool_result' && c.is_error) this.note(r, `A tool call failed: ${textOf(c.content).slice(0, 220)}`);
       } else if (ev.type === 'result') {
         if (typeof ev.result === 'string' && ev.result.trim()) last = ev.result;
+        const denied = (ev.permission_denials ?? []).map((d) => d.tool_name).filter((x): x is string => !!x);
+        if (denied.length) this.note(r, deniedLine(denied));
         this.note(r, `Claude Code finished in ${Math.round((ev.duration_ms ?? 0) / 1000)} s${ev.total_cost_usd ? ` (about $${ev.total_cost_usd.toFixed(2)} of your Claude usage)` : ''}.`);
       }
     });

@@ -21,6 +21,19 @@ export async function api(p, init) {
   } finally { const n = (inflight.get(g) ?? 1) - 1; if (n > 0) inflight.set(g, n); else inflight.delete(g); }
 }
 export const post = (p, b) => (STATIC ? Promise.resolve() : fetch(p, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(b) }).catch(() => {}));
+/**
+ * What Claude Code may use when the app starts it (src/work/claude-tools.ts): nobody can approve a tool while it
+ * runs, so it's chosen here. Draws two switches into `slot` and saves changes at once.
+ */
+export async function agentToolSwitches(slot) {
+  if (!slot || STATIC) return;
+  const t = await api('/api/agent-tools').catch(() => null);
+  if (!t) return;
+  slot.innerHTML = `<div class="faint" style="font-size:12.5px;margin-top:6px">Claude Code may also:
+    <label class="row" style="gap:6px;margin-top:4px;cursor:pointer"><input type="checkbox" data-tool="web"${t.web ? ' checked' : ''}> Search and read the web</label>
+    <label class="row" style="gap:6px;cursor:pointer"><input type="checkbox" data-tool="code"${t.code ? ' checked' : ''}> Run code in a scratch folder <span class="faint">(it runs on this computer without asking)</span></label></div>`;
+  slot.querySelectorAll('[data-tool]').forEach((b) => (b.onchange = () => api('/api/agent-tools', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ [b.dataset.tool]: b.checked }) }).catch(() => {})));
+}
 export const ls = {
   get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch { return d; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* private mode */ } },

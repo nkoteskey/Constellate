@@ -1,4 +1,5 @@
 import { readFileSync, existsSync } from 'node:fs';
+import { agentTools, setAgentTools, type AgentTools } from '../work/claude-tools.js';
 import { ModelRuns, reachableModels, appVault } from '../work/model-runs.js';
 import { runnerFromSpec } from '../contributor/catalog.js';
 import { swr } from './swr.js';
@@ -399,6 +400,9 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
     });
     return tryIt(() => ({ ...hub.agentRuns.start(m[1]), via: 'claude_code' }));
   });
+  // What Claude Code may use when the app starts it (src/work/claude-tools.ts): web research on, running code off.
+  web.route('GET', /^\/api\/agent-tools$/, (req) => (here(req) ? agentTools() : new HttpReply(403, { error: 'only on this computer' })));
+  web.route('POST', /^\/api\/agent-tools$/, async (req, _m, _u, body) => (here(req) ? setAgentTools((await body().catch(() => ({}))) as Partial<AgentTools>) : new HttpReply(403, { error: 'only on this computer' })));
   web.route('GET', /^\/api\/work-requests\/([0-9a-f]{12})$/, (req, m) => here(req) ? (hub.workRequests.get(m[1]) ?? new HttpReply(404, { error: 'unknown request' })) : new HttpReply(403, { error: 'only on this computer' }));
   web.route('GET', /^\/api\/agent-runs\/([0-9a-f]{12})$/, (req, m) => here(req) ? (hub.agentRuns.get(m[1]) ?? modelRuns().get(m[1]) ?? new HttpReply(404, { error: 'unknown run' })) : new HttpReply(403, { error: 'only on this computer' }));
 
