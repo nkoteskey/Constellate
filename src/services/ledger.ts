@@ -103,7 +103,7 @@ export class Ledger {
     const rel = bm25(query, docs.map((s) => { const b = s.rec.body as { title: string; summary: string }; return { id: s.rec.id, text: `${b.title} ${b.summary} ${s.rec.context.domain.join(' ')}`, tags: s.rec.context.domain }; }));
     return docs.filter((s) => rel.has(s.rec.id)).sort((a, b) => rel.get(b.rec.id)! - rel.get(a.rec.id)!).slice(0, opts.limit ?? 2).map((s) => {
       const b = s.rec.body as { title: string; summary: string; members: string[]; realms: string[]; rules?: unknown[]; traps?: unknown[]; fix?: unknown };
-      return { id: s.rec.id, title: b.title, summary: b.summary, sources: b.members.length, realms: b.realms, domain: s.rec.context.domain, members: b.members.slice(0, 5), rules: b.rules ?? [], traps: b.traps ?? [], fix: b.fix ?? null, ...topicContext(this.node.store, b.members) };
+      return { id: s.rec.id, topic: (s.rec.body as { cluster: string }).cluster, title: b.title, summary: b.summary, sources: b.members.length, realms: b.realms, domain: s.rec.context.domain, members: b.members.slice(0, 5), rules: b.rules ?? [], traps: b.traps ?? [], fix: b.fix ?? null, ...topicContext(this.node.store, b.members) };
     });
   }
 }

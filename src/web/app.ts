@@ -543,6 +543,24 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
     }).filter((x) => x.first && x.second).sort((a, b) => Number(b.needs_human) - Number(a.needs_human) || b.at.localeCompare(a.at));
   });
 
+  // Topic pages (docs/MEMORY.md): a stable link per topic (#/topic/<key>) that always opens its latest page,
+  // with every source it distils and every version, each a signed record.
+  web.route('GET', /^\/api\/topics$/, () => hub.pages.latest().map((s) => { const v = hub.pages.view(s); return { topic: v.topic, title: v.title, sources: v.sources, rules: v.rules.length, updated: v.updated }; }).sort((a, b) => b.updated.localeCompare(a.updated)));
+  web.route('GET', /^\/api\/topic\/([0-9a-f]{16,64})$/, (_r, m) => {
+    const versions = hub.pages.history(m[1]);
+    if (!versions.length) return new HttpReply(404, { error: 'no such topic' });
+    const latest = versions[0];
+    const body = latest.rec.body as { members: string[]; retired?: boolean; merged_into?: string; dreamed?: string[] };
+    const sources = body.members.map((id) => hub.node.store.get(id)).filter((x): x is StoredRecord => !!x).map((s) => {
+      const b = s.rec.body as { approach?: string; error_summary?: string; question?: string; answer?: string; headline?: string };
+      return { id: s.rec.id, kind: s.rec.kind, title: s.rec.kind === 'failure' ? b.approach : b.headline ?? b.question ?? b.answer, detail: s.rec.kind === 'failure' ? b.error_summary : b.answer, verified: hub.pages.verified(s), confirmed: reproduction(hub.node.store, s).label, source: s.rec.evidence[0] ?? null };
+    });
+    return {
+      ...hub.pages.view(latest), retired: !!body.retired, merged_into: body.merged_into ?? null, signed_by: latest.rec.agent_id, signature: latest.rec.signature ? 'ML-DSA-65' : 'batch',
+      source_records: sources, versions: versions.slice(0, 20).map((v) => ({ id: v.rec.id, created: v.rec.created, why: (v.rec.body as { dreamed?: string[] }).dreamed ?? [] })),
+    };
+  });
+
   // The utility hook: paste an error or a question, get what failed, what fixed it, and a plain answer.
   web.route('GET', /^\/api\/search$/, async (_r, _m, url) => {
     const q = String(url.searchParams.get('q') ?? '').slice(0, 500).trim();

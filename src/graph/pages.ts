@@ -41,6 +41,9 @@ export class Pages {
     return { confirmations, disputes };
   }
 
+  /** Verified: confirmed by someone other than its author, or a fix merged upstream. */
+  verified(s: StoredRecord) { return this.status(s) !== 'unconfirmed'; }
+
   private status(s: StoredRecord): Status {
     if (this.support(s).confirmations > 0) return 'checked';
     const proof = (s.rec.body as { proof?: { detail?: string } }).proof?.detail ?? '';
@@ -94,10 +97,23 @@ export class Pages {
     return docs.filter((s) => rel.has(s.rec.id)).sort((a, b) => rel.get(b.rec.id)! - rel.get(a.rec.id)!).slice(0, opts.limit ?? 1).map((s) => this.view(s));
   }
 
+  /**
+   * The page first: when the best-matching topic page already holds the top search result, it is the compact
+   * answer (rules, traps, the fix, in one go), and only the single best record comes with it.
+   */
+  first<T extends { id: string }>(query: string, results: T[], opts: { domain?: string[] } = {}) {
+    const page = this.match(query, opts)[0] ?? null;
+    const members = page ? new Set((this.store.get(page.page)?.rec.body as { members?: string[] } | undefined)?.members ?? []) : new Set<string>();
+    const covers = !!page && !!results[0] && members.has(results[0].id) && (page.rules.length > 0 || !!page.fix);
+    return covers
+      ? { page, results: results.slice(0, 1), page_first: `This topic page distils ${page.sources} records into the rules, traps and fix above; the best single record follows. Open a source with records_explain if you need it.` }
+      : { page, results };
+  }
+
   /** A page as agents and people see it. */
   view(s: StoredRecord) {
     const b = s.rec.body as unknown as PageBody;
-    return { page: s.rec.id, topic: b.cluster, title: b.title, rules: b.rules ?? [], traps: b.traps ?? [], fix: b.fix ?? null, links: (b.links ?? []).map((k) => this.byTopic(k)).filter(Boolean).map((p) => ({ page: p!.rec.id, title: (p!.rec.body as unknown as PageBody).title })), sources: b.members.length, summary: b.v === 2 ? undefined : b.summary, updated: s.rec.created };
+    return { page: s.rec.id, topic: b.cluster, link: `#/topic/${b.cluster}`, title: b.title, rules: b.rules ?? [], traps: b.traps ?? [], fix: b.fix ?? null, links: (b.links ?? []).map((k) => this.byTopic(k)).filter(Boolean).map((p) => ({ page: p!.rec.id, title: (p!.rec.body as unknown as PageBody).title })), sources: b.members.length, summary: b.v === 2 ? undefined : b.summary, updated: s.rec.created };
   }
 
   byTopic(cluster: string) { return this.latest().find((s) => (s.rec.body as unknown as PageBody).cluster === cluster); }
@@ -179,6 +195,31 @@ export class Pages {
   private async publish(prev: StoredRecord, body: PageBody) {
     const next: PageBody = { ...body, supersedes: prev.rec.id };
     await this.hub.node.submit({ kind: 'summary', context: { ...prev.rec.context, task: `dream: re-check ${body.members.length} related records` }, body: next as unknown as Record<string, unknown>, refs: body.members }, { publish: true });
+  }
+
+  /**
+   * Topic pages written on their own (docs/MEMORY.md): whenever lessons or verdicts arrive, wait for things to
+   * settle (`settleMs`), then write a page for every topic that now has at least `minVerified` verified records
+   * (and re-check pages whose evidence changed). Each page is a signed record that links its sources.
+   * `sleep` is the consolidator's pass (src/graph/consolidate.ts); `allowed` lets a process stand aside, as an
+   * agent's process does while the app on its computer is doing this.
+   */
+  auto(sleep: () => Promise<unknown>, opts: { settleMs?: number; allowed?: () => Promise<boolean> | boolean } = {}) {
+    let timer: NodeJS.Timeout | undefined, running = false, again = false;
+    const run = async () => {
+      if (running) { again = true; return; }
+      running = true;
+      try { if (await (opts.allowed?.() ?? true)) { await sleep(); await this.dream(); } } catch { /* next time */ } finally { running = false; }
+      if (again) { again = false; kick(); }
+    };
+    const kick = () => { clearTimeout(timer); timer = setTimeout(() => void run(), opts.settleMs ?? 30_000); timer.unref?.(); };
+    const off = this.store.onAdd((s) => { if (['failure', 'answer', 'confirmation', 'contradiction', 'use'].includes(s.rec.kind)) kick(); });
+    return { kick, run, stop: () => { off(); clearTimeout(timer); } };
+  }
+
+  /** Every version of a topic's page, newest first: a stable topic link keeps working as the page is rewritten. */
+  history(cluster: string) {
+    return this.store.ofKind('summary').filter((s) => (s.rec.body as { cluster: string }).cluster === cluster).sort((a, b) => b.rec.created.localeCompare(a.rec.created));
   }
 
   /** Dream on a schedule (default every 6 hours); any computer running Constellate can do it, no AI account needed. */

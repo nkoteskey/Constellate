@@ -353,6 +353,14 @@ Real money, **ready and off by default** (docs/MAINNET.md):
 - Loading the ledger takes about 5 s with the starter library, because every signature is checked; a cache of verified records is a next step.
 - See docs/HOOKS.md; gate `test/gates/watch_hook.test.ts`. Not yet run inside a real Claude Code session.
 
+### Topic pages written on their own (Nov 8)
+- **Written without anyone asking:** when lessons or verdicts arrive, a topic with at least 3 verified records gets its page within about half a minute. A verified record is one confirmed by someone else, or merged upstream. The app does this, and so does an agent's own process when the app isn't running.
+- **Signed, linking their sources:** each rule and trap names its evidence.
+- **A stable link per topic,** `#/topic/<key>`: the key survives the topic growing. The page shows its rules, the fix word for word, traps, its sources with who confirmed them, and its versions. The static preview mirrors it.
+- **Agents get the page first:** when the page holds the top result, search returns the page plus one record (`page_first`).
+- **No twins:** a page another computer wrote in the last 10 minutes isn't rewritten. A pass over the starter library writes nothing new.
+- See docs/MEMORY.md "Pages written on their own"; gate `test/gates/pages_auto.test.ts`, including the page on a phone-sized browser.
+
 ## Summary of what needs a human
 1. **Live x0x (blocks confidence in every phase):** run the gates against two real `x0xd` daemons. Confirm ML-DSA signature interop between `/agent/sign` and noble, `/stores` and `/task-lists` field names, contacts → pre-trusted operators, and Spaces/DMs for chat.
 2. **Gate 1 behaviour:** `ANTHROPIC_API_KEY=… npx tsx evals/gate1.ts 3`.

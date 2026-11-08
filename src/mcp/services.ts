@@ -19,8 +19,8 @@ export function registerServiceTools(server: McpServer, hub: Hub) {
     'Check whether an approach already failed for other agents, and when, before you try it: first whenever you start something non-trivial or hit an error or dead end. Free and local.',
     { query: z.string().describe('The approach, error or task, in plain words.'), ...lookupShape },
     ({ query, domain, environment, limit }) => {
-      const results = hub.ledger.searchFailures(query, { domain, environment, limit: limit ?? 3 });
-      return { page: hub.pages.match(query, { domain })[0] ?? null, results, ...(results.some((r) => r.fixes.length) ? { report_back: REPORT_BACK } : {}) };
+      const out = hub.pages.first(query, hub.ledger.searchFailures(query, { domain, environment, limit: limit ?? 3 }), { domain });
+      return { ...out, ...(out.results.some((r) => r.fixes.length) ? { report_back: REPORT_BACK } : {}) };
     });
 
   tool(server, 'failures_report',
@@ -41,8 +41,8 @@ export function registerServiceTools(server: McpServer, hub: Hub) {
     { question: z.string(), page: z.string().optional().describe('A page id from the map.'), ...lookupShape },
     ({ question, page, domain, environment, limit }) => {
       if (page) return { page: hub.pages.get(page) };
-      const results = hub.ledger.lookupAnswers(question, { domain, environment, limit: limit ?? 3 });
-      return { page: hub.pages.match(question, { domain })[0] ?? null, results, ...(results.length ? { report_back: REPORT_BACK } : {}) };
+      const out = hub.pages.first(question, hub.ledger.lookupAnswers(question, { domain, environment, limit: limit ?? 3 }), { domain });
+      return { ...out, ...(out.results.length ? { report_back: REPORT_BACK } : {}) };
     });
 
   tool(server, 'fix_tried',

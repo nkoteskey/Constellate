@@ -227,7 +227,7 @@ async function route() {
       else if (q) { $('#seek-q').value = q; await search(q); }
       return;
     }
-    const views = { treasury: async () => (await import('./js/wallet.js')).treasuryPage(page), g: galleryPage, p: problemPage, d: debatePage, list: listPage, proposals: proposalsPage, deliberations: debatesPage, people: peoplePage, me: mePage, connect: connectPage, constitution: constitutionPage, compute: async () => (await import('./js/compute.js')).computePage(page) };
+    const views = { topic: topicPage, treasury: async () => (await import('./js/wallet.js')).treasuryPage(page), g: galleryPage, p: problemPage, d: debatePage, list: listPage, proposals: proposalsPage, deliberations: debatesPage, people: peoplePage, me: mePage, connect: connectPage, constitution: constitutionPage, compute: async () => (await import('./js/compute.js')).computePage(page) };
     const arriving = location.hash !== lastFocused; lastFocused = location.hash;
     await (views[view] ?? (() => page('<p class="muted">Not found.</p>')))(id);
     if (arriving) $('#page').focus?.({ preventScroll: true }); // for screen readers on arrival; never moves the page
@@ -373,7 +373,7 @@ async function search(q) {
   const ans = r.answers.filter((a) => !seen.has(a.id)).map((a) => `<div class="result"><span class="kind answer">${a.confirmations || /merged pull request/.test(a.proof?.detail ?? '') ? 'Verified answer' : paperSource(a) ? 'Reported finding' : 'Answer'}</span><div style="margin-top:4px" class="serif">${esc(a.question)}</div>${fixBody(a, q)}<div class="meta spread"><span>${trustLabel(a)}</span><button class="btn ghost sm" data-helped="${a.id}" aria-label="This answer helped me">This helped</button></div></div>`).join('');
   const guide = r.guide ? `<div class="result"><span class="kind answer">From the network</span><div style="margin-top:4px">${esc(r.guide.answer)}</div>${r.guide.about ? `<div style="margin-top:8px"><a class="btn sm" href="#/${r.guide.kind === 'deliberation' ? 'd' : 'p'}/${r.guide.about}">Open ${icon.arrow}</a></div>` : ''}</div>` : '';
   const learned = (r.learned ?? []).map((l) => `<div class="result"><div class="spread"><span class="kind learned">What the network learned</span><span class="faint" style="font-size:12px">${l.projects?.length ? `${l.projects.map(esc).join(', ')} · ` : ''}${l.sources} linked lessons${l.latest ? ` · latest ${new Date(l.latest).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })}` : ''}</span></div>
-      <div style="margin-top:4px"><button class="claim" data-rec="${l.id}">${esc(l.title)}</button></div>
+      <div style="margin-top:4px"><a class="claim" href="#/topic/${esc(l.topic)}">${esc(l.title)}</a></div>
       ${l.rules?.length ? pageRules(l) : learnedFixes(l.summary)}</div>`).join('');
   const repos = [...new Set(r.failures.map((f) => repoOf(f.environment)).filter(Boolean))];
   const filters = repos.length > 1 ? `<div class="filters" role="group" aria-label="Filter by project"><button class="chip on" data-filter="">All</button>${repos.map((x) => `<button class="chip" data-filter="${esc(x)}">${esc(x)}</button>`).join('')}</div>` : '';
@@ -756,6 +756,27 @@ async function constitutionPage() {
     <p class="muted" style="font-size:13.5px;margin:14px 0 0">Every problem proposed on Constellate is checked against these laws before it’s shared, and again at every step. Work that could cause serious harm is refused.</p>
     <article class="prose" style="margin-top:8px">${mdToHtml(c.content)}</article>
   </div>`);
+}
+
+// ── Topic pages (docs/MEMORY.md): one stable link per topic, always its latest signed page ──
+const srcLinks = (ids) => ids.length ? `<span class="faint" style="font-size:12px">${ids.length === 1 ? 'source' : 'sources'} ${ids.map((id, i) => `<button class="claim faint" style="font-size:12px" data-rec="${id}" aria-label="Source ${i + 1}">${ids.length === 1 ? '↗' : i + 1}</button>`).join(' ')}</span>` : '';
+async function topicPage(key) {
+  const t = await api(`/api/topic/${key}`).catch(() => null);
+  if (!t) { page('<div class="page narrow"><h1 class="display" style="font-size:var(--d-sm)">No such topic</h1><p class="muted">It may not have reached this computer yet.</p></div>'); return; }
+  const when = (d) => new Date(d).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+  page(`<div class="page narrow topic">
+    <span class="eyebrow">Topic page · ${t.sources} source${t.sources === 1 ? '' : 's'} · updated ${when(t.updated)}</span>
+    <h1 class="display" style="font-size:var(--d-sm);margin-top:6px">${esc(t.title)}</h1>
+    ${t.retired ? `<p class="chip sm">Retired${t.merged_into ? ' · merged into <a href="#/topic/' + esc(t.merged_into) + '">another topic</a>' : ''}</p>` : ''}
+    ${t.rules.length ? `<h2 class="section">What holds</h2><ul class="learned-fixes">${t.rules.map((r) => `<li>${esc(r.text)} ${(RULE[r.status] ?? RULE.unconfirmed)(r)} ${srcLinks(r.evidence)}</li>`).join('')}</ul>` : ''}
+    ${t.fix ? `<h2 class="section">The fix, word for word</h2><blockquote class="card" style="margin:0">${esc(t.fix.text)} ${srcLinks([t.fix.from])}</blockquote>` : ''}
+    ${t.traps.length ? `<h2 class="section">Traps</h2><ul class="learned-fixes">${t.traps.map((x) => `<li>${esc(x.text)} ${srcLinks(x.evidence)}</li>`).join('')}</ul>` : ''}
+    ${t.links.length ? `<h2 class="section">Related topics</h2><ul>${t.links.map((l) => `<li><button class="claim" data-rec="${l.page}">${esc(l.title)}</button></li>`).join('')}</ul>` : ''}
+    <h2 class="section">Sources</h2>
+    <div class="stack">${t.source_records.map((x) => `<div class="result"><div class="spread"><span class="kind ${x.kind === 'failure' ? 'failed' : 'fixed'}">${x.kind === 'failure' ? 'Failed' : 'Fix'}</span><span class="faint" style="font-size:12px">${x.confirmed ? esc(x.confirmed) : x.verified ? 'verified' : 'unconfirmed'}${x.source ? ` · <a href="${esc(x.source)}" target="_blank" rel="noopener">origin</a>` : ''}</span></div><div style="margin-top:4px"><button class="claim" data-rec="${x.id}">${esc(clipText(x.title ?? '', 160))}</button></div>${x.detail ? `<div class="muted" style="font-size:13.5px">${esc(clipText(x.detail, 240))}</div>` : ''}</div>`).join('')}</div>
+    <p class="faint" style="font-size:12.5px;margin-top:14px">This page is a signed record (${esc(t.signature)}) by agent ${short(t.signed_by)}. It's rewritten as its evidence changes; this link always opens the latest version. ${t.versions.length > 1 ? `${t.versions.length} versions: ${t.versions.slice(0, 5).map((v) => `<button class="claim faint" data-rec="${v.id}">${when(v.created)}</button>`).join(' · ')}` : ''}</p>
+  </div>`);
+  bindClaims($('#page'));
 }
 
 // ── Debates ───────────────────────────────────────────────────────

@@ -60,12 +60,20 @@ const USAGE = `Constellate — where humans and agents gather into something gre
 Environment: X0X_API (default http://127.0.0.1:12700), CONSTELLATE_HOME (~/.constellate),
 CONSTELLATE_PREVIEW=off, CONSTELLATE_PRIVACY=standard|strict, CONSTELLATE_DENY_TERMS=a,b`;
 
+/** A topic's page is written on its own once it has this many verified records (docs/MEMORY.md). */
+const AUTO_PAGE_MIN_VERIFIED = Number(process.env.CONSTELLATE_PAGE_MIN_VERIFIED ?? 3);
+
 async function main(argv: string[]) {
   const cmd = argv[0];
   if (cmd === 'mcp') {
     const hub = argv.includes('--private') ? await Hub.privateMode() : await Hub.fromEnv();
     if (!argv.includes('--private')) importStarter(hub);
     const server = createMcpServer(hub);
+    // Topic pages written on their own (docs/MEMORY.md) for people who use Constellate only through an agent;
+    // when the app runs on this computer, it does this instead.
+    if (!hub.node.readOnly) hub.pages.auto(() => new Consolidator(hub, undefined, { minVerified: AUTO_PAGE_MIN_VERIFIED }).sleep(), {
+      allowed: async () => { try { return !(await fetch(`${process.env.CONSTELLATE_APP_URL ?? `http://127.0.0.1:${process.env.PORT ?? 4747}`}/api/sky`, { signal: AbortSignal.timeout(1500) })).ok; } catch { return true; } },
+    });
     const { Profiles } = await import('./collab/profiles.js');
     hub.onOnline((hub) => {
       // Reachable without the app (docs/MAILBOX.md): listed in the directory as using Constellate through an agent,
@@ -228,6 +236,8 @@ Lend your computer instead: node "${cli}" models, then node "${cli}" contribute`
     if (hub.archive instanceof AutonomiArchive) console.log('Archive: Autonomi mainnet (paid, capped daily)');
     new Consolidator(hub, model).schedule(); // "sleep" every 6 hours: distil related lessons into topic pages
     hub.pages.schedule(); // "dream" every 6 hours: re-check pages whose evidence changed (docs/MEMORY.md)
+    // And on their own: once a topic has enough verified records, its page is written within a minute or so.
+    hub.pages.auto(() => new Consolidator(hub, model, { minVerified: AUTO_PAGE_MIN_VERIFIED }).sleep());
     // Skills across x0x (docs/X0X_SKILLS.md): publish ours to a public x0x data store, keep a public group, pull others'.
     hub.onOnline((h) => { const sk = () => void h.x0xSkills.sync().catch(() => {}); setTimeout(sk, 45_000).unref(); setInterval(sk, 6 * 3600_000).unref(); });
     if (model) { const { Deliberation } = await import('./collective/deliberation.js'); new Deliberation(hub).scheduleReruns(model); } // debates revisited as models change
