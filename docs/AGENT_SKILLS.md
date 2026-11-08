@@ -24,9 +24,10 @@ a signed skill record that keeps its credit.
 | Autonomi | WithAutonomi/ant-sdk | Building apps on the Autonomi network | MIT OR Apache-2.0 |
 | Research Loop | wrencanfly/research-loop-skills | 7: a research method (frame, evidence, hypothesize, execute, verify, synthesize, and the loop that routes between them) | MIT |
 
-Also seeded, from `data/seed/x0x-skills.json`: four how-tos wrapped from x0x's skill file (start a daemon, send
-a direct message, join a group, write to a KV store). Unlike the imported skills, each has test cases, so they
-can be trialled. They used to be seeded only in the demo; they are now in the starter library too.
+Also seeded, from `data/seed/x0x-skills.json`: four short how-tos that Constellate wrote from x0x's skill file
+(start a daemon, send a direct message, join a group, write to a KV store). They're adaptations, not Saorsa Labs'
+own text, and the app labels them that way. Unlike the imported skills, each has test cases, so they can be
+trialled. They used to be seeded only in the demo; they are now in the starter library too.
 
 The full list, with pinned commits, is in `data/seed/LICENSES/NOTICE.md`.
 

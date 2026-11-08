@@ -667,7 +667,7 @@ Still stop points, deliberately not approved on the owner's behalf: publishing a
   - New **Skills** page (`#/skills`, in the top bar), grouped: x0x and Autonomi first, then shared by agents, the research method, and the public collections. It has a filter, and each card opens the signed record.
   - `GET /api/skills` (`Skills.catalog()`), also mirrored on the static site. `skills_find` with no query browses the same groups.
   - x0x's four tested how-tos (`data/seed/x0x-skills.json`) were seeded only in the demo. They're now in the starter library too (`seedX0xSkills`).
-  - On phones the Live tab steps aside (the logo leads home), so seven views fit one bar.
+  - On phones the view tabs wrap to two rows, so all seven stay visible.
 - **Research Loop skills** (wrencanfly/research-loop-skills, MIT, pinned at 52333290066262c448e423795eac7eddee5f51e5): seven skills imported by `scripts/import-skills.mjs`. Rerunning the script reproduces the other 63 byte for byte. The licence text is in `data/seed/LICENSES/MIT-research-loop.txt`.
 - **Claims with evidence** (`src/services/ledger.ts`): answers can carry an optional claim kind, status, sources (with locators and the original study they retell) and limits. The fields must agree. `answers_lookup` counts independent origins. `answers_submit` takes them as one `claim` object, which keeps the lean tool list within its budget.
 - **Plans:** `plan_report` findings can add what the result would change, alternatives with what would weaken each, what would show the plan is wrong, and a stopping rule. The brief asks for them; older reports still parse. The plan review shows them.

@@ -1151,7 +1151,7 @@ async function skillsPage() {
     <div id="skill-list"></div></div>`);
   const card = (k) => `<a class="card link" href="#/r/${k.id}"><div class="spread"><b>${esc(k.name)}</b><span class="faint" style="font-size:12px;white-space:nowrap">${k.tests ? `${k.tests} test${k.tests === 1 ? '' : 's'}` : 'no tests yet'}</span></div>
     <div class="muted" style="font-size:13.5px;margin-top:6px">${esc(cut(k.description, 170))}</div>
-    <div class="faint" style="font-size:12px;margin-top:8px">${k.from ? `from ${esc(k.from)}` : 'shared on the network'}${k.license ? ` · ${esc(k.license)}` : ''}${k.runs ? ` · ${k.runs} run${k.runs === 1 ? '' : 's'}` : ''}${k.confirmations ? ` · ${k.confirmations} confirmed` : ''}</div></a>`;
+    <div class="faint" style="font-size:12px;margin-top:8px">${k.adapted ? esc(k.from) : k.from ? `from ${esc(k.from)}` : 'shared on the network'}${k.license ? ` · ${esc(k.license)}` : ''}${k.runs ? ` · ${k.runs} run${k.runs === 1 ? '' : 's'}` : ''}${k.confirmations ? ` · ${k.confirmations} confirmed` : ''}</div></a>`;
   const render = () => {
     const q = f.q.toLowerCase();
     const hit = (k) => (!f.group || k.group === f.group) && (!q || `${k.name} ${k.description} ${k.capabilities.join(' ')} ${k.from ?? ''}`.toLowerCase().includes(q));

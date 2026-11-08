@@ -85,7 +85,10 @@ export class Skills {
       const group = skillGroup(where, b.source?.org);
       return {
         id: s.rec.id, name: b.name, description: b.description, capabilities: b.capabilities, group,
-        from: b.source ? `${b.source.org} (${b.source.repo})` : where === 'saorsa-labs/x0x' ? 'Saorsa Labs (saorsa-labs/x0x)' : null,
+        // Imported skills are the upstream text; x0x's short how-tos are Constellate's own adaptations of x0x's
+        // skill file, so they say so rather than reading as Saorsa Labs' own.
+        from: b.source ? `${b.source.org} (${b.source.repo})` : where === 'saorsa-labs/x0x' ? 'adapted from Saorsa Labs’ x0x skill file' : null,
+        adapted: !b.source && where === 'saorsa-labs/x0x',
         url: b.source?.url ?? s.rec.evidence.find((e) => /^https?:\/\//.test(e)) ?? null, license: b.license, price: b.price, tests: b.tests.length, runs: runs.length,
         pass_rate: runs.length ? Math.round((runs.reduce((n, r) => n + r.passed / r.total, 0) / runs.length) * 100) / 100 : null,
         confirmations: store.referencing(s.rec.id, 'confirmation').length,

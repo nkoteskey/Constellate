@@ -41,7 +41,8 @@ describe('skill discovery', () => {
     expect(c.skills[0].group).toBe('network');
     expect(c.skills[0].tests).toBeGreaterThan(0); // the trialable ones lead
     expect(network.find((k) => k.name === 'x0x')).toMatchObject({ from: 'Saorsa Labs (saorsa-labs/x0x)', license: 'MIT OR Apache-2.0', tests: 0 });
-    expect(network.find((k) => k.name === 'Start or attach to an x0x daemon')).toMatchObject({ from: 'Saorsa Labs (saorsa-labs/x0x)', tests: 2 });
+    expect(network.find((k) => k.name === 'x0x')).toMatchObject({ adapted: false }); // the upstream text itself
+    expect(network.find((k) => k.name === 'Start or attach to an x0x daemon')).toMatchObject({ from: 'adapted from Saorsa Labs’ x0x skill file', adapted: true, tests: 2 });
 
     const research = c.skills.filter((k) => k.group === 'research').map((k) => k.name).sort();
     expect(research).toEqual(['research-evidence', 'research-execute', 'research-frame', 'research-hypothesize', 'research-loop', 'research-synthesize', 'research-verify']);
