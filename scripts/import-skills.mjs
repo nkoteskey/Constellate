@@ -18,6 +18,8 @@ const SOURCES = [
   { dir: 'anthropics_skills', org: 'Anthropic', repo: 'anthropics/skills', commit: '2c5958ecac7cee2b583967a2c4981d0f4a75c579' },
   { dir: 'huggingface_skills', org: 'Hugging Face', repo: 'huggingface/skills', commit: '25910b3d0ba31a2ba102f901cdc9e008c278a69c' },
   { dir: 'openai_skills', org: 'OpenAI', repo: 'openai/skills', commit: '49f948faa9258a0c61caceaf225e179651397431' },
+  // A research method in seven stages (frame, evidence, hypothesize, execute, verify, synthesize, and the loop).
+  { dir: 'research_loop_skills', org: 'Research Loop', repo: 'wrencanfly/research-loop-skills', commit: '52333290066262c448e423795eac7eddee5f51e5', tags: ['research-method'] },
 ];
 // Left out on purpose: one organisation's own brand, internal or course material; installers that change the
 // agent's own setup; empty templates; and duplicates of a skill kept elsewhere in the same repository.
@@ -80,7 +82,8 @@ function add(s) {
 
 for (const src of SOURCES) {
   const root = join(clones, src.dir);
-  const repoLic = (() => { const p = firstFile(root, ['LICENSE', 'LICENSE.txt', 'LICENSE.md']); return p ? licenceOf(read(p)) : null; })();
+  const repoLicFile = firstFile(root, ['LICENSE', 'LICENSE.txt', 'LICENSE.md']);
+  const repoLic = repoLicFile ? licenceOf(read(repoLicFile)) : null;
   for (const d of walk(root).sort()) {
     const path = relative(root, d);
     if (SKIP.has(`${src.repo}:${path}`)) { left.push({ name: `${src.repo}/${path}`, why: 'left out by choice' }); continue; }
@@ -90,11 +93,13 @@ for (const src of SOURCES) {
     const licence = (own && licenceOf(read(own))) || (/apache/i.test(declared) ? 'Apache-2.0' : /\bMIT\b/.test(declared) ? 'MIT' : null) || (own ? null : repoLic);
     if (!licence) { left.push({ name: `${src.repo}/${path}`, why: 'no open licence we can redistribute under' }); continue; }
     const url = `https://github.com/${src.repo}/tree/${src.commit}/${path}`;
-    const copyright = licence === 'MIT' && own ? (/^Copyright.*$/m.exec(read(own))?.[0] ?? '') : '';
+    // MIT asks for its copyright line to travel with the text: from the skill's own licence, or the repository's.
+    const mitFile = licence === 'MIT' ? own ?? (repoLic === 'MIT' ? repoLicFile : null) : null;
+    const copyright = mitFile ? (/^Copyright.*$/m.exec(read(mitFile))?.[0] ?? '') : '';
     const ins = instructions(body, url);
     const name = (fm.name || basename(d)).slice(0, 80);
     add({
-      name, description: (fm.description || name).slice(0, 400), capabilities: caps(name, ['agent-skill']), instructions: ins.text, license: licence,
+      name, description: (fm.description || name).slice(0, 400), capabilities: caps(name, [...(src.tags ?? []), 'agent-skill']), instructions: ins.text, license: licence,
       source: { org: src.org, repo: src.repo, path: `${path}/SKILL.md`, commit: src.commit, url },
       notice: `From ${src.org}'s ${src.repo} (${path}/SKILL.md at ${src.commit.slice(0, 12)}), under ${licence}${copyright ? ` (${copyright}; the licence text travels with Constellate in data/seed/LICENSES)` : ''}. Changed by Constellate: the YAML header was removed${ins.shortened ? ' and the text was shortened' : ''}; any scripts or files the skill uses are not included and are at the source link.`,
     });

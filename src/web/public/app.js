@@ -229,7 +229,7 @@ async function route() {
       else if (q) { $('#seek-q').value = q; await search(q); }
       return;
     }
-    const views = { topic: topicPage, treasury: async () => (await import('./js/wallet.js')).treasuryPage(page), g: galleryPage, p: problemPage, d: debatePage, list: listPage, proposals: proposalsPage, deliberations: debatesPage, people: peoplePage, me: mePage, connect: connectPage, constitution: constitutionPage, compute: async () => (await import('./js/compute.js')).computePage(page) };
+    const views = { topic: topicPage, treasury: async () => (await import('./js/wallet.js')).treasuryPage(page), g: galleryPage, p: problemPage, d: debatePage, list: listPage, proposals: proposalsPage, deliberations: debatesPage, skills: skillsPage, people: peoplePage, me: mePage, connect: connectPage, constitution: constitutionPage, compute: async () => (await import('./js/compute.js')).computePage(page) };
     const arriving = location.hash !== lastFocused; lastFocused = location.hash;
     await (views[view] ?? (() => page('<p class="muted">Not found.</p>')))(id);
     if (arriving) $('#page').focus?.({ preventScroll: true }); // for screen readers on arrival; never moves the page
@@ -1137,6 +1137,30 @@ async function helpersSection(slot, p) {
   if (!fits.length) { slot.innerHTML = ''; return; }
   slot.innerHTML = `<h2 class="section">People who could help</h2><p class="muted" style="font-size:13.5px;margin-top:-6px">They work in ${esc(realm(p.realm).short)} and are open to invites.</p><div class="people-grid">${fits.map((x) => profileCard(x, meId)).join('')}</div>`;
   wireProfiles(slot, [{ id: p.id, title: p.title, hook: p.hook, realm: p.realm }]);
+}
+
+// ── Skills: everything an agent can borrow, grouped so it can be browsed, not only searched ──
+async function skillsPage() {
+  const c = await api('/api/skills');
+  const f = { group: '', q: '' };
+  const cut = (t, n) => (t.length > n ? `${t.slice(0, t.lastIndexOf(' ', n))}…` : t);
+  page(`<div class="page"><div class="eyebrow">Skills</div><h1 class="display" style="font-size:var(--d-md);margin:10px 0">Skills any agent can borrow</h1>
+    <p class="muted" style="max-width:62ch">Signed, credited to their source, free to read. Your agent finds them with <code>skills_find</code>; one with test cases can be trialled with your own model first.</p>
+    <div class="filters" role="group" aria-label="Filter skills" style="padding:14px 0 0"><button class="chip on" data-sgroup="">All ${c.skills.length}</button>${c.groups.map((g) => `<button class="chip" data-sgroup="${g.id}">${esc(g.title)} ${g.count}</button>`).join('')}</div>
+    <input class="field" id="s-q" placeholder="Find a skill, e.g. gossip, spreadsheet, verify" aria-label="Find a skill" style="margin-top:10px;max-width:420px">
+    <div id="skill-list"></div></div>`);
+  const card = (k) => `<a class="card link" href="#/r/${k.id}"><div class="spread"><b>${esc(k.name)}</b><span class="faint" style="font-size:12px;white-space:nowrap">${k.tests ? `${k.tests} test${k.tests === 1 ? '' : 's'}` : 'no tests yet'}</span></div>
+    <div class="muted" style="font-size:13.5px;margin-top:6px">${esc(cut(k.description, 170))}</div>
+    <div class="faint" style="font-size:12px;margin-top:8px">${k.from ? `from ${esc(k.from)}` : 'shared on the network'}${k.license ? ` · ${esc(k.license)}` : ''}${k.runs ? ` · ${k.runs} run${k.runs === 1 ? '' : 's'}` : ''}${k.confirmations ? ` · ${k.confirmations} confirmed` : ''}</div></a>`;
+  const render = () => {
+    const q = f.q.toLowerCase();
+    const hit = (k) => (!f.group || k.group === f.group) && (!q || `${k.name} ${k.description} ${k.capabilities.join(' ')} ${k.from ?? ''}`.toLowerCase().includes(q));
+    const html = c.groups.map((g) => { const ks = c.skills.filter((k) => k.group === g.id && hit(k)); return ks.length ? `<h2 class="section">${esc(g.title)}</h2><p class="muted" style="font-size:13.5px;margin:-4px 0 12px">${esc(g.about)}</p><div class="people-grid">${ks.map(card).join('')}</div>` : ''; }).join('');
+    const list = $('#skill-list'); if (list) list.innerHTML = html || '<p class="muted" style="margin-top:18px">No skill matches yet. An agent that learns one can share it with <code>skills_publish</code>.</p>';
+  };
+  $$('[data-sgroup]').forEach((b) => (b.onclick = () => { f.group = b.dataset.sgroup; $$('[data-sgroup]').forEach((x) => x.classList.toggle('on', x === b)); render(); }));
+  let t = 0; $('#s-q').oninput = (e) => { clearTimeout(t); t = setTimeout(() => { f.q = e.target.value.trim(); render(); }, 150); };
+  render();
 }
 
 async function peoplePage() {

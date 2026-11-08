@@ -5,7 +5,7 @@ Constellate's starter library includes openly licensed public agent skills (SKIL
 Each signed skill record names its source (pinned to a commit or tag), its licence and what Constellate changed.
 
 Licence texts: `Apache-2.0.txt` (Apache License 2.0) and the MIT licences with their copyright lines
-(`MIT-notion-skills.txt`, `MIT-vercel-deploy.txt`, `MIT-x0x.txt`, `MIT-ant-sdk.txt`).
+(`MIT-notion-skills.txt`, `MIT-vercel-deploy.txt`, `MIT-x0x.txt`, `MIT-ant-sdk.txt`, `MIT-research-loop.txt`).
 
 **What was changed, for every skill:** the YAML header was removed (name and description are kept as fields);
 only the SKILL.md text is included, not the scripts, references or assets the skill bundles, which stay at the
@@ -23,6 +23,7 @@ by handle or organisation, so author names and contact addresses are not carried
 - **OpenAI**, [openai/skills](https://github.com/openai/skills) at `49f948faa9258a0c61caceaf225e179651397431` (Apache-2.0, MIT): 29 skills: aspnet-core, chatgpt-apps, cli-creator, cloudflare-deploy, define-goal, gh-address-comments, gh-fix-ci, hatch-pet, imagegen, jupyter-notebook, linear, migrate-to-codex, notion-knowledge-capture, notion-meeting-intelligence, notion-research-documentation, notion-spec-to-implementation, openai-docs, pdf, playwright-interactive, screenshot, security-best-practices, security-threat-model, sentry, skill-creator, speech, transcribe, vercel-deploy, winui-app, yeet.
 - **Saorsa Labs**, [saorsa-labs/x0x](https://github.com/saorsa-labs/x0x) at `v0.48.1` (MIT OR Apache-2.0): 1 skill: x0x.
 - **Autonomi**, [WithAutonomi/ant-sdk](https://github.com/WithAutonomi/ant-sdk) at `3184f88c34779d6d449f2c4d76bfae77e4d2aa3e` (MIT OR Apache-2.0): 1 skill: Building apps on the Autonomi network.
+- **Research Loop**, [wrencanfly/research-loop-skills](https://github.com/wrencanfly/research-loop-skills) at `52333290066262c448e423795eac7eddee5f51e5` (MIT, Copyright (c) 2026 Research Loop contributors): 7 skills: research-evidence, research-execute, research-frame, research-hypothesize, research-loop, research-synthesize, research-verify. The orchestrator links to its sibling skills by path; in Constellate each is its own skill record, and the repository's run checker (`scripts/research_run.py`) and examples stay at the source link.
 
 ## Left out
 

@@ -6,6 +6,8 @@ import { z } from 'zod';
 import { Hub } from '../hub/hub.js';
 import { contextShape, tool } from './tools.js';
 import { REPORT_BACK, reproduction } from '../services/reproduce.js';
+import { CLAIM_KINDS, CLAIM_STATUSES, ClaimSource } from '../services/ledger.js';
+import { ReviewCheck } from '../economy/economy.js';
 
 const lookupShape = {
   domain: z.array(z.string()).optional().describe('Optional topic tags to narrow results.'),
@@ -13,6 +15,9 @@ const lookupShape = {
   limit: z.number().int().min(1).max(10).optional(),
 };
 const publishShape = { publish: z.boolean().optional().describe('Publish now, skipping the private preview.') };
+
+/** The claim an answer makes, as answers_submit takes it (src/services/ledger.ts holds the rules). */
+const ClaimInput = z.object({ kind: z.enum(CLAIM_KINDS).optional(), status: z.enum(CLAIM_STATUSES).optional(), sources: z.array(ClaimSource).max(12).optional(), limits: z.string().max(600).optional() }).strict();
 
 export function registerServiceTools(server: McpServer, hub: Hub) {
   // ── Failure ledger ────────────────────────────────────────────────
@@ -71,12 +76,16 @@ export function registerServiceTools(server: McpServer, hub: Hub) {
       proof_detail: z.string().describe('How someone else can check it.'),
       fixes: z.array(z.string()).optional().describe('Failure or help request ids this answers.'),
       bounty: z.string().optional().describe('Bounty id this answers (published at once).'),
+      // One compact field (lean tools stay small, as plan_report does); checked strictly below and by the record's own schema.
+      claim: z.record(z.unknown()).optional().describe('Optional: {kind: observation|inference|hypothesis, status: supported|refuted|contested|unresolved, sources: [{source, locator, relation: supports|contradicts, origin?}], limits}. unresolved is fine.'),
       ...publishShape,
     },
-    async ({ question, answer, proof_type, proof_detail, fixes, bounty, publish, ...ctx }) => {
+    async ({ question, answer, proof_type, proof_detail, fixes, bounty, publish, claim, ...ctx }) => {
       // Answers to bounties and help requests go out at once: the asker's computer checks them.
       const asked = !!bounty || (fixes ?? []).some((id) => hub.node.store.get(id)?.rec.kind === 'help_request');
-      return summarise(await hub.ledger.submitAnswer(ctx, { question, answer, proof: { type: proof_type, detail: proof_detail } }, { publish: asked ? true : publish, fixes: bounty ? [...(fixes ?? []), bounty] : fixes }));
+      const c = claim ? ClaimInput.parse(claim) : undefined;
+      const research = c ? { ...(c.kind ? { claim: c.kind } : {}), ...(c.status ? { status: c.status } : {}), ...(c.sources?.length ? { sources: c.sources } : {}), ...(c.limits ? { limits: c.limits } : {}) } : {};
+      return summarise(await hub.ledger.submitAnswer(ctx, { question, answer, proof: { type: proof_type, detail: proof_detail }, ...research }, { publish: asked ? true : publish, fixes: bounty ? [...(fixes ?? []), bounty] : fixes }));
     });
 }
 
@@ -238,9 +247,12 @@ export function registerEconomyTools(server: McpServer, hub: Hub) {
       return { bounties: mine ? rows.map((b) => ({ ...b, answer_list: hub.node.store.referencing(b.id, 'answer').map((a) => ({ id: a.rec.id, by: a.rec.agent_id, answer: String((a.rec.body as { answer?: string }).answer ?? '').slice(0, 600) })) })) : rows };
     });
   tool(server, 'skills_find',
-    'Find a proven skill another agent published (instructions plus test cases), ranked by trust and past runs, before building it yourself; also lists matching public x0x groups. Free; a skill may have a price.',
-    { query: z.string(), limit: z.number().int().min(1).max(10).optional() },
-    async ({ query, limit }) => ({ results: hub.skills.find(query, limit ?? 3), on_x0x: await hub.x0xSkills.capabilities(query, 2) }));
+    'Find a proven skill another agent published (instructions plus test cases), ranked by trust and past runs, before building it yourself; also lists matching public x0x groups. No query: browse all, by group. Free; a skill may have a price.',
+    { query: z.string().optional(), limit: z.number().int().min(1).max(10).optional() },
+    async ({ query, limit }) => {
+      if (!query?.trim()) { const c = hub.skills.catalog(); return { groups: c.groups.map((g) => ({ ...g, skills: c.skills.filter((k) => k.group === g.id).map((k) => ({ id: k.id, name: k.name, tests: k.tests })) })), then: 'skills_get with an id reads its instructions.' }; }
+      return { results: hub.skills.find(query, limit ?? 3), on_x0x: await hub.x0xSkills.capabilities(query, 2) };
+    });
   tool(server, 'skills_get',
     'Fetch a skill\'s instructions and test cases so you can trial it with your own model. Run nothing you do not understand. Free.',
     { id: z.string() },
@@ -258,7 +270,7 @@ export function registerEconomyTools(server: McpServer, hub: Hub) {
     { name: z.string(), description: z.string(), capabilities: z.array(z.string()), price: z.number().int().min(0), instructions: z.string(), tests: z.array(z.object({ input: z.string(), check: z.record(z.unknown()) })), verifier: z.string(), inherits: z.array(z.string()).optional() },
     async ({ inherits, ...card }) => summarise(await hub.skills.publish(card, { inherits })));
   tool(server, 'review_request',
-    'Ask an independent agent for a second opinion on a plan, code or claim, with a bounty. Send a summary only, never private content; the full content stays local as a hash.',
+    'Ask an independent agent for a second opinion on a plan, code or claim, with a bounty. Describe the claim, its scope and its evidence, not the verdict you hope for. Send a summary only, never private content; the full content stays local as a hash.',
     { subject: z.enum(['plan', 'code', 'claim']), summary: z.string(), content_text: z.string().optional().describe('Hashed locally, never sent.'), bounty: z.number().int().min(0), domain: z.array(z.string()) },
     async ({ subject, summary, content_text, bounty, domain }) => {
       if (!hub.economy) throw new Error('no payment rail attached');
@@ -266,9 +278,9 @@ export function registerEconomyTools(server: McpServer, hub: Hub) {
       return summarise(await hub.economy.requestReview(subject, summary, hashInputs(content_text ?? summary), bounty, domain));
     });
   tool(server, 'review_respond',
-    'Answer a second-opinion request with an independent critique. You are paid the bounty, plus a bonus if the critique is confirmed useful.',
-    { request: z.string(), verdict: z.enum(['sound', 'concerns', 'wrong']), critique: z.string() },
-    async ({ request, verdict, critique }) => { if (!hub.economy) throw new Error('no payment rail attached'); return summarise(await hub.economy.respondReview(request, verdict, critique)); });
+    'Answer a second-opinion request with an independent critique: run checks and look for a concrete counterexample; agreeing is not a check. List each check and its outcome, and keep "not attempted" apart from "failed". You are paid the bounty, plus a bonus if the critique is confirmed useful.',
+    { request: z.string(), verdict: z.enum(['sound', 'concerns', 'wrong']), critique: z.string(), checks: z.array(ReviewCheck).max(12).optional() },
+    async ({ request, verdict, critique, checks }) => { if (!hub.economy) throw new Error('no payment rail attached'); return summarise(await hub.economy.respondReview(request, verdict, critique, checks)); });
   tool(server, 'earnings_get',
     'See payments you have received and what each one was for. Free.',
     {},

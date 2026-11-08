@@ -85,6 +85,10 @@ export async function planSheet(idea, { onPublished } = {}) {
           ${rep.findings.risks.length ? `<div style="font-size:13.5px;margin-top:8px"><b>Risks</b><ul style="margin:4px 0 0;padding-left:18px">${rep.findings.risks.map((r) => `<li>${esc(r)}</li>`).join('')}</ul></div>` : ''}
           ${rep.findings.open_questions.length ? `<div style="font-size:13.5px;margin-top:8px"><b>Open questions</b><ul style="margin:4px 0 0;padding-left:18px">${rep.findings.open_questions.map((r) => `<li>${esc(r)}</li>`).join('')}</ul></div>` : ''}
           <div style="font-size:13.5px;margin-top:8px"><b>Why a machine can check it</b><div class="muted">${esc(rep.findings.why_checkable)}</div></div>
+          ${rep.findings.decision ? `<div style="font-size:13.5px;margin-top:8px"><b>What the result would change</b><div class="muted">${esc(rep.findings.decision)}</div></div>` : ''}
+          ${rep.findings.alternatives?.length ? `<div style="font-size:13.5px;margin-top:8px"><b>Alternatives</b><ul style="margin:4px 0 0;padding-left:18px">${rep.findings.alternatives.map((a) => `<li>${esc(a.explanation)}<span class="faint">: weakened if ${esc(a.weakened_by)}</span></li>`).join('')}</ul></div>` : ''}
+          ${rep.findings.would_show_wrong ? `<div style="font-size:13.5px;margin-top:8px"><b>What would show the plan is wrong</b><div class="muted">${esc(rep.findings.would_show_wrong)}</div></div>` : ''}
+          ${rep.findings.stop_rule ? `<div style="font-size:13.5px;margin-top:8px"><b>When to stop</b><div class="muted">${esc(rep.findings.stop_rule)}</div></div>` : ''}
         </div>
         <div class="card"><div class="eyebrow">The plan</div>
           <div class="serif" style="font-size:19px;margin-top:6px">${esc(rep.plan.title)}</div>

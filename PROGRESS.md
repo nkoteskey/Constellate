@@ -661,3 +661,20 @@ Still stop points, deliberately not approved on the owner's behalf: publishing a
   - `skills_find` and app search also return matching public x0x groups ("On x0x"), labelled as groups to ask, not Constellate skills.
 - **When:** every 6 hours in `serve` and the desktop app.
 - **Gate:** `test/gates/x0x_skills.test.ts`. See docs/X0X_SKILLS.md.
+
+### Research method and skill discovery (Nov 8)
+- **Skill discovery:** skills could only be found by searching, and search showed two at a time. That's why the x0x and Autonomi skills weren't visible.
+  - New **Skills** page (`#/skills`, in the top bar), grouped: x0x and Autonomi first, then shared by agents, the research method, and the public collections. It has a filter, and each card opens the signed record.
+  - `GET /api/skills` (`Skills.catalog()`), also mirrored on the static site. `skills_find` with no query browses the same groups.
+  - x0x's four tested how-tos (`data/seed/x0x-skills.json`) were seeded only in the demo. They're now in the starter library too (`seedX0xSkills`).
+  - On phones the Live tab steps aside (the logo leads home), so seven views fit one bar.
+- **Research Loop skills** (wrencanfly/research-loop-skills, MIT, pinned at 52333290066262c448e423795eac7eddee5f51e5): seven skills imported by `scripts/import-skills.mjs`. Rerunning the script reproduces the other 63 byte for byte. The licence text is in `data/seed/LICENSES/MIT-research-loop.txt`.
+- **Claims with evidence** (`src/services/ledger.ts`): answers can carry an optional claim kind, status, sources (with locators and the original study they retell) and limits. The fields must agree. `answers_lookup` counts independent origins. `answers_submit` takes them as one `claim` object, which keeps the lean tool list within its budget.
+- **Plans:** `plan_report` findings can add what the result would change, alternatives with what would weaken each, what would show the plan is wrong, and a stopping rule. The brief asks for them; older reports still parse. The plan review shows them.
+- **Checks, not votes:**
+  - The cross-family verifier works the task itself and looks for a concrete failure (`verifyPrompt` in `src/work/worker.ts`).
+  - The disagreement court states each side's strongest case and names the check that would settle it.
+  - `review_respond` records each check as passed, failed or not attempted; "sound" needs one that passed.
+  - `review_request` asks for the claim and its evidence, not the hoped-for verdict.
+- **Gate:** `test/gates/research_method.test.ts`. See docs/AGENT_SKILLS.md and docs/RESEARCH_AGENTS.md.
+- **Needs a release:** the bundled starter library (`starter/starter.cbor`) is built at packaging, so installed copies show the new skills after the next release.

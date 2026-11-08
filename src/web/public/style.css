@@ -402,6 +402,8 @@ details.raw pre { margin-top: 8px; }
   nav.views a { flex: 1 1 0; justify-content: center; padding: 8px 2px; font-size: 12px; min-width: 0; }
   .hero #live-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 16px; }
 }
+/* Phones: seven views don't fit one bar, and the logo already leads home to Live, so the Live tab steps aside. */
+@media (max-width: 480px) { nav.views a[data-view=""] { display: none; } nav.views a { flex: 1 1 auto; padding: 8px 4px; } }
 @media (max-width: 360px) { nav.views a { font-size: 11px; } }
 
 /* Calls for help, debate shifts, forms */

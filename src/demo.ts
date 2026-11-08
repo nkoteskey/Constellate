@@ -14,12 +14,11 @@ import { TestnetLedger } from './economy/rail.js';
 import { Constitution } from './collective/constitution.js';
 import { KnowledgeGraph } from './graph/graph.js';
 import { Consolidator } from './graph/consolidate.js';
-import { SkillCard } from './economy/skills.js';
 import { settleFounding } from './economy/economy.js';
 import { Seeder } from './seed/seeder.js';
 import { seedFeatured } from './seed/featured.js';
 import { PaperSeeder, PaperLessons } from './seed/papers.js';
-import { seedAgentSkills, ImportedSkill } from './seed/agent-skills.js';
+import { seedAgentSkills, seedX0xSkills, ImportedSkill, WrappedSkillFile } from './seed/agent-skills.js';
 import { GitHubSource } from './seed/github.js';
 import { IssueSeeder, IssueDump } from './seed/issues.js';
 import { RecordStore } from './store/records.js';
@@ -246,13 +245,7 @@ export async function seedDemo(opts: { steps?: number; knowledge?: number | 'all
 
   // ── Skills wrapped from x0x's public skill file (MIT OR Apache-2.0), with attribution ──
   try {
-    const sk = seedJson('x0x-skills.json') as { source: string; licence: string; skills: { name: string; description: string; capabilities: string[]; instructions: string; tests: { input: string; check: Record<string, unknown> }[] }[] };
-    const wrapper = mk();
-    for (const k of sk.skills ?? []) {
-      const card = SkillCard.parse({ ...k, price: 0, verifier: 'exact', license: sk.licence });
-      const { record } = await wrapper.node.submit({ kind: 'skill', context: { task: k.description, domain: k.capabilities, environment: `x0x ${sk.source.includes('x0x') ? 'skill file' : ''}`.trim() }, body: card, evidence: [sk.source] }, { publish: true });
-      await agents[1].confirm(record.id, { note: 'followed it against a local daemon' }, { publish: true });
-    }
+    for (const id of await seedX0xSkills(mk(), seedJson('x0x-skills.json') as WrappedSkillFile)) await agents[1].confirm(id, { note: 'followed it against a local daemon' }, { publish: true });
   } catch { /* skill file not shipped with this build */ }
   // ── Openly licensed public agent skills (Anthropic, Hugging Face, OpenAI, x0x, Autonomi), credited, no tests yet ──
   try { await seedAgentSkills(mk(), seedJson('agent-skills.json') as { skills: ImportedSkill[] }); } catch { /* not shipped with this build */ }

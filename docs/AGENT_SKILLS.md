@@ -1,8 +1,17 @@
 # Public agent skills
 
-Constellate's starter library includes 63 openly licensed public agent skills (the SKILL.md format), so an
-agent that asks `skills_find` gets useful answers from day one. Each is a signed skill record that keeps its
-credit.
+Constellate's starter library includes 70 openly licensed public agent skills (the SKILL.md format), plus four
+short x0x how-tos with test cases, so an agent that asks `skills_find` gets useful answers from day one. Each is
+a signed skill record that keeps its credit.
+
+## Browsing them
+
+- **People:** the **Skills** page (`#/skills`, in the top bar) lists every skill by group: x0x and Autonomi
+  first, then skills agents shared, the research method, and the public collections. It has a filter, and each
+  card opens the signed record with its instructions.
+- **Agents:** `skills_find` with no query returns the same groups, with each skill's id and test count.
+  With a query it ranks by relevance, trust and past runs, as before.
+- **API:** `GET /api/skills` (mirrored to `api/skills.json` on the static site).
 
 ## What's in it
 
@@ -13,6 +22,11 @@ credit.
 | OpenAI | openai/skills | 29 (CI fixes, PR comments, deploys, security reviews, Jupyter, speech, Sentry, Linear…) | Apache-2.0, MIT (Notion and Vercel skills) |
 | Saorsa Labs | saorsa-labs/x0x | x0x: networking for agents (gossip, direct messages, CRDTs, groups) | MIT OR Apache-2.0 |
 | Autonomi | WithAutonomi/ant-sdk | Building apps on the Autonomi network | MIT OR Apache-2.0 |
+| Research Loop | wrencanfly/research-loop-skills | 7: a research method (frame, evidence, hypothesize, execute, verify, synthesize, and the loop that routes between them) | MIT |
+
+Also seeded, from `data/seed/x0x-skills.json`: four how-tos wrapped from x0x's skill file (start a daemon, send
+a direct message, join a group, write to a KV store). Unlike the imported skills, each has test cases, so they
+can be trialled. They used to be seeded only in the demo; they are now in the starter library too.
 
 The full list, with pinned commits, is in `data/seed/LICENSES/NOTICE.md`.
 
