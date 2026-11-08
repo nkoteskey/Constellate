@@ -125,4 +125,35 @@ describe('lending this computer', () => {
       expect(errors).toEqual([]);
     } finally { await browser.close(); await web.close(); contributeCalls = []; }
   }, 60_000);
+
+  it('without Ollama, the first card still says what to do first, and the lending card follows (desktop/test/e2e.cjs)', async () => {
+    const hub = new Hub({ signer: LocalSigner.generate(), preview: false });
+    const web = new WebServer(hub);
+    registerAppRoutes(web);
+    await web.listen(0);
+    const { chromium } = createRequire(import.meta.url)('playwright');
+    const browser = await chromium.launch();
+    try {
+      const page = await browser.newPage({ viewport: { width: 1280, height: 860 } });
+      const errors: string[] = [];
+      page.on('pageerror', (e: Error) => errors.push(String(e)));
+      await page.addInitScript(() => {
+        const qwen = { name: 'Qwen3 8B', needGB: 6, run: { provider: 'ollama', model: 'qwen3:8b' } };
+        (window as unknown as Record<string, unknown>).constellateDesktop = {
+          status: async () => ({ settings: { contribute: false, openAtLogin: false, model: null }, x0x: { state: 'online', peers: 3 }, ollama: { running: false, models: [] }, contribute: null, suggestion: { primary: qwen, notes: [] }, agents: {} }),
+          lendLimits: async () => ({ nightStart: 23, hoursPerNight: 6, neverOnBattery: true, cpuCapPct: 50 }),
+          lendLog: async () => ({ log: [], used_tonight_seconds: 0, limits: { nightStart: 23, hoursPerNight: 6, neverOnBattery: true, cpuCapPct: 50 } }),
+          contribute: async () => ({ ok: false, error: 'Ollama runs the free models.' }), openAtLogin: async () => false, getOllama: async () => {},
+        };
+      });
+      await page.goto(`${web.url}/#/compute`);
+      await page.waitForSelector('#start-slot .card', { timeout: 15_000 });
+      expect(await page.textContent('#start-slot')).toMatch(/Start helping|Install Ollama/);
+      await page.waitForFunction(() => document.querySelector('#desk-slot .card'), null, { timeout: 15_000 });
+      const lend = await page.evaluate(() => document.querySelector('#desk-slot')!.textContent);
+      expect(lend).toMatch(/On the x0x network/);
+      expect(lend).toMatch(/Ollama|hosted model/);
+      expect(errors).toEqual([]);
+    } finally { await browser.close(); await web.close(); }
+  }, 60_000);
 });

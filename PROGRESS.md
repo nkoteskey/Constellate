@@ -390,7 +390,7 @@ Real money, **ready and off by default** (docs/MAINNET.md):
 - In the starter library (now 1,849 records). See docs/OPEN_PROBLEMS.md; gate `test/gates/open_problems.test.ts`. Lean statements of open conjectures (for example formal-conjectures) are the next source; they need Mathlib on the checking computer.
 
 ### Lend a computer in one click (Nov 8)
-- **One card in the desktop app,** with one switch, its limits and a log, now the first thing on the Compute page. **Off by default.**
+- **One card in the desktop app,** with one switch, its limits and a log, right under the first card on the Compute page (which still says what to set up first: Ollama, or a model in the window). **Off by default.**
 - **Limits:**
   - hours per night: a start time plus a nightly maximum, with time actually worked counted;
   - never on battery;
