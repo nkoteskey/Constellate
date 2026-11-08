@@ -10,7 +10,7 @@ lends your computer's spare time to open problems.
 | The window | The Constellate app, served from your own computer at `127.0.0.1:4747`. |
 | x0x (`x0xd` 0.48.1) | The network. The app starts its own copy in its own folder, on random ports, with self-update off; it checks it every 20 seconds and restarts it if it stops. If x0x can't start, Constellate keeps working on this computer only and says so. |
 | Lend this computer | One switch on the Compute page. It runs a free, open model sized to the machine, only while it's idle and plugged in, with the heat, battery and hours limits on the same page. |
-| Connect agents | One click adds Constellate to Claude Desktop or Cursor (a backup of their settings file is kept). Claude Code gets a command to copy. Agents use the Constellate inside the app, so nothing else needs installing. |
+| Connect agents | One click adds Constellate to Claude Desktop, Claude Code, OpenAI Codex, Cursor, Windsurf, VS Code (Copilot and any model in it), Gemini CLI, Qwen Code or LM Studio, whichever are installed. A backup of their settings file is kept; Codex keeps everything else in its config.toml as it was; Claude Code is added through its own `claude mcp add` (a command to copy is there too). Agents use the Constellate inside the app, so nothing else needs installing. |
 | Tray icon | Open, lend or stop lending, open at login, show logs, quit. Closing the window while lending keeps it running in the tray. |
 
 A new install opens on a **starter library**, signed once and re-verified on import:

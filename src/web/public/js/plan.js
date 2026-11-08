@@ -1,6 +1,6 @@
 // Plan it with your agent: hand an idea to an agent, which researches it and reports a plan in the
 // network's format (checkable steps plus what it found). Nothing goes live until the person publishes it.
-import { $, $$, esc, api, copy, toast, sheet, closeSheet, realm, STATIC } from './ui.js';
+import { $, $$, esc, api, copy, toast, sheet, closeSheet, realm, STATIC, ls } from './ui.js';
 
 const post = (p, body = {}) => api(p, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
 const STATUS = { waiting: 'Waiting for your agent', running: 'Your agent is working on it', reported: 'Plan ready for you to review', failed: 'Didn’t work', published: 'Published', discarded: 'Discarded' };
@@ -49,20 +49,32 @@ export async function planSheet(idea, { onPublished } = {}) {
     if (!document.body.contains(el)) return stop();
     const body = $('#plan-body', el);
     if (!req) {
+      // Every way to plan it, as one list: Claude Code first, then any model this computer reaches, then agents the
+      // person has to start themselves. The first that runs on its own is chosen; one Start button.
       const o = d.options;
-      body.innerHTML = `<div class="stack">
-        ${o.claude_code ? `<button class="card link" data-via="claude_code" style="text-align:left"><b>Claude Code on this computer</b><div class="muted" style="font-size:13px;margin-top:4px">Starts it in the background with Constellate connected. It can only use Constellate’s search and report tools. Usually a few minutes; it uses your Claude plan.</div></button>` : ''}
-        ${o.model ? `<button class="card link" data-via="model" style="text-align:left"><b>The model this app uses</b> <span class="chip sm">${esc(o.model)}</span><div class="muted" style="font-size:13px;margin-top:4px">Writes the plan here, from what this computer knows.</div></button>` : ''}
-        <button class="card link" data-via="any_agent" style="text-align:left"><b>${o.claude_code || o.model ? 'Another connected agent' : 'Your connected agent'}</b><div class="muted" style="font-size:13px;margin-top:4px">Cursor, Claude Desktop, Gemini CLI or any agent connected to Constellate. The request waits for it: next time you use it, say “check Constellate for planning requests”.</div></button>
-      </div>`;
-      $$('[data-via]', body).forEach((b) => (b.onclick = async () => {
-        try { const r = await post('/api/plans', { idea: idea.id, via: b.dataset.via }); draw(r); watch(r.id); } catch (e) { toast(e.message, 6000); }
-      }));
+      const choices = [
+        ...(o.claude_code ? [{ id: 'claude_code', name: 'Claude Code', note: 'Runs on this computer with only Constellate’s search and report tools. Usually a few minutes; it uses your Claude plan.' }] : []),
+        ...(o.models ?? []).map((m) => ({ id: `model:${m.spec}`, name: m.name, note: `${m.note[0].toUpperCase()}${m.note.slice(1)}. Writes the plan from what this computer knows.` })),
+        ...(o.model && !(o.models ?? []).some((m) => m.where === 'app') ? [{ id: 'model', name: o.model, note: 'The model this app was started with.' }] : []),
+        { id: 'any_agent', name: 'Claude Desktop, Cursor or another connected agent', note: 'You have to start it yourself: these apps can’t be started by another app. After Start, open it and say “check Constellate for planning requests”.' },
+      ];
+      let pick = ls.get('planChoice', '');
+      if (!choices.some((c) => c.id === pick)) pick = choices[0].id;
+      body.innerHTML = `<div class="card"><div class="stack" role="radiogroup" aria-label="Who plans it" style="gap:8px">
+        ${choices.map((c) => `<label class="row" style="align-items:flex-start;gap:10px;cursor:pointer"><input type="radio" name="plan-who" value="${esc(c.id)}"${c.id === pick ? ' checked' : ''} style="margin-top:4px"><span><b>${esc(c.name)}</b><span class="muted" style="display:block;font-size:13px">${esc(c.note)}</span></span></label>`).join('')}
+        </div><div class="row" style="margin-top:12px"><button class="btn primary" id="plan-go">Start</button></div></div>`;
+      $$('input[name="plan-who"]', body).forEach((r) => (r.onchange = () => { pick = r.value; ls.set('planChoice', pick); }));
+      const go = $('#plan-go', body);
+      go.onclick = async () => {
+        go.disabled = true;
+        const payload = pick.startsWith('model:') ? { via: 'model', spec: pick.slice(6) } : { via: pick };
+        try { const r = await post('/api/plans', { idea: idea.id, ...payload }); draw(r); watch(r.id); } catch (e) { go.disabled = false; toast(e.message, 6000); }
+      };
       return;
     }
     const rep = req.report;
     body.innerHTML = `<div class="spread" style="margin-bottom:10px"><span class="chip ${req.status === 'reported' || req.status === 'published' ? 'ok' : ''}"><span class="dot"></span>${STATUS[req.status] ?? req.status}</span><span class="faint" style="font-size:12px">${req.agent ? `from ${esc(req.agent)}` : ''}</span></div>
-      ${req.status === 'waiting' ? `<p class="muted" style="font-size:13.5px">Open your agent and say: <b>“check Constellate for planning requests”</b>. It finds this request with its <code>plan_report</code> tool, researches it and reports back here.</p><div class="row"><button class="btn sm" id="plan-copy">Copy that for your agent</button></div>` : ''}
+      ${req.status === 'waiting' ? `<p class="muted" style="font-size:13.5px"><b>Start it yourself:</b> open Claude Desktop (or your connected agent) and say “check Constellate for planning requests”. It finds this request with its <code>plan_report</code> tool and reports back here.</p><div class="row"><button class="btn sm" id="plan-copy">Copy that for your agent</button></div>` : ''}
       ${req.status === 'running' ? `<p class="muted" style="font-size:13.5px">Researching related work and drafting checkable steps, for ${since(req.at)} so far. You can close this: the idea’s card on the Proposals page shows how it’s going.</p>` : ''}
       ${activity(req)}
       ${req.status === 'failed' ? `<p class="muted" style="font-size:13.5px">${esc(req.error ?? 'It didn’t finish.')}</p>` : ''}
@@ -97,4 +109,7 @@ export async function planSheet(idea, { onPublished } = {}) {
   const open = d.requests.find((r) => ['waiting', 'running', 'reported'].includes(r.status)) ?? (d.requests[0]?.status === 'failed' ? d.requests[0] : undefined);
   draw(open ?? null);
   if (open && open.status !== 'reported') watch(open.id);
+  // Nothing to choose: start with what this computer can run on its own (Claude Code, else the app's model). Only
+  // with neither does it list the ways in, including leaving it for a connected agent.
+
 }

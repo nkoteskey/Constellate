@@ -15,10 +15,10 @@
   "homepage": "https://github.com/nkoteskey/constellate#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/nkoteskey/constellate.git"
+    "url": "git+https://github.com/nkoteskey/Constellate.git"
   },
   "bugs": {
-    "url": "https://github.com/nkoteskey/constellate/issues"
+    "url": "https://github.com/nkoteskey/Constellate/issues"
   },
   "type": "module",
   "license": "MIT OR Apache-2.0",

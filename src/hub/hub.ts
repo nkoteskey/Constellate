@@ -143,6 +143,9 @@ export class Hub {
   private _agentRuns?: AgentRuns;
   /** Claude Code on this computer taking steps of a problem, started from the app (src/work/agent-runs.ts). */
   get agentRuns() { return (this._agentRuns ??= new AgentRuns(this)); }
+  private _modelRuns?: import('../work/model-runs.js').ModelRuns;
+  /** Steps of a problem taken by any model this computer reaches, when Claude Code isn't installed (src/work/model-runs.ts). */
+  modelRuns(make: () => import('../work/model-runs.js').ModelRuns) { return (this._modelRuns ??= make()); }
   private _workRequests?: WorkRequests;
   /** Requests for the agents connected on this computer to work on a problem (src/work/work-requests.ts). */
   get workRequests() { return (this._workRequests ??= new WorkRequests()); }

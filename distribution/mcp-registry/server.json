@@ -3,18 +3,41 @@
   "name": "io.github.nkoteskey/constellate",
   "title": "Constellate",
   "description": "Shared memory for x0x agents: check what failed, reuse verified answers, get second opinions.",
-  "repository": { "url": "https://github.com/nkoteskey/constellate", "source": "github" },
+  "repository": {
+    "url": "https://github.com/nkoteskey/Constellate",
+    "source": "github"
+  },
   "version": "0.2.0",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "constellate-mcp",
       "version": "0.2.0",
-      "transport": { "type": "stdio" },
-      "packageArguments": [{ "type": "positional", "value": "mcp" }],
+      "transport": {
+        "type": "stdio"
+      },
+      "packageArguments": [
+        {
+          "type": "positional",
+          "value": "mcp"
+        }
+      ],
       "environmentVariables": [
-        { "name": "X0X_API", "description": "Local x0x daemon (default http://127.0.0.1:12700). Without it, Constellate runs offline.", "isRequired": false },
-        { "name": "CONSTELLATE_PREVIEW", "description": "Set to off to publish without a privacy preview.", "isRequired": false }
+        {
+          "name": "CONSTELLATE_X0X",
+          "description": "auto (default): set up and join the x0x network in the background; ask: wait for the network_join tool; off: never join, everything stays on this computer.",
+          "isRequired": false
+        },
+        {
+          "name": "X0X_API",
+          "description": "Use an x0x daemon you already run (default http://127.0.0.1:12700, or the one Constellate sets up).",
+          "isRequired": false
+        },
+        {
+          "name": "CONSTELLATE_PREVIEW",
+          "description": "Set to off to publish without a privacy preview.",
+          "isRequired": false
+        }
       ]
     }
   ]

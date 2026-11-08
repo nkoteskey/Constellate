@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 // @ts-expect-error plain ES modules of the desktop app
 import { X0xSidecar } from '../../desktop/lib/x0x.mjs';
 // @ts-expect-error plain ES modules of the desktop app
-import { mcpEntry, connect, disconnect, connection, agentConfigs, claudeCodeCommand } from '../../desktop/lib/agents.mjs';
+import { mcpEntry, connect, disconnect, connection, agentConfigs, claudeCodeCommand, claudeCodeArgs } from '../../desktop/lib/agents.mjs';
 import { X0xClient } from '../../src/x0x/client.js';
 
 /**
@@ -97,6 +97,62 @@ describe('connecting agents from the desktop app', () => {
     expect(JSON.parse(readFileSync(file, 'utf8')).mcpServers).toEqual({ other: { command: 'x' } });
   });
 
+  it('connects VS Code (Copilot and any model in it), which lists servers under "servers"', () => {
+    const home = tmp();
+    const vs = agentConfigs({ platform: 'darwin', home }).vscode;
+    expect(vs.file).toBe(join(home, 'Library', 'Application Support', 'Code', 'User', 'mcp.json'));
+    expect(vs.key).toBe('servers');
+    expect(agentConfigs({ platform: 'linux', home }).vscode.file).toBe(join(home, '.config', 'Code', 'User', 'mcp.json'));
+    expect(agentConfigs({ platform: 'win32', home, appData: join(home, 'Roaming') }).vscode.file).toBe(join(home, 'Roaming', 'Code', 'User', 'mcp.json'));
+    const dir = tmp(); const file = join(dir, 'mcp.json');
+    writeFileSync(file, JSON.stringify({ servers: { github: { type: 'http', url: 'https://example.com/mcp' } }, inputs: [] }));
+    expect(connection(file, entry, 'servers')).toBe('none');
+    connect(file, entry, 'servers');
+    const cfg = JSON.parse(readFileSync(file, 'utf8'));
+    expect(cfg.servers.constellate).toEqual({ type: 'stdio', ...entry });
+    expect(cfg.servers.github).toEqual({ type: 'http', url: 'https://example.com/mcp' });
+    expect(cfg.mcpServers).toBeUndefined();
+    expect(connection(file, entry, 'servers')).toBe('connected');
+    expect(disconnect(file, 'servers')).toBe(true);
+    expect(JSON.parse(readFileSync(file, 'utf8')).servers).toEqual({ github: { type: 'http', url: 'https://example.com/mcp' } });
+  });
+
+  it('connects OpenAI Codex in one click: only Constellate\'s own table in config.toml, every other line kept', () => {
+    const home = tmp();
+    const cx = agentConfigs({ platform: 'darwin', home }).codex;
+    expect(cx.file).toBe(join(home, '.codex', 'config.toml'));
+    const before = ['model = "gpt-5"', '', '[mcp_servers.github]', 'command = "gh-mcp"', 'args = []', '', '[profiles.fast]', 'model = "gpt-5-mini"', ''].join('\n');
+    mkdirSync(join(home, '.codex'), { recursive: true });
+    writeFileSync(cx.file, before);
+    expect(connection(cx.file, entry)).toBe('none');
+    const backup = connect(cx.file, entry);
+    expect(readFileSync(backup!, 'utf8')).toBe(before);
+    const text = readFileSync(cx.file, 'utf8');
+    expect(text.startsWith(before.trimEnd())).toBe(true); // nothing of theirs moved or changed
+    expect(text).toContain(`[mcp_servers.constellate]\ncommand = ${JSON.stringify(entry.command)}\nargs = [${entry.args.map((x) => JSON.stringify(x)).join(', ')}]`);
+    expect(text).toContain('[mcp_servers.constellate.env]\nELECTRON_RUN_AS_NODE = "1"');
+    expect(connection(cx.file, entry)).toBe('connected');
+    connect(cx.file, entry); // again: replaced, not duplicated
+    expect(readFileSync(cx.file, 'utf8').match(/\[mcp_servers\.constellate\]/g)).toHaveLength(1);
+    expect(disconnect(cx.file)).toBe(true);
+    expect(readFileSync(cx.file, 'utf8').trimEnd()).toBe(before.trimEnd());
+    expect(connection(cx.file, entry)).toBe('none');
+  });
+
+  it('connects Claude Code in one click through its own command, and reads its settings only to show the state', () => {
+    const home = tmp();
+    const cc = agentConfigs({ platform: 'linux', home })['claude-code'];
+    expect(cc).toMatchObject({ name: 'Claude Code', file: join(home, '.claude.json'), cli: true });
+    // Exactly what the app runs (checked against the real `claude` CLI: it adds this to ~/.claude.json).
+    expect(claudeCodeArgs(entry)).toEqual(['mcp', 'add', '--scope', 'user', 'constellate', ...Object.entries(entry.env).flatMap(([k, v]) => ['-e', `${k}=${v}`]), '--', entry.command, ...entry.args]);
+    expect(connection(cc.file, entry)).toBe('none');
+    writeFileSync(cc.file, JSON.stringify({ numStartups: 3, mcpServers: { constellate: { type: 'stdio', ...entry } } }));
+    expect(connection(cc.file, entry)).toBe('connected');
+    const main = readFileSync(join(import.meta.dirname, '../../desktop/main.mjs'), 'utf8');
+    expect(main).toMatch(/claudeCode\(claudeCodeArgs\(entry\)\)/);
+    expect(main).toMatch(/claudeCode\(\['mcp', 'remove', '--scope', 'user', SERVER_NAME\]\)/);
+  });
+
   it('creates the file when the agent has none, and never overwrites one it can’t read', () => {
     const dir = tmp();
     const fresh = join(dir, 'new', 'mcp.json');
@@ -118,7 +174,7 @@ describe('connecting agents from the desktop app', () => {
 
   it('gives Claude Code a command to copy, quoted for paths with spaces', () => {
     const cmd = claudeCodeCommand(mcpEntry({ execPath: 'C:\\Program Files\\Constellate\\Constellate.exe', cliPath: 'C:\\Program Files\\Constellate\\resources\\app\\dist\\cli.js', x0xDataDir: 'C:\\Users\\Pat\\AppData\\Roaming\\Constellate\\x0x-constellate' }));
-    expect(cmd).toMatch(/^claude mcp add constellate -e ELECTRON_RUN_AS_NODE=1 -e X0X_DATA_DIR=/);
+    expect(cmd).toMatch(/^claude mcp add --scope user constellate -e ELECTRON_RUN_AS_NODE=1 -e X0X_DATA_DIR=/); // every project, like the one-click button
     expect(cmd).toContain('-- "C:\\\\Program Files\\\\Constellate\\\\Constellate.exe"');
   });
 });

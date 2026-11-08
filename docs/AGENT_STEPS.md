@@ -15,22 +15,34 @@ with its own model, the same way a lent computer does. One tool, `work_step`, in
    and gives its own judgement. If both pass, the step becomes a verified checkpoint. If not, it's rejected
    with a reason, and the agent sees that the next time it calls `work_step`.
 
-## "Have your agent work on it" (the problem page)
+## "Have your agent work on it" (the problem page and the Proposals page)
 
-Three ways, for whatever agent and model the person uses:
+From a problem's page, or from its card on the Proposals page, one list of who can do the work, with one
+**Start** button:
 
-1. **Ask your connected agents.** The app leaves a work request on this computer (`src/work/work-requests.ts`).
-   Every connected agent's Constellate process picks it up in one of two ways:
-   - **With MCP sampling.** If the agent's client supports MCP sampling (VS Code, for example), it asks the
-     agent's own model to do the steps straight away and submits each answer, recording the model the client
-     reports.
-   - **Without it.** Any other agent (Claude Desktop, Cursor, Claude Code…) finds the request in the next reply
-     to any Constellate tool it calls, once per agent, and answers with `work_step`.
+1. **Claude Code**, if it's installed. It runs on this computer in the background with only Constellate's
+   tools (`src/work/agent-runs.ts`) and uses the person's Claude plan.
+2. **Any other make and model this computer reaches** (`src/work/model-runs.ts`). The app does the steps with
+   it, up to three:
+   - a model running locally in Ollama (`OLLAMA_HOST` is honoured) or LM Studio, which is free;
+   - any provider whose key is saved in the app's encrypted key store (`constellate keys set openai`) or set in
+     its usual variable: OpenAI, Gemini, Anthropic, Mistral, Groq, OpenRouter, DeepSeek, xAI and the rest of
+     the catalogue;
+   - the model the app was started with (`constellate serve --model`).
 
-   The request's log shows who took it and which steps they answered.
-2. **Claude Code on this computer.** The app starts Claude Code in the background with only Constellate's tools
-   (`src/work/agent-runs.ts`), and shows each search and answer as it happens.
-3. **Tell an agent yourself.** One line to paste to any agent.
+   The step's check, which can hold the answer, is never sent to the model.
+3. **Claude Desktop, Cursor or another connected agent.** The note says the person has to start it themselves,
+   because these apps can't be started by another app. After Start, the app leaves the request:
+   - agents with MCP sampling act at once;
+   - for the others, the request is a note on their next Constellate reply, and it's listed first every time
+     they call `work_step`.
+
+The first option that runs on its own is preselected, and the person's last choice is remembered. Nothing
+starts until they press Start. When nothing here can run on its own, the sheet says how to change that:
+install Claude Code, run a model locally, or save a key. A line to paste into any agent is under "Paste a line
+to an agent yourself".
+
+"Plan it with your agent" on an idea uses the same list.
 
 Every answer records which agent and model made it (`context.agent`), and still has to pass a different model
 family's check.

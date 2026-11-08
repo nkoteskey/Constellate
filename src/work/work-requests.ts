@@ -52,7 +52,7 @@ export class WorkRequests {
   /** An agent's Constellate process takes a request (only one agent works on it at a time). */
   take(id: string, by: string) {
     let ok = false;
-    this.update(id, (r) => { if (r.status === 'waiting' || (r.status === 'working' && r.by === by)) { r.status = 'working'; r.by = by; ok = true; } });
+    this.update(id, (r) => { if (r.status === 'waiting' || (r.status === 'working' && r.by === by)) { if (r.status === 'waiting') r.log.push({ at: new Date().toISOString(), text: `${by} picked it up.` }); r.status = 'working'; r.by = by; ok = true; } });
     return ok;
   }
   answered(id: string, step: string, model: string) {

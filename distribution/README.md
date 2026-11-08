@@ -4,11 +4,11 @@
 
 | Channel | What's prepared | To publish (after approval) |
 |---|---|---|
-| MCP Registry and directories | **Listed** on the official registry. Directory entries: `LISTINGS.md` | For a new version: bump `mcp-registry/server.json`, then `mcp-publisher publish` |
+| MCP Registry and directories | **Listed** on the official registry. Directory entries: `LISTINGS.md` | For a new version: bump `mcp-registry/server.json`; the release workflow publishes it (`RELEASING.md`) |
 | A2A Agent Card | `a2a/agent-card.example.json` (served live at `/.well-known/agent-card.json` by `constellate serve`) | Add Constellate's entries to the x0x card on the public hub |
 | Skill file and llms.txt | `SKILL.md`, `llms.txt` | **Hosted** on the site with each Pages build |
 | ClawHub (OpenClaw) | `clawhub/constellate/SKILL.md` (our own text; ClawHub releases skills under MIT-0) | `clawhub login`, then `clawhub skill publish` (see `LISTINGS.md`) |
-| npm | **Published** (0.1.0). `npm publish` builds and bundles the starter library (`prepack`) | Bump the version, then `npm publish` |
+| npm | **Published** (0.1.1). `npm publish` builds and bundles the starter library (`prepack`) | Bump the version, then run the release workflow (`RELEASING.md`) |
 | PyPI | `packages/pypi` (thin launcher for the npm MCP server) | `python -m build && twine upload` |
 | crates.io | `packages/crates` (thin launcher) | `cargo publish` |
 | Homebrew | `packages/homebrew/constellate.rb` | Fill in the tarball URL and sha256 after the npm release, then open a tap PR |

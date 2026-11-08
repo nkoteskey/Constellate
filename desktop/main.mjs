@@ -6,7 +6,8 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { X0xSidecar, bundledX0xd } from './lib/x0x.mjs';
 import { Service, isConstellate, isListening } from './lib/services.mjs';
-import { agentConfigs, mcpEntry, connection, connect, disconnect, claudeCodeCommand } from './lib/agents.mjs';
+import { agentConfigs, mcpEntry, connection, connect, disconnect, claudeCodeCommand, claudeCodeArgs, SERVER_NAME } from './lib/agents.mjs';
+import { execFile } from 'node:child_process';
 import { ollamaStatus, hasModel, pullModel, OLLAMA_DOWNLOAD } from './lib/ollama.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -131,7 +132,7 @@ async function setContribute(on) {
 // ── What the app can see and do (only from the local app, never from other sites) ──
 function status() {
   const entry = mcpEntry({ execPath: process.execPath, cliPath: CLI, x0xDataDir: x0x.dataDir, starter: STARTER, appUrl: APP_URL });
-  const agents = Object.fromEntries(Object.entries(agentConfigs()).map(([id, a]) => [id, { name: a.name, present: a.present, connection: connection(a.file, entry) }]));
+  const agents = Object.fromEntries(Object.entries(agentConfigs()).map(([id, a]) => [id, { name: a.name, present: a.present, connection: connection(a.file, entry, a.key) }]));
   return {
     version: app.getVersion(), platform: process.platform,
     x0x: x0x.status(), server: externalServer ? { state: 'external' } : server.status(),
@@ -161,14 +162,19 @@ handle('desktop:pull', async (e, model) => {
 handle('desktop:connectAgent', async (_e, id) => {
   const a = agentConfigs()[id];
   if (!a) throw new Error('Unknown agent');
+  const entry = mcpEntry({ execPath: process.execPath, cliPath: CLI, x0xDataDir: x0x.dataDir, starter: STARTER, appUrl: APP_URL });
   const { response } = await dialog.showMessageBox(win, {
     type: 'question', buttons: ['Connect', 'Cancel'], defaultId: 0, cancelId: 1,
     message: `Connect ${a.name} to Constellate?`,
-    detail: `This adds Constellate to ${a.name}'s settings file:\n${a.file}\n\nA copy of the file as it is now is kept next to it. Restart ${a.name} afterwards.`,
+    detail: a.cli
+      ? `This runs Claude Code's own command to add Constellate for your user:\nclaude mcp add --scope user ${SERVER_NAME} …\n\nStart a new Claude Code session afterwards.`
+      : `This adds Constellate to ${a.name}'s settings file:\n${a.file}\n\nA copy of the file as it is now is kept next to it. Restart ${a.name} afterwards.`,
   });
   if (response !== 0) return { ok: false, cancelled: true };
-  try { const backup = connect(a.file, mcpEntry({ execPath: process.execPath, cliPath: CLI, x0xDataDir: x0x.dataDir, starter: STARTER, appUrl: APP_URL })); return { ok: true, backup }; }
-  catch (err) { return { ok: false, error: err.message }; }
+  try {
+    if (a.cli) { await claudeCode(['mcp', 'remove', '--scope', 'user', SERVER_NAME]).catch(() => {}); await claudeCode(claudeCodeArgs(entry)); return { ok: true }; }
+    const backup = connect(a.file, entry, a.key); return { ok: true, backup };
+  } catch (err) { return { ok: false, error: err.message }; }
 });
 // One-click x0x link: this computer's x0x agent vouches for the person's browser key. The daemon signs the
 // browser's Constellate id under its own context; the app server re-checks the signature before accepting it.
@@ -182,7 +188,19 @@ handle('desktop:linkX0x', async (_e, browserId) => {
   if (!r.ok || !j.signature_b64) return { ok: false, error: `x0x couldn’t sign (${j.error ?? r.status}).` };
   return { ok: true, x0x_agent_id: j.agent_id, x0x_public_key: j.public_key_b64, signature: j.signature_b64, context: LINK_CONTEXT };
 });
-handle('desktop:disconnectAgent', (_e, id) => { const a = agentConfigs()[id]; if (!a) throw new Error('Unknown agent'); try { return { ok: disconnect(a.file) }; } catch (err) { return { ok: false, error: err.message }; } });
+handle('desktop:disconnectAgent', async (_e, id) => {
+  const a = agentConfigs()[id]; if (!a) throw new Error('Unknown agent');
+  try { if (a.cli) { await claudeCode(['mcp', 'remove', '--scope', 'user', SERVER_NAME]); return { ok: true }; } return { ok: disconnect(a.file, a.key) }; }
+  catch (err) { return { ok: false, error: err.message }; }
+});
+/** Run Claude Code's own CLI (found where it's usually installed, even from an app opened from the Dock). */
+async function claudeCode(args) {
+  const { claudeBinary, EXTRA_BIN_DIRS } = await import(pathToFileURL(join(ROOT, 'dist', 'collective', 'planner.js')).href);
+  const bin = claudeBinary();
+  if (!bin) throw new Error('Claude Code isn’t installed on this computer.');
+  const PATH = [dirname(bin), ...EXTRA_BIN_DIRS, process.env.PATH ?? ''].filter(Boolean).join(process.platform === 'win32' ? ';' : ':');
+  return new Promise((res, rej) => execFile(bin, args, { env: { ...process.env, PATH }, timeout: 30_000 }, (err, stdout, stderr) => (err ? rej(new Error((stderr || err.message).trim().slice(0, 300))) : res(stdout))));
+}
 
 // ── Lifecycle ────────────────────────────────────────────────────────────
 async function boot() {

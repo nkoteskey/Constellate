@@ -1,0 +1,82 @@
+name: Release
+
+# Publish a version to npm (constellate-mcp) and to the official MCP Registry (io.github.nkoteskey/constellate)
+# from GitHub, with no password typed anywhere (distribution/RELEASING.md).
+#
+# Runs when a version tag (v0.2.0) is pushed, or by hand from the Actions tab ("Run workflow"), which publishes
+# the version in package.json on main. Each step skips itself when that version is already published, so running
+# it twice is safe.
+#
+# npm: trusted publishing. npm trusts this workflow file in this repository (a one-time setting the owner makes
+# on npmjs.com), so no token is stored; the package also gets a signed provenance statement saying which commit
+# built it. If the owner prefers a token instead, an NPM_TOKEN secret is used when present.
+# MCP Registry: GitHub's OIDC proves this repository owns the io.github.nkoteskey namespace; nothing to set up.
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write # npm trusted publishing and provenance, and the MCP Registry's GitHub sign-in
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: release
+    env:
+      HAS_NPM_TOKEN: ${{ secrets.NPM_TOKEN != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+          cache: npm
+
+      - name: Which version
+        id: v
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          if [ "${GITHUB_REF_TYPE}" = "tag" ] && [ "${GITHUB_REF_NAME}" != "v${VERSION}" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} doesn't match package.json ${VERSION}"; exit 1
+          fi
+          REG=$(node -p "require('./distribution/mcp-registry/server.json').version")
+          if [ "$REG" != "$VERSION" ]; then echo "::error::server.json says ${REG}, package.json ${VERSION}"; exit 1; fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          if npm view "constellate-mcp@${VERSION}" version >/dev/null 2>&1; then echo "npm_done=1" >> "$GITHUB_OUTPUT"; fi
+          echo "Publishing ${VERSION}"
+
+      - run: npm ci
+      - run: npm run typecheck
+      - name: Chromium for the browser gates
+        run: npm install --no-save playwright@1.63.0 && npx playwright install --with-deps chromium
+      - name: The full test suite, as CI runs it
+        run: npm test
+
+      # Trusted publishing needs npm 11.5.1 or later.
+      - run: npm install -g npm@11.21.1
+      - name: Publish to npm (trusted publishing)
+        if: steps.v.outputs.npm_done != '1' && env.HAS_NPM_TOKEN != 'true'
+        run: npm publish --provenance --access public
+      - name: Publish to npm (with the NPM_TOKEN secret)
+        if: steps.v.outputs.npm_done != '1' && env.HAS_NPM_TOKEN == 'true'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --provenance --access public
+      - name: Already on npm
+        if: steps.v.outputs.npm_done == '1'
+        run: echo "constellate-mcp@${{ steps.v.outputs.version }} is already on npm; skipped."
+
+      - name: Publish to the MCP Registry
+        working-directory: distribution/mcp-registry
+        run: |
+          curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" | tar xz mcp-publisher
+          ./mcp-publisher login github-oidc
+          ./mcp-publisher publish 2>&1 | tee publish.log || {
+            grep -qiE "already exists|duplicate|cannot publish duplicate" publish.log && echo "Already on the MCP Registry; skipped." || exit 1
+          }

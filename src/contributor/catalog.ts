@@ -17,6 +17,8 @@ export function runnerFromSpec(spec: string, opts: { endpoint?: string; key?: st
   let { provider, model } = parseModelSpec(spec);
   if (!model) throw new Error(`no model named in "${spec}"`);
   let baseUrl = provider.baseUrl;
+  // Ollama's own setting for where it listens (another port, or another computer).
+  if (provider.id === 'ollama' && env.OLLAMA_HOST) baseUrl = `${ollamaUrl(env)}/v1`;
   const port = provider.kind === 'local' ? model.match(/@(\d{2,5})$/) : null;
   if (port) { model = model.slice(0, port.index); baseUrl = baseUrl!.replace(/:\d+\//, `:${port[1]}/`); }
   if (provider.id === 'custom') {
@@ -32,6 +34,14 @@ export function runnerFromSpec(spec: string, opts: { endpoint?: string; key?: st
   const id = `${provider.id}:${model}`;
   if (provider.native === 'anthropic') return new AnthropicRunner(id, model, size, cost, key);
   return new OpenAICompatibleRunner(id, family, size, baseUrl!, model, key, cost);
+}
+
+/** Where Ollama listens: OLLAMA_HOST (host, host:port or a URL), else its default. */
+export function ollamaUrl(env: NodeJS.ProcessEnv = process.env) {
+  const h = (env.OLLAMA_HOST ?? '').trim();
+  if (!h) return 'http://127.0.0.1:11434';
+  const u = /^https?:\/\//.test(h) ? h : `http://${h}`;
+  return /:\d+$/.test(u.replace(/^https?:\/\//, '')) ? u.replace(/\/$/, '') : `${u.replace(/\/$/, '')}:11434`;
 }
 
 /** For `constellate models`: every way to bring a model, in one list. */
