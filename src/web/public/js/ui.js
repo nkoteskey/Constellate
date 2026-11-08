@@ -6,14 +6,19 @@ export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&a
 import { STATIC, staticApi } from './static.js';
 export { STATIC };
 /** Requests in flight, so a page can wait for the sections it fills a moment after drawing (app.js reveal()). */
-let inflight = 0;
-export const loading = () => inflight > 0;
+// Requests are counted per page (a generation per route change), so a slow request left over from the page you
+// just left, or a background poll, never holds up the next page (app.js reveal()).
+let gen = 0;
+const inflight = new Map();
+export const newPage = () => ++gen;
+export const loading = () => (inflight.get(gen) ?? 0) > 0;
 export async function api(p, init) {
-  inflight++;
+  const g = gen;
+  inflight.set(g, (inflight.get(g) ?? 0) + 1);
   try {
     if (STATIC) return await staticApi(p, init);
     const r = await fetch(p, init); const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || r.statusText); return j;
-  } finally { inflight--; }
+  } finally { const n = (inflight.get(g) ?? 1) - 1; if (n > 0) inflight.set(g, n); else inflight.delete(g); }
 }
 export const post = (p, b) => (STATIC ? Promise.resolve() : fetch(p, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(b) }).catch(() => {}));
 export const ls = {

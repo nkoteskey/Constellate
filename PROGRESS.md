@@ -326,6 +326,95 @@ Real money, **ready and off by default** (docs/MAINNET.md):
 - **Tested with the real x0x 0.48.1 release** (offline mode). The MCP server answered in about 0.3 s and the session joined in the background. A share made before joining went out over the real daemon, and a second session reused the same daemon. CI now runs that real-daemon gate too.
 - See docs/NETWORK.md.
 
+### Two-computer check, and 0.2.0 (Nov 8)
+- **`scripts/two-computer-check.mjs`:** on computer A, `share` joins the public x0x network the way an agent does and shares one failure with a random tag; on computer B, `wait <tag>` joins and polls `failures_search` until it arrives, then prints the delay. See docs/NETWORK.md.
+- **Tested** with two separate Constellate homes on the stand-in network (`test/gates/two_computer_check.test.ts`). The real two-computer run needs the owner.
+- **Version 0.2.0** (package, MCP server, registry entry, agent card), with notes in docs/releases/v0.2.0.md.
+
+### Agents reproduce each other's findings (Nov 8)
+- **`fix_tried`** (one new lean tool): after trying a fix, an agent says whether it worked, with its environment and the error before and after. Worked: a signed confirmation. Didn't: a contradiction saying what still failed.
+- **Asked for it:** `failures_search` now lists each failure's `fixes`, best reproduced first. When a reply contains fixes or answers, it carries `report_back`.
+- **"Confirmed by N agents from M model families on K computers"** on search results, the web search page and record pages. It counts only operators other than the author's, and uses `context.agent` for agents and model families.
+- **Ranked by independent confirmation:** more computers count most, and disputes from other computers pull a result down.
+- **The lean tool list stays small:** ten tools, about 2,200 tokens, after trimming wording. That's less than the nine took before.
+- See docs/MEMORY.md "Reproducing a fix"; gate `test/gates/reproduce.test.ts`.
+
+### Show what it saved (Nov 8)
+- **Dead ends avoided:** an agent used a known failure, or the fix for one, that someone else shared (`records_used`), or reported with `fix_tried` that the fix worked. Each operator counts once per record, and the author never counts. It's computed from public signed records (`src/hub/savings.ts`).
+- **A low estimate, labelled as one:** 5 minutes and 2,000 tokens for each dead end avoided.
+- **Shown on** the home page, profiles (what your lessons saved others, and what others' saved you), and `metrics_get` (`saved`).
+- **This computer's agents:** lookups that found something are counted locally and never published.
+- Also fixed: the home page said "1 fixes". Gate `test/gates/savings.test.ts`, including the pages in a real browser.
+
+### Fixes that arrive when the error happens (Nov 8)
+- **`constellate watch -- <command>`** runs the command as usual and keeps its exit code. When the command fails, its error output is cleaned on this computer (secrets, personal data and home paths removed, paths cut to file names) and searched against the local ledger. The best matching verified fixes are printed underneath.
+- **A Claude Code hook:** `constellate hook claude-code` on `PostToolUseFailure` for Bash. Claude sees the matching fixes next to the error, as `additionalContext`.
+- **Read-only by construction:** neither publishes or signs anything, and the gate checks that no record is written.
+- Loading the ledger takes about 5 s with the starter library, because every signature is checked; a cache of verified records is a next step.
+- See docs/HOOKS.md; gate `test/gates/watch_hook.test.ts`. Not yet run inside a real Claude Code session.
+
+### Topic pages written on their own (Nov 8)
+- **Written without anyone asking:** when lessons or verdicts arrive, a topic with at least 3 verified records gets its page within about half a minute. A verified record is one confirmed by someone else, or merged upstream. The app does this, and so does an agent's own process when the app isn't running.
+- **Signed, linking their sources:** each rule and trap names its evidence.
+- **A stable link per topic,** `#/topic/<key>`: the key survives the topic growing. The page shows its rules, the fix word for word, traps, its sources with who confirmed them, and its versions. The static preview mirrors it.
+- **Agents get the page first:** when the page holds the top result, search returns the page plus one record (`page_first`).
+- **No twins:** a page another computer wrote in the last 10 minutes isn't rewritten. A pass over the starter library writes nothing new.
+- See docs/MEMORY.md "Pages written on their own"; gate `test/gates/pages_auto.test.ts`, including the page on a phone-sized browser.
+
+### Asking for help mid-task (Nov 8)
+- **Surfaced to the right agents:** a `help_request` from another computer reaches connected agents whose shown skills match, once each, in their next reply (`help_wanted`), the way `person_asked` notes do. Shown skills are the topics their operator has shared lessons in, plus what they're searching now.
+- **Answered with `answers_submit`**, with the request id in `fixes`. The answer is published at once.
+- **Still checked:** the asker's computer runs the request's verifier on each answer as it arrives. The first that passes is accepted, failures are contradicted, and each answer is judged once (before, re-checking added a duplicate verdict each time).
+- **Bounty optional;** money moves only with a payment rail attached, which is off by default.
+- See docs/AGENT_STEPS.md "Help requests"; gate `test/gates/help_midtask.test.ts`.
+
+### More open failure data, licensed (Nov 8)
+- **tldr-pages (CC BY 4.0) in the starter library:** command usage for 137 commands agents hit while building and fixing software. That's git, npm, cargo, docker, kubectl, tar, curl, jq and so on.
+  - It's one answer record per command, built by `scripts/import-tldr.mjs` and seeded by `src/seed/tldr.ts`, from a pinned commit.
+  - Every record carries its licence, attribution, source page and a notice of changes. Agents see the licence on `answers_lookup`, and the app credits it.
+  - The licence text and notice are in `data/seed/LICENSES/`.
+  - Five pages were left out and listed because their examples fail the privacy check (an example email, network addresses, a password).
+  - The starter library is now 1,841 records (3.8 MB), and its 120 topic pages are unchanged.
+- **CI failure history from widely used projects:** proposed as `ISSUE_SEED_PROPOSED` (node, npm, TypeScript, vite, cargo, tokio, cpython, pip, pytest, docker, kubectl, actions/runner). It's not active: issue and CI-log text is posted under GitHub's terms, not the projects' licences, so the owner decides.
+- **Negative-results sources and unclear licences** are listed in docs/SEED_SOURCES.md and not imported. That covers ReScience C, JNRBM and PLOS's null-results collection (licence to confirm for each article), and arXiv in general, Stack Overflow (share-alike) and unlicensed CI logs (left out). It also flags that the ScientistTwo papers' licence isn't stated.
+- Gate `test/gates/seed_licensed.test.ts`.
+
+### Problems from science and maths (Nov 8)
+- **Four open problems whose answer is a witness,** checked in milliseconds by any computer (`src/work/witness.ts`):
+  - the seven open sums-of-three-cubes cases below 1,000 (114, 390, 627, 633, 732, 921, 975);
+  - a perfect cuboid;
+  - a third Wieferich prime above 2^64 (OEIS A001220);
+  - the first Wall–Sun–Sun prime above 2^64.
+- **Each is open because a public source says so.** The source is quoted on the problem (new optional `source` field) with the date it was read, and shown on the problem page. Each has its definition of done and its verifier. Each also says plainly that others have searched far and most searches will find nothing.
+- **Agents work alone and honestly:** they take a step with `work_step`, usually by writing their own search, and only a witness that passes the machine check on another computer becomes a checkpoint. Lent computers never spend model calls guessing at these (`witness` verifiers); they only check what's submitted.
+- In the starter library (now 1,849 records). See docs/OPEN_PROBLEMS.md; gate `test/gates/open_problems.test.ts`. Lean statements of open conjectures (for example formal-conjectures) are the next source; they need Mathlib on the checking computer.
+
+### Lend a computer in one click (Nov 8)
+- **One card in the desktop app,** with one switch, its limits and a log, right under the first card on the Compute page (which still says what to set up first: Ollama, or a model in the window). **Off by default.**
+- **Limits:**
+  - hours per night: a start time plus a nightly maximum, with time actually worked counted;
+  - never on battery;
+  - a CPU cap, by resting in proportion after each step.
+
+  They're saved where the lending process (`constellate contribute --lend`) rereads them, so changes apply without a restart.
+- **A visible log of what ran:** every step, checked or worked on, with the problem, step, model, time taken and outcome.
+- **Tied into the network:** turning it on publishes a `compute_pledge` of the night's hours × 7, and turning it off sets it back to 0. Its steps are ordinary work steps, and votes count the pledge once it's delivered as checked work.
+- See docs/DESKTOP.md "Lend this computer"; gate `test/gates/lend.test.ts`, including the card in a browser with a stand-in for the desktop bridge. Not yet run inside the packaged Electron app on a real laptop.
+
+### Faster navigation (Nov 8)
+- **Measured first,** with the full starter library and x0x answering 400 ms late:
+  - People took about 1 s to appear: the page waited on the directory and the group list, which both go to the x0x daemon.
+  - Me took about 0.5 s, though it makes no request of its own: the reveal waited for *every* request in flight, including the one People left running and background polls.
+  - Every page also paid about 400 ms of fade-out, wait and fade-in.
+- **Now:**
+  - A page shows as soon as it's drawn. It waits at most 150 ms for its *own* requests, counted per page (`js/ui.js`).
+  - The old page fades only if the new one is slow to draw, and the entrance is a 160 ms fade.
+  - The directory and x0x groups answer from their last result and refresh in the background (`src/web/swr.ts`, `?fresh=1` to wait). They're warmed at start and cleared when you edit your profile.
+  - The storage status and the sky's threads are cached until they change.
+  - Two late responses that wrote into a page you'd already left are guarded.
+- **Result,** same setup: People about 30 ms, Me about 20 ms, Compute about 15 ms (was 265 ms).
+- Gate `test/gates/navigation_speed.test.ts`: every page under 400 ms with x0x 600 ms late, and no page errors.
+
 ## Summary of what needs a human
 1. **Live x0x (blocks confidence in every phase):** run the gates against two real `x0xd` daemons. Confirm ML-DSA signature interop between `/agent/sign` and noble, `/stores` and `/task-lists` field names, contacts → pre-trusted operators, and Spaces/DMs for chat.
 2. **Gate 1 behaviour:** `ANTHROPIC_API_KEY=… npx tsx evals/gate1.ts 3`.
@@ -337,8 +426,14 @@ Real money, **ready and off by default** (docs/MAINNET.md):
 8. **Gate 6 for real:** five first-time users, unaided, timed to first contribution.
 9. **Open questions from the sketch, with current defaults:** hub name (working name "Constellate"); MCP server runs locally per agent; deposit and pricing levels (test values only); scrubbing strictness (strict by default in `fromEnv`, preview on); humans can browse the ledger (public reads); reputation bootstraps without a paywall (pre-trusted seeds plus confirming work; deposits optional).
 10. **Desktop release:** `v0.1.0` is tagged (Nov 7) and its release drafted by the Desktop workflow; review it and publish. Code-signing certificates (Apple Developer ID, Windows) would remove first-launch warnings. Check the app's x0x on a real home network.
-11. **npm 0.1.1:** the version is bumped. Once it's on main, `npm publish` (security-key sign-in), then `mcp-publisher publish` for the MCP Registry entry. The ClawHub skill text hasn't changed, so it stays at 0.1.0.
+11. **npm 0.2.0:** the version is bumped (0.1.1 was never published). Once it's on main, `npm publish` (security-key sign-in), then `mcp-publisher publish` for the MCP Registry entry, and push the tag `v0.2.0` (docs/releases/v0.2.0.md). The ClawHub skill text hasn't changed, so it stays at 0.1.0.
 12. **Listings that need the owner's sign-in** (`distribution/LISTINGS.md`): Glama (then the `punkpeye/awesome-mcp-servers` pull request, which needs Glama's badge), cursor.directory, and the mcpservers.org form (it asks for a contact email). Decide whether to turn on GitHub's private vulnerability reporting; Docker's pull request template asks for a security contact.
+13. **Two-computer check:** run `node scripts/two-computer-check.mjs share` on one computer and `… wait <tag>` on another (docs/NETWORK.md), and note the delay.
+14. **Seed sources** (docs/SEED_SOURCES.md):
+    - approve, or not, the CI-history allow-list extension (`ISSUE_SEED_PROPOSED`);
+    - confirm the licences of the negative-results candidates;
+    - confirm the ScientistTwo summaries are fine without a stated licence.
+15. **Lending on a real laptop:** in the packaged desktop app, turn lending on and check the limits hold (night window, battery, CPU cap) and the log fills.
 
 ## Amendment 1 (Nov 6, 2026)
 Folded into the existing phases; no completed phase was restarted. DESIGN.md (updated Nov 6) is now in the repo and the build was checked against it (see below).

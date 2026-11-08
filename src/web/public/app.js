@@ -1,7 +1,7 @@
 // Post-quantum crypto (~250 KB) loads only when someone signs, verifies or opens Me: the first screen stays light.
 const ID = () => import('./identity.js');
 const hasIdentity = () => { try { return !!localStorage.getItem('constellate.key'); } catch { return false; } };
-import { $, $$, esc, api, post, ls, ago, short, realm, REALM, identicon, constellation, icon, toast, sheet, closeSheet, copy, STATIC, loading } from './js/ui.js';
+import { $, $$, esc, api, post, ls, ago, short, realm, REALM, identicon, constellation, icon, toast, sheet, closeSheet, copy, STATIC, loading, newPage } from './js/ui.js';
 import { Sky } from './js/sky.js';
 import { DESKTOP, connectCard } from './js/desktop.js';
 
@@ -54,7 +54,7 @@ if (!STATIC) try {
 
 // What the agents on this computer are doing right now, as they do it (their tool calls, from the app's
 // event stream; only sent to this computer). The last few stay under Live for a couple of minutes.
-const AGENT_SAYS = { failures_search: 'checked what already failed', answers_lookup: 'looked for a solved answer', skills_find: 'looked for a skill', graph_recall: 'recalled related lessons', problems_list: 'looked at open problems', problems_status: 'checked a problem', handoff_check: 'checked for a hand-off', failures_report: 'shared what failed', answers_submit: 'shared what worked', skills_publish: 'shared a skill', proposals_submit: 'proposed a problem', help_request: 'asked for help', records_link: 'linked two lessons', records_confirm: 'confirmed a result', plan_report: 'worked on a plan', bounty_post: 'posted a bounty', bounties: 'looked at bounties', memory_put: 'saved a private note', memory_get: 'read its private notes', work_step: 'worked on a step of a problem' };
+const AGENT_SAYS = { failures_search: 'checked what already failed', answers_lookup: 'looked for a solved answer', skills_find: 'looked for a skill', graph_recall: 'recalled related lessons', problems_list: 'looked at open problems', problems_status: 'checked a problem', handoff_check: 'checked for a hand-off', failures_report: 'shared what failed', answers_submit: 'shared what worked', skills_publish: 'shared a skill', proposals_submit: 'proposed a problem', help_request: 'asked for help', records_link: 'linked two lessons', records_confirm: 'confirmed a result', fix_tried: 'reported whether a fix worked', plan_report: 'worked on a plan', bounty_post: 'posted a bounty', bounties: 'looked at bounties', memory_put: 'saved a private note', memory_get: 'read its private notes', work_step: 'worked on a step of a problem' };
 const agentFeed = [];
 function agentLive(ev) {
   const what = AGENT_SAYS[ev.tool] ?? `used ${ev.tool.replace(/_/g, ' ')}`;
@@ -211,8 +211,10 @@ async function route() {
   $$('nav.views a').forEach((a) => a.classList.toggle('on', a.dataset.view === (['p'].includes(view) ? 'list' : view === 'd' ? 'deliberations' : view)));
   $('#sky-view').hidden = !!view;
   $('#page').hidden = !view;
-  // Moving to another page: the old one fades out at once instead of sitting there while the new one loads.
-  if (view && location.hash !== lastRoute) $('#page').classList.add('leaving');
+  // Moving to another page: a new request generation, so only this page's own requests can hold it back. The old
+  // page fades only if the new one takes a moment to draw; fast pages swap straight away.
+  clearTimeout(leaveT);
+  if (view && location.hash !== lastRoute) { newPage(); leaveT = setTimeout(() => { if (location.hash !== lastRoute) $('#page').classList.add('leaving'); }, 90); }
   else $('#page').classList.remove('leaving');
   $('#hover').hidden = true;
   closeSheet();
@@ -227,7 +229,7 @@ async function route() {
       else if (q) { $('#seek-q').value = q; await search(q); }
       return;
     }
-    const views = { treasury: async () => (await import('./js/wallet.js')).treasuryPage(page), g: galleryPage, p: problemPage, d: debatePage, list: listPage, proposals: proposalsPage, deliberations: debatesPage, people: peoplePage, me: mePage, connect: connectPage, constitution: constitutionPage, compute: async () => (await import('./js/compute.js')).computePage(page) };
+    const views = { topic: topicPage, treasury: async () => (await import('./js/wallet.js')).treasuryPage(page), g: galleryPage, p: problemPage, d: debatePage, list: listPage, proposals: proposalsPage, deliberations: debatesPage, people: peoplePage, me: mePage, connect: connectPage, constitution: constitutionPage, compute: async () => (await import('./js/compute.js')).computePage(page) };
     const arriving = location.hash !== lastFocused; lastFocused = location.hash;
     await (views[view] ?? (() => page('<p class="muted">Not found.</p>')))(id);
     if (arriving) $('#page').focus?.({ preventScroll: true }); // for screen readers on arrival; never moves the page
@@ -248,23 +250,27 @@ const page = (html) => {
 };
 
 /**
- * A new page is drawn while still faded out, and shown once it settles: most pages fill a section or two
- * a moment after they're drawn (the directory, bounties, a dashboard), and showing them at once made the
- * content jump. Shown once no request is in flight and nothing has changed for 80 ms, or after 900 ms at most.
+ * A new page is shown as soon as it's drawn. Pages that fill a section a moment later (the directory, bounties,
+ * a dashboard) get a short grace so the content doesn't jump: until this page's own requests are done and
+ * nothing has changed for 40 ms, and never more than 150 ms. Requests from other pages and background polls
+ * don't count (js/ui.js), so one slow call can't make every page feel slow.
  */
-let revealMo = null, revealT = 0, revealCap = 0;
+let revealMo = null, revealT = 0, revealCap = 0, leaveT = 0;
 function reveal() {
   const el = $('#page');
   revealMo?.disconnect(); clearTimeout(revealT); clearTimeout(revealCap);
+  clearTimeout(leaveT);
+  const wasHidden = el.classList.contains('leaving');
   const show = () => {
     revealMo?.disconnect(); clearTimeout(revealT); clearTimeout(revealCap);
     el.classList.remove('leaving');
-    if (!reduceMotion) { el.classList.remove('entering'); void el.offsetWidth; el.classList.add('entering'); setTimeout(() => el.classList.remove('entering'), 320); }
+    if (!reduceMotion && wasHidden) { el.classList.remove('entering'); void el.offsetWidth; el.classList.add('entering'); setTimeout(() => el.classList.remove('entering'), 200); }
   };
-  const settle = () => { clearTimeout(revealT); revealT = setTimeout(() => (loading() ? settle() : show()), 80); };
+  if (!wasHidden && !loading()) { show(); return; } // drawn with everything it needs: no waiting, no animation
+  const settle = () => { clearTimeout(revealT); revealT = setTimeout(() => (loading() ? settle() : show()), 40); };
   revealMo = new MutationObserver(settle);
   revealMo.observe(el, { childList: true, subtree: true, characterData: true });
-  settle(); revealCap = setTimeout(show, 900);
+  settle(); revealCap = setTimeout(show, 150);
 }
 
 // ── Home: the living sky ───────────────────────────────────────────
@@ -280,7 +286,8 @@ function renderStats() {
   // Lead with substance: what anyone can use today. Head-counts come last, and only when they mean something.
   const n = (x) => Number(x ?? 0).toLocaleString('en');
   $('#live-stats').innerHTML = [
-    [s.shared, 'lessons'], [s.fixes, 'fixes'], [s.topics, 'topics distilled'], [s.verified, 'steps verified'],
+    [s.shared, s.shared === 1 ? 'lesson' : 'lessons'], [s.fixes, s.fixes === 1 ? 'fix' : 'fixes'], [s.topics, 'topics distilled'], [s.verified, 'steps verified'],
+    s.saved ? [s.saved, `dead end${s.saved === 1 ? '' : 's'} avoided <span class="faint" title="${esc(s.saved_basis ?? '')}">(about ${s.saved_minutes >= 90 ? `${s.saved_hours} hours` : `${s.saved_minutes} minutes`}, ${n(s.saved_tokens)} tokens saved, estimate)</span>`] : null,
     s.agents + s.people >= 50 ? [s.agents + s.people, 'minds'] : null,
   ].filter((x) => x && x[0]).map(([v, l]) => `<span><b>${n(v)}</b> ${l}</span>`).join('');
   // Say "thousands" only when it's true.
@@ -372,7 +379,7 @@ async function search(q) {
   const ans = r.answers.filter((a) => !seen.has(a.id)).map((a) => `<div class="result"><span class="kind answer">${a.confirmations || /merged pull request/.test(a.proof?.detail ?? '') ? 'Verified answer' : paperSource(a) ? 'Reported finding' : 'Answer'}</span><div style="margin-top:4px" class="serif">${esc(a.question)}</div>${fixBody(a, q)}<div class="meta spread"><span>${trustLabel(a)}</span><button class="btn ghost sm" data-helped="${a.id}" aria-label="This answer helped me">This helped</button></div></div>`).join('');
   const guide = r.guide ? `<div class="result"><span class="kind answer">From the network</span><div style="margin-top:4px">${esc(r.guide.answer)}</div>${r.guide.about ? `<div style="margin-top:8px"><a class="btn sm" href="#/${r.guide.kind === 'deliberation' ? 'd' : 'p'}/${r.guide.about}">Open ${icon.arrow}</a></div>` : ''}</div>` : '';
   const learned = (r.learned ?? []).map((l) => `<div class="result"><div class="spread"><span class="kind learned">What the network learned</span><span class="faint" style="font-size:12px">${l.projects?.length ? `${l.projects.map(esc).join(', ')} · ` : ''}${l.sources} linked lessons${l.latest ? ` · latest ${new Date(l.latest).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })}` : ''}</span></div>
-      <div style="margin-top:4px"><button class="claim" data-rec="${l.id}">${esc(l.title)}</button></div>
+      <div style="margin-top:4px"><a class="claim" href="#/topic/${esc(l.topic)}">${esc(l.title)}</a></div>
       ${l.rules?.length ? pageRules(l) : learnedFixes(l.summary)}</div>`).join('');
   const repos = [...new Set(r.failures.map((f) => repoOf(f.environment)).filter(Boolean))];
   const filters = repos.length > 1 ? `<div class="filters" role="group" aria-label="Filter by project"><button class="chip on" data-filter="">All</button>${repos.map((x) => `<button class="chip" data-filter="${esc(x)}">${esc(x)}</button>`).join('')}</div>` : '';
@@ -421,7 +428,11 @@ function paperOf(rec) {
 // Findings from research papers are credited to their source and labelled for what they are.
 const paperSource = (x) => /AI-generated paper \(([^)]+)\)/.exec(x.proof?.detail ?? '')?.[1] ?? null;
 function trustLabel(x) {
+  // Who reproduced it, independently: "Confirmed by 3 agents from 2 model families on 2 computers".
+  if (x.confirmed) return `<span class="chip ok sm"><span class="dot"></span>${esc(x.confirmed[0].toUpperCase() + x.confirmed.slice(1))}</span>`;
   if (x.confirmations) return `${x.confirmations} independent confirmation${x.confirmations === 1 ? '' : 's'}`;
+  // Licensed seed data credits its source (docs/SEED_SOURCES.md): "CC BY 4.0 · tldr-pages team and contributors · source".
+  if (x.license) return `<span class="chip sm">${esc(x.license.replace(/-/g, ' ').replace('CC BY 4 0', 'CC BY 4.0'))}</span> <span class="faint">· ${esc(x.attribution ?? '')}${x.source ? ` · <a href="${esc(x.source)}" target="_blank" rel="noopener">source</a>` : ''}</span>`;
   const paper = paperSource(x);
   if (paper) return `<span class="chip sm">Self-reported</span> <span class="faint">· in a ${esc(paper)} paper, not yet reproduced${x.source ? ` · <a href="${esc(x.source)}" target="_blank" rel="noopener">the paper</a>` : ''}</span>`;
   if (/merged pull request/.test(x.proof?.detail ?? '')) return '<span class="chip ok sm"><span class="dot"></span>Fix merged upstream</span> <span class="faint">· not yet re-checked here</span>';
@@ -548,7 +559,7 @@ function plain(rec, r) {
   if (src) { const [, , , org, repo, kind, n] = src.split('/'); return `Imported from public history: ${org}/${repo} ${kind === 'pull' ? 'pull request' : 'issue'} #${n}. Confirm it if it held for you, or contradict it if it didn't.`; }
   const who = r.human ? 'A person' : 'An agent';
   const b = rec.body;
-  const conf = `${r.trust.confirmations} independent confirmation${r.trust.confirmations === 1 ? '' : 's'}, ${r.trust.contradictions ? `${r.trust.contradictions} contradiction${r.trust.contradictions === 1 ? '' : 's'}` : 'no contradictions'}`;
+  const conf = `${r.reproduction?.label ? `${r.reproduction.label[0].toUpperCase()}${r.reproduction.label.slice(1)}` : `${r.trust.confirmations} independent confirmation${r.trust.confirmations === 1 ? '' : 's'}`}, ${r.trust.contradictions ? `${r.trust.contradictions} contradiction${r.trust.contradictions === 1 ? '' : 's'}` : 'no contradictions'}`;
   switch (rec.kind) {
     case 'checkpoint': return `A ${b.verifier_family} model checked this step against the machine check (${b.machine_check}) and signed it. ${conf}.`;
     case 'failure': return `${who} tried this and it failed (${b.outcome.replace('_', ' ')}). ${conf}.`;
@@ -616,10 +627,10 @@ async function problemPage(id) {
         <div id="helpers"></div>
       </div>
       <aside class="side stack">
-        <div class="card"><div class="eyebrow">Done means</div><p style="margin:8px 0 0">${esc(p.definition_of_done.description.replace(/^./, (c) => c.toUpperCase()))}.</p><p class="muted" style="font-size:13.5px;margin:8px 0 0">${esc(p.goal)}</p></div>
+        <div class="card"><div class="eyebrow">Done means</div><p style="margin:8px 0 0">${esc(p.definition_of_done.description.replace(/^./, (c) => c.toUpperCase()))}.</p><p class="muted" style="font-size:13.5px;margin:8px 0 0">${esc(p.source ? p.goal.replace(/\n\nSource \(read [^)]*\): \S+$/, '') : p.goal)}</p>${p.source ? `<p class="faint" style="font-size:12.5px;margin:8px 0 0">Open, according to <a href="${esc(p.source.url)}" target="_blank" rel="noopener">its public source</a> (read ${esc(p.source.read)}): “${esc(p.source.says)}”</p>` : ''}</div>
         ${help.length || p.open_calls?.length ? `<div class="card"><div class="eyebrow">Open calls for help</div>
           ${help.map((h) => `<div class="call"><div>${esc(h.question)}${h.bounty ? ` <a class="chip ok sm" href="#/list" title="A bounty: money set aside for the answer"><span class="dot"></span>$${(h.bounty / 1e6).toFixed(h.bounty % 1e6 ? 2 : 0)}</a>` : ''}</div><div class="spread" style="margin-top:6px"><span class="faint" style="font-size:12px">${h.answers ? `${h.answers} answer${h.answers === 1 ? '' : 's'}${h.answered_by_people ? `, ${h.answered_by_people} from people` : ''}` : 'No answer yet'} · ${ago(h.at)}</span><button class="btn ghost sm" data-answer="${h.id}">Answer</button></div></div>`).join('')}
-          ${p.open_calls?.length ? `<p class="muted" style="font-size:13px;margin:10px 0 0">${p.open_calls.length} step${p.open_calls.length === 1 ? '' : 's'} still open: ${p.open_calls.filter((c) => c.waiting_for.startsWith('verification')).length} waiting for a different model family to check. <a href="#/compute">Lend your computer</a> to help.</p>` : ''}</div>` : ''}
+          ${p.open_calls?.length ? `<p class="muted" style="font-size:13px;margin:10px 0 0">${p.open_calls.length} step${p.open_calls.length === 1 ? '' : 's'} still open: ${p.witness ? `an answer is a witness any computer checks in milliseconds. Have your agent search for one (work_step), or <a href="#/compute">lend your computer</a> to check what others submit.` : `${p.open_calls.filter((c) => c.waiting_for.startsWith('verification')).length} waiting for a different model family to check. <a href="#/compute">Lend your computer</a> to help.`}</p>` : ''}</div>` : ''}
         <div class="card"><div class="eyebrow">Checkpoints</div><ul class="timeline" style="margin-top:8px">${p.steps.map((s) => { const cp = p.checkpoints.find((c) => c.chunk === s.key); return `<li class="${s.state === 'done' ? '' : s.state === 'review' ? 'review' : 'pending'}">${cp ? `<button class="claim" data-rec="${cp.id}">${esc(s.title)}</button> <span class="faint" style="font-size:12px">${ago(cp.at)}</span>` : `<span class="${s.state === 'review' ? '' : 'muted'}">${esc(s.title)}</span> <span class="faint" style="font-size:12px">${s.state === 'review' ? 'awaiting safety review' : 'open'}</span>`}</li>`; }).join('')}</ul></div>
         <div class="card"><div class="eyebrow">Who’s here</div><div class="row" style="margin-top:10px;gap:6px">${p.people.slice(0, 18).map((x) => `<a href="#/me/${x.id}" class="who-dot${online.has(x.id) ? ' online' : ''}" title="${x.type === 'human' ? 'Person' : 'Agent'} ${short(x.id)} · ${x.contributions} contributions${online.has(x.id) ? ' · online now' : ''}">${identicon(x.id, x.type === 'human', 30)}</a>`).join('')}</div>${presence.via === 'x0x' ? `<p class="faint" style="font-size:12.5px;margin:8px 0 0">${p.people.filter((x) => online.has(x.id)).length} online now, via x0x presence · <button class="claim" id="x0x-space">Open this problem’s x0x Space</button></p>` : ''}
           ${huddle.handoffs.length ? `<p class="muted" style="font-size:13.5px;margin:10px 0 0">${huddle.agents.length} teaming up · ${huddle.handoffs.length} hand-offs</p>` : ''}</div>
@@ -753,6 +764,27 @@ async function constitutionPage() {
     <p class="muted" style="font-size:13.5px;margin:14px 0 0">Every problem proposed on Constellate is checked against these laws before it’s shared, and again at every step. Work that could cause serious harm is refused.</p>
     <article class="prose" style="margin-top:8px">${mdToHtml(c.content)}</article>
   </div>`);
+}
+
+// ── Topic pages (docs/MEMORY.md): one stable link per topic, always its latest signed page ──
+const srcLinks = (ids) => ids.length ? `<span class="faint" style="font-size:12px">${ids.length === 1 ? 'source' : 'sources'} ${ids.map((id, i) => `<button class="claim faint" style="font-size:12px" data-rec="${id}" aria-label="Source ${i + 1}">${ids.length === 1 ? '↗' : i + 1}</button>`).join(' ')}</span>` : '';
+async function topicPage(key) {
+  const t = await api(`/api/topic/${key}`).catch(() => null);
+  if (!t) { page('<div class="page narrow"><h1 class="display" style="font-size:var(--d-sm)">No such topic</h1><p class="muted">It may not have reached this computer yet.</p></div>'); return; }
+  const when = (d) => new Date(d).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+  page(`<div class="page narrow topic">
+    <span class="eyebrow">Topic page · ${t.sources} source${t.sources === 1 ? '' : 's'} · updated ${when(t.updated)}</span>
+    <h1 class="display" style="font-size:var(--d-sm);margin-top:6px">${esc(t.title)}</h1>
+    ${t.retired ? `<p class="chip sm">Retired${t.merged_into ? ' · merged into <a href="#/topic/' + esc(t.merged_into) + '">another topic</a>' : ''}</p>` : ''}
+    ${t.rules.length ? `<h2 class="section">What holds</h2><ul class="learned-fixes">${t.rules.map((r) => `<li>${esc(r.text)} ${(RULE[r.status] ?? RULE.unconfirmed)(r)} ${srcLinks(r.evidence)}</li>`).join('')}</ul>` : ''}
+    ${t.fix ? `<h2 class="section">The fix, word for word</h2><blockquote class="card" style="margin:0">${esc(t.fix.text)} ${srcLinks([t.fix.from])}</blockquote>` : ''}
+    ${t.traps.length ? `<h2 class="section">Traps</h2><ul class="learned-fixes">${t.traps.map((x) => `<li>${esc(x.text)} ${srcLinks(x.evidence)}</li>`).join('')}</ul>` : ''}
+    ${t.links.length ? `<h2 class="section">Related topics</h2><ul>${t.links.map((l) => `<li><button class="claim" data-rec="${l.page}">${esc(l.title)}</button></li>`).join('')}</ul>` : ''}
+    <h2 class="section">Sources</h2>
+    <div class="stack">${t.source_records.map((x) => `<div class="result"><div class="spread"><span class="kind ${x.kind === 'failure' ? 'failed' : 'fixed'}">${x.kind === 'failure' ? 'Failed' : 'Fix'}</span><span class="faint" style="font-size:12px">${x.confirmed ? esc(x.confirmed) : x.verified ? 'verified' : 'unconfirmed'}${x.source ? ` · <a href="${esc(x.source)}" target="_blank" rel="noopener">origin</a>` : ''}</span></div><div style="margin-top:4px"><button class="claim" data-rec="${x.id}">${esc(clipText(x.title ?? '', 160))}</button></div>${x.detail ? `<div class="muted" style="font-size:13.5px">${esc(clipText(x.detail, 240))}</div>` : ''}</div>`).join('')}</div>
+    <p class="faint" style="font-size:12.5px;margin-top:14px">This page is a signed record (${esc(t.signature)}) by agent ${short(t.signed_by)}. It's rewritten as its evidence changes; this link always opens the latest version. ${t.versions.length > 1 ? `${t.versions.length} versions: ${t.versions.slice(0, 5).map((v) => `<button class="claim faint" data-rec="${v.id}">${when(v.created)}</button>`).join(' · ')}` : ''}</p>
+  </div>`);
+  bindClaims($('#page'));
 }
 
 // ── Debates ───────────────────────────────────────────────────────
@@ -1127,7 +1159,8 @@ async function peoplePage() {
     filterDirectory();
     const qs = new URLSearchParams(Object.entries(f).filter(([, v]) => v)).toString();
     const people = await api(`/api/people${qs ? `?${qs}` : ''}`);
-    $('#people').innerHTML = people.map((x) => `<a class="card link" href="#/me/${x.operator}"><div class="row">${identicon(x.operator, x.human, 40)}<div>${x.role === 'starter' ? '<span class="tag">Starter library</span><span class="faint" style="font-size:12px;margin-left:6px">public lessons this app came with</span>' : `<span class="tag ${x.human ? 'human' : 'agent'}">${x.human ? 'Person' : x.role === 'this-computer' ? 'This computer' : 'Agent'}</span>`}${x.operator === me ? '<span class="badge-you">You</span>' : ''}${ls.get('followPeople', []).includes(x.operator) ? '<span class="faint" style="font-size:12px;margin-left:6px">Following</span>' : ''}<div class="num faint" style="margin-top:4px;font-size:12.5px">${short(x.operator)}</div></div></div>
+    const list = $('#people'); if (!list) return; // left the page while it loaded
+    list.innerHTML = people.map((x) => `<a class="card link" href="#/me/${x.operator}"><div class="row">${identicon(x.operator, x.human, 40)}<div>${x.role === 'starter' ? '<span class="tag">Starter library</span><span class="faint" style="font-size:12px;margin-left:6px">public lessons this app came with</span>' : `<span class="tag ${x.human ? 'human' : 'agent'}">${x.human ? 'Person' : x.role === 'this-computer' ? 'This computer' : 'Agent'}</span>`}${x.operator === me ? '<span class="badge-you">You</span>' : ''}${ls.get('followPeople', []).includes(x.operator) ? '<span class="faint" style="font-size:12px;margin-left:6px">Following</span>' : ''}<div class="num faint" style="margin-top:4px;font-size:12.5px">${short(x.operator)}</div></div></div>
       ${x.problems.map(titleFor).filter(Boolean).slice(0, 2).map((t) => `<div class="serif" style="font-size:16.5px;margin-top:10px;line-height:1.3">${esc(t)}</div>`).join('')}
       <div class="muted" style="font-size:13px;margin-top:8px">${x.contributions} contribution${x.contributions === 1 ? '' : 's'}${x.realms.length ? ` · ${x.realms.map((r) => esc(realm(r).short)).join(', ')}` : ''}</div></a>`).join('') || '<p class="muted">No one matches yet.</p>';
   };
@@ -1227,6 +1260,8 @@ async function mePage(id) {
       ${me.reputation.overall > 0 ? `<div class="stat"><b class="num">${me.reputation.overall.toFixed(2)}</b><span>reputation</span></div>` : ''}
       ${me.credit > 0 ? `<div class="stat"><b class="num">$${(me.credit / 1e6).toFixed(2)}</b><span>credit earned (testnet)</span></div>` : ''}
       ${me.pledged_hours > 0 ? `<div class="stat"><b class="num">${me.pledged_hours}</b><span>hours pledged a week</span></div>` : ''}
+      ${me.saved?.for_others.avoided ? `<div class="stat" title="${esc(me.saved.for_others.basis)}"><b class="num">${me.saved.for_others.avoided}</b><span>dead end${me.saved.for_others.avoided === 1 ? '' : 's'} others avoided thanks to ${mine ? 'you' : 'these lessons'} (about ${me.saved.for_others.minutes >= 90 ? `${me.saved.for_others.hours} h` : `${me.saved.for_others.minutes} min`}, ${me.saved.for_others.tokens.toLocaleString('en')} tokens, estimate)</span></div>` : ''}
+      ${me.saved?.for_them.avoided ? `<div class="stat" title="${esc(me.saved.for_them.basis)}"><b class="num">${me.saved.for_them.avoided}</b><span>dead end${me.saved.for_them.avoided === 1 ? '' : 's'} avoided from others’ lessons (estimate: ${me.saved.for_them.tokens.toLocaleString('en')} tokens)</span></div>` : ''}
       ${me.founding > 0 ? `<div class="stat"><b class="num">${me.founding}</b><span>founding contribution${me.founding === 1 ? '' : 's'} confirmed</span></div>` : ''}
     </div>
     ${me.linked_user ? `<p class="faint" style="font-size:12.5px">Linked to x0x user ${short(me.linked_user)}, verified by certificate.</p>` : ''}

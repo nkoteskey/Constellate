@@ -72,7 +72,12 @@ export class Collab {
     const req = this.hub.node.store.get(requestId)!;
     const b = req.rec.body as unknown as HelpBody;
     const v = this.verifiers.get(b.verifier)!;
-    for (const a of this.hub.node.store.referencing(requestId, 'answer').sort((x, y) => x.rec.created.localeCompare(y.rec.created))) {
+    const mine = (a: StoredRecord, kind: 'confirmation' | 'contradiction') => this.hub.node.store.referencing(a.rec.id, kind).some((c) => c.operatorId === this.hub.node.operatorId);
+    const answers = this.hub.node.store.referencing(requestId, 'answer').sort((x, y) => x.rec.created.localeCompare(y.rec.created));
+    // Checked once: an answer already accepted stays accepted; one already found wanting isn't judged again.
+    const done = answers.find((a) => mine(a, 'confirmation'));
+    if (done) return { accepted: done.rec.id };
+    for (const a of answers.filter((x) => !mine(x, 'contradiction'))) {
       if ((await v.check(b.check, (a.rec.body as { answer: string }).answer)).ok) {
         await this.hub.confirm(a.rec.id, { note: 'checked by the requester' }, { publish: true });
         const t = (await board.list()).find((x) => x.tags.help === requestId);

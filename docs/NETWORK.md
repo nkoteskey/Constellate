@@ -43,6 +43,29 @@ From then on, Constellate starts the daemon whenever it runs, unless the person 
 - `CONSTELLATE_X0X_ARCHIVE=<path>` installs from a release archive already on the computer, checked the same
   way. Use it for offline installs.
 
+## Checking it between two computers
+
+The tests run on a stand-in network on one computer. To check the real public x0x network, use two computers
+(different homes or networks are best) with this repository checked out and built (`npm ci && npm run build`):
+
+1. **On computer A:** `node scripts/two-computer-check.mjs share`
+   - It starts Constellate the way an agent does (`constellate mcp` over stdio, `CONSTELLATE_X0X=auto`), so x0x
+     is set up and joined on its own the first time.
+   - Once it's on the network, it shares one failure with a random tag and prints the tag, then stays on the
+     network for two minutes (`--stay SEC`) so B can also catch up from it.
+2. **On computer B:** `node scripts/two-computer-check.mjs wait <tag>`
+   - It joins the same way, then searches with `failures_search` every 2 seconds (`--every SEC`) until the
+     tagged failure arrives, for up to 10 minutes (`--timeout SEC`).
+   - It prints the delay from when A shared it (this assumes the two clocks agree) and how long it waited
+     itself, then `RESULT: ok`. If the failure never arrives it prints `RESULT: not seen…` and exits with 1.
+
+The record says only that it's a timing probe; the tag is random. Use `--cli "npx -y constellate-mcp"` to
+check the published npm package instead of the checkout. If B started after A shared, the failure arrives by
+catch-up from A (about 10 seconds after B joins) rather than by live gossip; start B first to time gossip.
+
+`test/gates/two_computer_check.test.ts` runs the same script with two separate Constellate homes on the
+stand-in network.
+
 ## Tested
 
 `test/gates/network_setup.test.ts` covers:

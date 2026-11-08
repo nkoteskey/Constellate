@@ -182,17 +182,9 @@ async function startCard(slot) {
   const ollamaReady = !!status?.ollama?.running && local.every((m) => status.ollama.models.some((x) => x === m.run.model || x === `${m.run.model}:latest`));
   const browserOk = !!navigator.gpu && !!$('#bc-start');
 
-  if (DESKTOP && status?.settings?.contribute) {
-    shell(`<div class="spread"><b style="font-size:17px"><span class="live-dot" aria-hidden="true"></span> Your computer is helping</b>${big('Stop', 'st-stop', 'ghost')}</div>
-      <p class="muted" style="margin:6px 0 0">Using ${esc(sg?.primary?.name ?? status.settings.model ?? 'a free model')} on this computer, only while you’re not using it and it’s plugged in. It keeps going when you close the window (look for the icon in your menu bar or tray). What it’s working on is just below.</p>`);
-    $('#st-stop', slot).onclick = async () => { await desk.contribute(false); toast('Stopped. Thanks for helping.'); startCard(slot); };
-    return;
-  }
-  if (DESKTOP && ollamaReady) {
-    shell(`<b style="font-size:17px">Ready to help</b><p class="muted" style="margin:6px 0 14px">${esc(sg.primary.name)} is set up on this computer. Press start and it helps only while you’re not using the computer.</p>${big('Start helping', 'st-go')}`);
-    $('#st-go', slot).onclick = async (e) => { e.target.disabled = true; const r = await desk.contribute(true); if (!r.ok) { toast(r.error); e.target.disabled = false; return; } toast('Your computer is helping. Thank you.'); startCard(slot); };
-    return;
-  }
+  // In the desktop app, once it can lend (or is lending), the card below is the one switch, with its limits and
+  // what ran (js/desktop.js lendCard). This card stays for what comes first: Ollama, or a model in this window.
+  if (DESKTOP && (status?.settings?.contribute || ollamaReady)) { slot.innerHTML = ''; return; }
   if (browserOk) {
     shell(`<b style="font-size:17px">Start helping in one click</b>
       <p class="muted" style="margin:6px 0 14px">A small free model runs right here${DESKTOP ? ' in the app' : ' in this tab'}. Nothing to install and no account. The first start downloads it once (about 1 GB).</p>
@@ -220,6 +212,7 @@ export function computePage(page) {
     <h1 class="display" style="font-size:var(--d-md);margin:10px 0">Your computer, helping while you sleep</h1>
     <p class="muted" style="max-width:60ch">Your computer runs a free AI model and works on open problems while you’re not using it. You don’t need an AI account, and you don’t pay anything.</p>
     <div id="start-slot" style="margin:18px 0 14px"></div>
+    ${DESKTOP ? '<div id="desk-slot" style="margin:0 0 14px"></div>' : ''}
     <div id="dash-slot"></div>
     <div class="card" style="margin:14px 0 18px"><ul class="plain-list" style="margin:0;padding-left:18px;display:grid;gap:6px;font-size:13.5px">
       <li><b>What runs:</b> a free, open model on this computer (or right in this browser tab). It fits your machine, so it won’t slow you down.</li>
@@ -231,7 +224,6 @@ export function computePage(page) {
     ${STATIC ? '' : '<div id="fund-slot"></div>'}
 
     <details class="more-options"><summary><span>More options<span class="mo-sub">Choose a different model, see what fits this computer, bring any model, check storage, or use the command line</span></span></summary>
-    ${DESKTOP ? '<div id="desk-slot" style="margin:12px 0"></div>' : ''}
     <div id="bc-slot" style="margin-top:12px"></div>
     <h2 class="section">What this device can run</h2>
     <div class="card" id="dev"><span class="faint">Looking at this device…</span></div>
@@ -283,6 +275,7 @@ export function computePage(page) {
     if (DESKTOP) void lendCard($('#desk-slot'));
     void import('./fund.js').then((m) => m.fundCard($('#fund-slot')));
     api('/api/storage').then((st) => {
+      if (!$('#storage-slot')) return; // left the page while it loaded
       const mb = (n) => `${(n / 1e6).toFixed(n < 1e6 ? 2 : 1)} MB`;
       $('#storage-slot').innerHTML = `<div style="font-size:13.5px;display:grid;gap:6px">
         <div><b>${st.records.public.toLocaleString()}</b> shared lessons from ${st.records.authors} ${st.records.authors === 1 ? 'computer' : 'computers'}, <b>${mb(st.disk.total)}</b> on disk.</div>

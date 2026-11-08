@@ -56,7 +56,7 @@ describe('profiles and who’s online, over x0x', () => {
 
       // Out in the open: a public group someone else listed on x0x shows up, read-only, with its owner to say hello to.
       const gid = await a.x0x.createSpace('Swarm review room', 'public_open', 'Models that code and review each other');
-      const open = await (await fetch(`${b.web.url}/api/x0x/groups`)).json();
+      const open = await (await fetch(`${b.web.url}/api/x0x/groups?fresh=1`)).json(); // served from a cache otherwise (src/web/swr.ts)
       expect(open.groups.find((g: { id: string }) => g.id === gid)).toMatchObject({ name: 'Swarm review room', owner: a.hub.node.agentId, ours: false });
 
       // Profiles keep to public handles: contact details in "about" are refused.

@@ -1,4 +1,7 @@
 import { readFileSync, existsSync } from 'node:fs';
+import { swr } from './swr.js';
+import { reproduction } from '../services/reproduce.js';
+import { networkSavings, operatorSavings } from '../hub/savings.js';
 import { homedir } from 'node:os';
 import { decodeCanonical } from '../core/canonical.js';
 import { ActivityLog, Presence } from '../hub/activity.js';
@@ -113,6 +116,9 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
       fixes: all.filter((s) => s.rec.kind === 'answer').length,
       topics: new Set(all.filter((s) => s.rec.kind === 'summary').map((s) => (s.rec.body as { cluster: string }).cluster)).size,
       sources: new Set(all.flatMap((s) => s.rec.evidence).map((u) => u.match(/github\.com\/([\w.-]+\/[\w.-]+)\//)?.[1]).filter(Boolean)).size,
+
+      // Dead ends avoided because someone shared them, and a conservative estimate of what that saved.
+      ...(() => { const n = networkSavings(hub.node.store); return { saved: n.avoided, saved_minutes: n.minutes, saved_hours: n.hours, saved_tokens: n.tokens, saved_basis: n.basis }; })(),
     };
     return { line: 'Thousands of minds, working on humanity\'s hardest problems, right now.', demo: process.env.CONSTELLATE_DEMO === '1', stats, realms: REALMS.map((r) => ({ id: r, ...REALM_INFO[r] })), problems, featured };
   });
@@ -136,7 +142,16 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
   });
   web.route('GET', /^\/api\/presence$/, async () => ({ via: spaces.available ? 'x0x' : 'none', online: [...(await spaces.onlineIds())] }));
   web.route('GET', /^\/api\/problems\/([0-9a-f]{64})\/space$/, async (_r, m) => ({ available: spaces.available, invite: spaces.available ? await spaces.invite(m[1]) : null }));
+  // The sky's threads only change when records arrive: kept until the store changes (and at most 30 s), since
+  // walking the whole graph on every visit to the home page made returning there slow on a large store.
+  let graphMemo: { size: number; at: number; v: unknown } | undefined;
   web.route('GET', /^\/api\/graph$/, () => {
+    if (graphMemo && graphMemo.size === hub.node.store.size && Date.now() - graphMemo.at < 30_000) return graphMemo.v;
+    const v = skyThreads();
+    graphMemo = { size: hub.node.store.size, at: Date.now(), v };
+    return v;
+  });
+  const skyThreads = () => {
     // Threads between nebulae: real links between records in different problems, strongest first.
     const rootOf = (id: string) => { let s = hub.node.store.get(id); for (let i = 0; i < 6 && s && !['problem', 'proposal'].includes(s.rec.kind); i++) s = s.rec.refs[0] ? hub.node.store.get(s.rec.refs[0]) : undefined; return s && ['problem', 'proposal'].includes(s.rec.kind) ? s.rec.id : null; };
     const threads = new Map<string, { a: string; b: string; weight: number; bridge: boolean }>();
@@ -151,7 +166,7 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
       threads.set(k, t);
     }
     return { threads: [...threads.values()].sort((x, y) => y.weight - x.weight).slice(0, 60), bridges: hub.graph.bridges().slice(0, 10) };
-  });
+  };
   web.route('GET', /^\/api\/metrics$/, () => hub.metrics.report());
   web.route('POST', /^\/api\/metrics\/event$/, async (_r, _m, _u, body) => {
     const b = await body();
@@ -194,7 +209,7 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
     const done = new Set(s.checkpoints.map((c) => c.chunk));
     const reviewing = new Set(hub.node.store.referencing(m[1], 'constitution_check').filter((c) => (c.rec.body as { stage: string; needs_human: boolean }).stage === 'checkpoint' && (c.rec.body as { needs_human: boolean }).needs_human).map((c) => { const r = hub.node.store.get(c.rec.refs[1]); return (r?.rec.body as { chunk?: string } | undefined)?.chunk; }));
     const steps = prob.chunks.map((c) => ({ key: c.key, title: c.title, state: done.has(c.key) ? 'done' : reviewing.has(c.key) && constitution.state === 'awaiting_review' ? 'review' : 'open' }));
-    return { ...s, steps, realm_info: REALM_INFO[s.realm], recent, people: [...people.values()].sort((a, b) => b.contributions - a.contributions).slice(0, 30), votes, constitution };
+    return { ...s, steps, source: (prob as { source?: unknown }).source ?? null, witness: !!hub.problems.verifiers.get(prob.definition_of_done.verifier)?.witness, realm_info: REALM_INFO[s.realm], recent, people: [...people.values()].sort((a, b) => b.contributions - a.contributions).slice(0, 30), votes, constitution };
   });
 
   web.route('GET', /^\/api\/proposals$/, () => hub.collective.queue(5));
@@ -215,6 +230,7 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
       // A linked GitHub account: the latest claim; every viewer re-checks the gist in their own browser.
       linked_github: (() => { const l = mine.filter((s) => s.rec.kind === 'identity_link' && (s.rec.body as { method?: string }).method === 'github').sort((a, b) => b.rec.created.localeCompare(a.rec.created))[0]; if (!l) return null; const b = l.rec.body as { handle: string; proof: string; unlink?: boolean }; return b.unlink ? null : { handle: b.handle, proof: b.proof }; })(),
       founding: receipts.filter((r) => r.b.type === 'founding').length,
+      saved: operatorSavings(hub.node.store, m[1]),
       agents: [...new Set(mine.map((s) => s.rec.agent_id))].map((a) => ({ id: a, human: mine.some((s) => s.rec.agent_id === a && /^human\b/.test(s.rec.context.environment)), records: mine.filter((s) => s.rec.agent_id === a).length })),
     };
   });
@@ -311,20 +327,31 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
   // a few tags once and read what arrives; nothing is joined or sent until the person chooses to.
   const WATCH = [['tag', 'ai'], ['tag', 'agents'], ['tag', 'llm'], ['tag', 'code-review'], ['tag', 'research'], ['tag', 'science'], ['tag', 'x0x'], ['name', 'constellate'], ['name', 'agents'], ['name', 'swarm']] as const;
   let watching: Promise<unknown> | null = null;
-  web.route('GET', /^\/api\/x0x\/groups$/, async () => {
-    if (!hub.x0x) return { via: 'none', groups: [] };
+  // Both lists below come from the x0x daemon, which can take a second or more to answer: served from the last
+  // result and refreshed in the background (src/web/swr.ts), so the pages never wait on the network.
+  const x0xGroups = swr(async () => {
+    if (!hub.x0x) return { via: 'none', groups: [] as unknown[] };
     watching ??= Promise.allSettled(WATCH.map(([k, v]) => hub.x0x!.discoverSubscribe(k, v)));
     await watching;
     const groups = await hub.x0x.discoverGroups().catch(() => []);
     return { via: 'x0x', watching: WATCH.map(([k, v]) => `${k}:${v}`), groups: groups.sort((a, b) => b.members - a.members || b.updated - a.updated).slice(0, 60).map((g) => ({ ...g, ours: /^constellate\b/i.test(g.name) })) };
-  });
+  }, { maxAgeMs: 30_000, firstWaitMs: 1200, fallback: () => ({ via: hub.x0x ? 'x0x' : 'none', groups: [], loading: true }) });
+  web.route('GET', /^\/api\/x0x\/groups$/, (_r, _m, url) => (hub.x0x ? (url.searchParams.get('fresh') ? x0xGroups.fresh() : x0xGroups()) : { via: 'none', groups: [] }));
+  hub.onOnline(() => { x0xGroups.clear(); x0xGroups.warm(); });
 
   // Profiles: an open x0x directory of who's who (handles, what they do, what they're open to), plus who's online.
   const profiles = new Profiles(hub);
   hub.onOnline(() => void profiles.publishAgent({ open_to: { messages: true, invites: true, reviews: true }, reach: 'app' }).catch(() => {})); // this computer, listed
-  web.route('GET', /^\/api\/directory$/, async () => {
-    const [list, online] = await Promise.all([profiles.list(), profiles.online()]);
-    const count = (id: string) => hub.node.store.all().filter((s) => s.operatorId === id && s.visibility === 'public').length;
+  const directoryData = swr(async () => { const [list, online] = await Promise.all([profiles.list(), profiles.online()]); return { list, online }; },
+    { maxAgeMs: 15_000, firstWaitMs: 1200 });
+  hub.onOnline(() => { directoryData.clear(); directoryData.warm(); });
+  setTimeout(() => directoryData.warm(), 2_000).unref?.();
+  web.route('GET', /^\/api\/directory$/, async (_r, _m, url) => {
+    const { list, online } = await (url.searchParams.get('fresh') ? directoryData.fresh() : directoryData());
+    // Contributions per operator, counted in one pass rather than one pass per profile.
+    const counts = new Map<string, number>();
+    for (const s of hub.node.store.all()) if (s.visibility === 'public') counts.set(s.operatorId, (counts.get(s.operatorId) ?? 0) + 1);
+    const count = (id: string) => counts.get(id) ?? 0;
     // A person's profile is published by the computer (x0x agent) they use, so the two belong together: the
     // person's card names their computer, and that computer doesn't get a card of its own.
     const hosts = new Set(list.filter((p) => p.kind === 'person').map((p) => p.host));
@@ -375,6 +402,7 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
     if (bad) return new HttpReply(400, { error: bad });
     const p = scrub({ context: { task: 'profile', domain: [], environment: '' }, body: next }, hub.node.privacy);
     if (!p.ok) return new HttpReply(400, { error: 'blocked by privacy check', findings: p.findings });
+    directoryData.clear(); // the next directory read shows the change
     return { published: await profiles.publishAgent({ handle: handle || '', ...(next.about !== undefined ? { about: next.about } : {}) }), handle: handle || null };
   });
   web.route('POST', /^\/api\/profile$/, async (req, _m, _u, body) => {
@@ -385,7 +413,7 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
     if (bad) return new HttpReply(400, { error: bad });
     const p = scrub({ context: rec.context, body: readableBody(rec) }, hub.node.privacy);
     if (!p.ok) return new HttpReply(400, { error: 'blocked by privacy check', findings: p.findings });
-    try { return { published: await profiles.publishPerson(rec) }; } catch (e) { return new HttpReply(400, { error: (e as Error).message }); }
+    try { const published = await profiles.publishPerson(rec); directoryData.clear(); return { published }; } catch (e) { return new HttpReply(400, { error: (e as Error).message }); }
   });
 
   // Bounties (docs/BOUNTIES.md): anyone sees the open ones; only this computer posts, lists its own and picks answers,
@@ -447,9 +475,10 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
   web.route('POST', /^\/api\/plans\/([0-9a-f]{12})\/discard$/, async (req, m) => local(req) ? tryIt(() => planner.discard(m[1])) : deny());
 
   // Storage on THIS computer: what it holds, on disk and per record (docs/STORAGE.md).
+  const storageStatus = swr(() => hub.storage.status(), { maxAgeMs: 15_000 });
   web.route('GET', /^\/api\/storage$/, (req) => {
     if (!/^(127\.|::1$|::ffff:127\.)/.test(req.socket.remoteAddress ?? '')) return new HttpReply(403, { error: 'only on this computer' });
-    return hub.storage.status();
+    return storageStatus(); // walks the disk: kept for a few seconds
   });
 
   // What the agents connected on THIS computer have done (from agent-activity.jsonl). Answers only this computer.
@@ -537,12 +566,30 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
     }).filter((x) => x.first && x.second).sort((a, b) => Number(b.needs_human) - Number(a.needs_human) || b.at.localeCompare(a.at));
   });
 
+  // Topic pages (docs/MEMORY.md): a stable link per topic (#/topic/<key>) that always opens its latest page,
+  // with every source it distils and every version, each a signed record.
+  web.route('GET', /^\/api\/topics$/, () => hub.pages.latest().map((s) => { const v = hub.pages.view(s); return { topic: v.topic, title: v.title, sources: v.sources, rules: v.rules.length, updated: v.updated }; }).sort((a, b) => b.updated.localeCompare(a.updated)));
+  web.route('GET', /^\/api\/topic\/([0-9a-f]{16,64})$/, (_r, m) => {
+    const versions = hub.pages.history(m[1]);
+    if (!versions.length) return new HttpReply(404, { error: 'no such topic' });
+    const latest = versions[0];
+    const body = latest.rec.body as { members: string[]; retired?: boolean; merged_into?: string; dreamed?: string[] };
+    const sources = body.members.map((id) => hub.node.store.get(id)).filter((x): x is StoredRecord => !!x).map((s) => {
+      const b = s.rec.body as { approach?: string; error_summary?: string; question?: string; answer?: string; headline?: string };
+      return { id: s.rec.id, kind: s.rec.kind, title: s.rec.kind === 'failure' ? b.approach : b.headline ?? b.question ?? b.answer, detail: s.rec.kind === 'failure' ? b.error_summary : b.answer, verified: hub.pages.verified(s), confirmed: reproduction(hub.node.store, s).label, source: s.rec.evidence[0] ?? null };
+    });
+    return {
+      ...hub.pages.view(latest), retired: !!body.retired, merged_into: body.merged_into ?? null, signed_by: latest.rec.agent_id, signature: latest.rec.signature ? 'ML-DSA-65' : 'batch',
+      source_records: sources, versions: versions.slice(0, 20).map((v) => ({ id: v.rec.id, created: v.rec.created, why: (v.rec.body as { dreamed?: string[] }).dreamed ?? [] })),
+    };
+  });
+
   // The utility hook: paste an error or a question, get what failed, what fixed it, and a plain answer.
   web.route('GET', /^\/api\/search$/, async (_r, _m, url) => {
     const q = String(url.searchParams.get('q') ?? '').slice(0, 500).trim();
     if (!q) return { q, failures: [], answers: [], learned: [], skills: [], guide: null };
     const failures = hub.ledger.searchFailures(q, { limit: 6 }).map((f) => ({ ...f, fixes: f.fixed_by.map((id) => { const a = hub.node.store.get(id); const b = a?.rec.body as { answer: string; headline?: string; proof?: { type: string; detail: string } } | undefined;
-      return a && b ? { id, answer: b.answer, headline: b.headline, proof: b.proof, source: a.rec.evidence[0] ?? null, confirmations: hub.trust.explain(a).confirmations, domain: a.rec.context.domain } : null; }).filter(Boolean) }));
+      return a && b ? { id, answer: b.answer, headline: b.headline, proof: b.proof, source: a.rec.evidence[0] ?? null, confirmations: hub.trust.explain(a).confirmations, confirmed: reproduction(hub.node.store, a).label, domain: a.rec.context.domain } : null; }).filter(Boolean) }));
     const answers = hub.ledger.lookupAnswers(q, { limit: 3 });
     const onX0x = await hub.x0xSkills.capabilities(q, 2).catch(() => []);
     const asksAboutWork = /happening|progress|status|how('s| is)|going|what about/i.test(q);

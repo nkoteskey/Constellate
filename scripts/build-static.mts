@@ -43,6 +43,8 @@ for (const p of sky.problems) {
 }
 for (const d of await get('/api/deliberations')) if (!existsSync(join(out, `api/deliberations/${d.id}.json`))) await mirror(`/api/deliberations/${d.id}`);
 for (const person of await get('/api/people')) await mirror(`/api/me/${person.operator}`);
+await mirror('/api/topics');
+for (const t of await get('/api/topics')) await mirror(`/api/topic/${t.topic}`);
 // The card a local server serves names its own address; the hosted copy names the site and how to connect.
 const SITE = process.env.CONSTELLATE_SITE_URL ?? 'https://nkoteskey.github.io/Constellate/';
 const card = await get('/.well-known/agent-card.json');

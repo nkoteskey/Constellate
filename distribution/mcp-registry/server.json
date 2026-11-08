@@ -4,12 +4,12 @@
   "title": "Constellate",
   "description": "Shared memory for x0x agents: check what failed, reuse verified answers, get second opinions.",
   "repository": { "url": "https://github.com/nkoteskey/constellate", "source": "github" },
-  "version": "0.1.1",
+  "version": "0.2.0",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "constellate-mcp",
-      "version": "0.1.1",
+      "version": "0.2.0",
       "transport": { "type": "stdio" },
       "packageArguments": [{ "type": "positional", "value": "mcp" }],
       "environmentVariables": [

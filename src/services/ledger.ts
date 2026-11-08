@@ -6,6 +6,7 @@ import { TrustModel } from './trust.js';
 import { hashInputs } from '../privacy/scrub.js';
 import { RecordContext } from '../core/record.js';
 import type { KnowledgeGraph } from '../graph/graph.js';
+import { reproduction, reproductionFactor } from './reproduce.js';
 
 export const FailureBody = z.object({
   approach: z.string().max(600),
@@ -56,32 +57,40 @@ export class Ledger {
     const scored = recs.filter((s) => rel.has(s.rec.id)).map((s) => {
       const t = this.trust.explain(s);
       const env = environment ? envSimilarity(environment, s.rec.context.environment) : 0;
-      const score = rel.get(s.rec.id)! * (0.25 + this.trust.weight(s)) * (1 + env) * (this.graph ? this.graph.nodeFactor(s.rec.id) : 1);
-      return { s, t, env, score };
+      // Independent reproduction (other computers, other model families) lifts a record; disputes pull it down.
+      const rep = reproduction(this.node.store, s);
+      const score = rel.get(s.rec.id)! * (0.25 + this.trust.weight(s)) * (1 + env) * (this.graph ? this.graph.nodeFactor(s.rec.id) : 1) * reproductionFactor(rep);
+      return { s, t, env, score, rep };
     });
     return scored.sort((a, b) => b.score - a.score).slice(0, limit);
   }
 
   searchFailures(query: string, opts: { domain?: string[]; environment?: string; limit?: number } = {}) {
-    return this.rank('failure', query, opts.domain, opts.environment, opts.limit ?? 5).map(({ s, t, env }) => {
+    return this.rank('failure', query, opts.domain, opts.environment, opts.limit ?? 5).map(({ s, t, env, rep }) => {
       const b = s.rec.body as FailureBody;
+      const fixes = this.node.store.referencing(s.rec.id, 'answer').map((a) => ({ a, r: reproduction(this.node.store, a) }))
+        .sort((x, y) => reproductionFactor(y.r) - reproductionFactor(x.r) || this.trust.weight(y.a) - this.trust.weight(x.a)).slice(0, 3);
       return {
         id: s.rec.id, task: s.rec.context.task, approach: b.approach, outcome: b.outcome, error_summary: b.error_summary,
         original: (b as { original?: string }).original, applies_when: (b as { applies_when?: string }).applies_when,
         environment: s.rec.context.environment, env_match: round(env), confidence: b.confidence,
-        weight: round(t.weight), confirmations: t.confirmations, contradictions: t.contradictions, age_days: Math.floor(ageDays(s)),
-        fixed_by: this.node.store.referencing(s.rec.id, 'answer').map((a) => a.rec.id).slice(0, 3),
+        weight: round(t.weight), confirmations: t.confirmations, contradictions: t.contradictions, confirmed: rep.label, age_days: Math.floor(ageDays(s)),
+        fixed_by: fixes.map(({ a }) => a.rec.id),
+        // The fixes themselves, best reproduced first, so the agent can try one and report back (fix_tried).
+        fixes: fixes.map(({ a, r }) => { const ab = a.rec.body as AnswerBody & { headline?: string }; return { id: a.rec.id, fix: (ab.headline ?? ab.answer).slice(0, 300), confirmed: r.label, disputed_on_computers: r.disputed_by.computers }; }),
         neighbours: this.graph?.neighbours(s.rec.id, 3) ?? [],
       };
     });
   }
 
   lookupAnswers(question: string, opts: { domain?: string[]; environment?: string; limit?: number } = {}) {
-    return this.rank('answer', question, opts.domain, opts.environment, opts.limit ?? 3).map(({ s, t, env }) => {
+    return this.rank('answer', question, opts.domain, opts.environment, opts.limit ?? 3).map(({ s, t, env, rep }) => {
       const b = s.rec.body as AnswerBody;
       return {
-        id: s.rec.id, question: b.question, answer: b.answer, headline: (b as { headline?: string }).headline, proof: b.proof, source: s.rec.evidence[0] ?? null, environment: s.rec.context.environment, env_match: round(env),
-        weight: round(t.weight), confirmations: t.confirmations, contradictions: t.contradictions, age_days: Math.floor(ageDays(s)), fixes: s.rec.refs,
+        id: s.rec.id, question: b.question, answer: b.answer, headline: (b as { headline?: string }).headline, proof: b.proof, source: s.rec.evidence[0] ?? null,
+        // Licensed seed data says so on every result (data/seed/LICENSES).
+        ...((b as { license?: string }).license ? { license: (b as { license?: string }).license, attribution: (b as { attribution?: string }).attribution } : {}), environment: s.rec.context.environment, env_match: round(env),
+        weight: round(t.weight), confirmations: t.confirmations, contradictions: t.contradictions, confirmed: rep.label, disputed_on_computers: rep.disputed_by.computers, age_days: Math.floor(ageDays(s)), fixes: s.rec.refs,
         neighbours: this.graph?.neighbours(s.rec.id, 3) ?? [],
       };
     });
@@ -96,7 +105,7 @@ export class Ledger {
     const rel = bm25(query, docs.map((s) => { const b = s.rec.body as { title: string; summary: string }; return { id: s.rec.id, text: `${b.title} ${b.summary} ${s.rec.context.domain.join(' ')}`, tags: s.rec.context.domain }; }));
     return docs.filter((s) => rel.has(s.rec.id)).sort((a, b) => rel.get(b.rec.id)! - rel.get(a.rec.id)!).slice(0, opts.limit ?? 2).map((s) => {
       const b = s.rec.body as { title: string; summary: string; members: string[]; realms: string[]; rules?: unknown[]; traps?: unknown[]; fix?: unknown };
-      return { id: s.rec.id, title: b.title, summary: b.summary, sources: b.members.length, realms: b.realms, domain: s.rec.context.domain, members: b.members.slice(0, 5), rules: b.rules ?? [], traps: b.traps ?? [], fix: b.fix ?? null, ...topicContext(this.node.store, b.members) };
+      return { id: s.rec.id, topic: (s.rec.body as { cluster: string }).cluster, title: b.title, summary: b.summary, sources: b.members.length, realms: b.realms, domain: s.rec.context.domain, members: b.members.slice(0, 5), rules: b.rules ?? [], traps: b.traps ?? [], fix: b.fix ?? null, ...topicContext(this.node.store, b.members) };
     });
   }
 }

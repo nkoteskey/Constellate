@@ -1,4 +1,4 @@
-# Third-party agent skills: notices
+# Third-party data in the starter library: notices
 
 Constellate's starter library includes openly licensed public agent skills (SKILL.md files), imported by
 `scripts/import-skills.mjs` into `data/seed/agent-skills.json` and seeded by `src/seed/agent-skills.ts`.
@@ -29,3 +29,24 @@ by handle or organisation, so author names and contact addresses are not carried
 - Skills without an open licence we can redistribute under (for example OpenAI's Figma skills and Anthropic's doc-coauthoring).
 - One organisation's own brand, internal or course material, installers that change the agent's own setup, and templates.
 - Skills that fail the privacy check as written (example emails, people's names, or text that reads as a credential).
+
+# tldr-pages: command usage (CC BY 4.0)
+
+Constellate's starter library includes command usage from [tldr-pages](https://github.com/tldr-pages/tldr),
+copyright © 2014 to present the tldr-pages team and contributors, licensed under the Creative Commons
+Attribution 4.0 International License (`CC-BY-4.0.txt`). `scripts/import-tldr.mjs` imports it into
+`data/seed/tldr-pages.json`, pinned to commit `c8498c5e05b396098d1d9b1d71e2290a32559f27`.
+`src/seed/tldr.ts` seeds it as one answer record per command.
+
+**Every record carries its licence:** `license: CC-BY-4.0`, the attribution, a link to its source page at that
+commit, and a notice of what was changed.
+
+**What was changed:**
+- placeholders are written as `<name>` instead of `{{name}}`;
+- the letter hints (`[c]reate`) and option pairs (`[-C|--directory]`) are written plainly;
+- the "More information" line is left out;
+- only 137 of the commands agents most often hit are included, not all of tldr-pages.
+
+**Left out:** five pages whose examples didn't pass Constellate's privacy check as written. `git-config`
+(an example email address), `ssh` and `ss` (private network addresses), `dig` (a public address) and
+`redis-cli` (an example password). `data/seed/tldr-pages.json` lists them under `left_out`.

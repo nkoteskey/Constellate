@@ -14,7 +14,7 @@ import type { StoredRecord } from '../store/records.js';
  */
 export class Consolidator {
   private timer?: NodeJS.Timeout;
-  constructor(private readonly hub: Hub, private readonly runner?: ModelRunner, private readonly opts: { minSize?: number; maxSize?: number; maxMembers?: number; written?: WrittenSummaries } = {}) {}
+  constructor(private readonly hub: Hub, private readonly runner?: ModelRunner, private readonly opts: { minSize?: number; maxSize?: number; maxMembers?: number; written?: WrittenSummaries; minVerified?: number } = {}) {}
 
   /** A cluster's identity across rebuilds: the hash of its members' sources. */
   static sourceKey(recs: StoredRecord[]) { return sha256Hex(utf8(recs.map((s) => s.rec.evidence[0] ?? s.rec.id).sort().join('\n'))).slice(0, 24); }
@@ -39,10 +39,15 @@ export class Consolidator {
     for (const members of groups) {
       if (members.length < minSize) continue;
       if (members.length > maxSize) { skipped++; continue; }
-      const key = Consolidator.clusterKey(members);
+      // Written on its own only once a topic has enough verified records (confirmed by others, or merged upstream).
+      if (this.opts.minVerified && members.filter((id) => { const s = this.hub.node.store.get(id); return s && this.hub.pages.verified(s); }).length < this.opts.minVerified) { skipped++; continue; }
+      // The topic keeps its key (and its link, #/topic/<key>) as it grows: reuse the live page that holds most of these lessons.
+      const key = this.existingTopic(members) ?? Consolidator.clusterKey(members);
       const prev = this.latestSummary(key);
       const covered = new Set(prev ? (prev.rec.body as { members: string[] }).members : []);
       if (members.every((m) => covered.has(m))) { skipped++; continue; }
+      // Another computer wrote this topic's page minutes ago: let gossip bring it rather than write a twin.
+      if (prev && prev.operatorId !== this.hub.node.operatorId && Date.now() - Date.parse(prev.rec.created) < 10 * 60_000) { skipped++; continue; }
       const use = members.slice(0, this.opts.maxMembers ?? 80);
       const lines = use.map((id) => { const s = this.hub.node.store.get(id)!; return `- [${s.rec.kind}] ${titleOf(s)}${s.rec.kind === 'failure' ? ` → ${(s.rec.body as { error_summary: string }).error_summary}` : s.rec.kind === 'answer' ? ` → ${(s.rec.body as { answer: string }).answer}` : ''}`; });
       const realms = [...new Set(use.map((id) => this.hub.graph.realmOf(id)))].filter((r) => r !== 'unknown');
@@ -63,6 +68,18 @@ export class Consolidator {
       summarised++;
     }
     return { summarised, skipped };
+  }
+
+  /** The live topic whose page already holds at least half of these lessons, if any. */
+  private existingTopic(members: string[]): string | undefined {
+    const set = new Set(members);
+    let best: { key: string; n: number } | undefined;
+    for (const p of this.hub.pages.latest()) {
+      const b = p.rec.body as { cluster: string; members: string[] };
+      const n = b.members.filter((m) => set.has(m)).length;
+      if (n * 2 >= b.members.length && n > 0 && (!best || n > best.n)) best = { key: b.cluster, n };
+    }
+    return best?.key;
   }
 
   /**

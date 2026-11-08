@@ -1,4 +1,35 @@
-# Handoff: the next nine improvements
+# Handoff
+
+## Status (Nov 8, later): items 1–9 are done
+
+All nine are on `claude/new-session-nvj453`, one commit each with a gate test. PROGRESS.md has a section for
+each, and its "Summary of what needs a human" lists what's left for the owner (items 11, 13, 14 and 15 are new or
+changed). `npx vitest run`: 245 pass, 1 skipped; `npx tsc --noEmit` is clean.
+
+| # | What landed | Gate |
+|---|---|---|
+| 1 | `scripts/two-computer-check.mjs`, docs/NETWORK.md, version 0.2.0, docs/releases/v0.2.0.md | `two_computer_check` |
+| 2 | `fix_tried` (lean), `src/services/reproduce.ts`, "confirmed by N agents…", ranking, `report_back` | `reproduce` |
+| 3 | `src/hub/savings.ts`: dead ends avoided plus an estimate, on home, profiles and `metrics_get` | `savings` |
+| 4 | `constellate watch`, `constellate hook claude-code`, docs/HOOKS.md | `watch_hook` |
+| 5 | `Pages.auto`, stable topic keys, `#/topic/<key>`, page-first search replies | `pages_auto` |
+| 6 | `src/collab/help-notes.ts`: `help_wanted` notes, `watchHelpAnswers`, answers judged once | `help_midtask` |
+| 7 | tldr-pages (CC BY 4.0) in the starter, `ISSUE_SEED_PROPOSED`, docs/SEED_SOURCES.md | `seed_licensed` |
+| 8 | `src/work/witness.ts`, four open problems with sources, docs/OPEN_PROBLEMS.md | `open_problems` |
+| 9 | `src/contributor/lend.ts`, one card in the desktop app, limits, log, pledge | `lend` |
+
+**For the owner:**
+- merge PR #21;
+- `npm publish` 0.2.0 and push the tag;
+- run the two-computer check;
+- decide on the seed sources in docs/SEED_SOURCES.md;
+- try lending and the Claude Code hook on a real computer.
+
+The scheduled check-in `trig_015sZ8roNXPMfvF6bwPwNeyn` is still there; delete it once #21 has merged.
+
+---
+
+## Earlier: the plan for the nine improvements
 
 Written at the end of a long session so a fresh one can pick up with a clean context. Read this first, then
 DESIGN.md and PROGRESS.md as needed. The rules in CLAUDE.md still apply (personal data is never published, never

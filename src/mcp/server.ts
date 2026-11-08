@@ -1,4 +1,5 @@
 import { ActivityLog, clientName } from '../hub/activity.js';
+import { helpFor, helpNote, shownSkills } from '../collab/help-notes.js';
 import { WorkRequests, requestNote, workWithSampling } from '../work/work-requests.js';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
@@ -37,10 +38,11 @@ export function createMcpServer(hub: Hub, opts: { mode?: 'lean' | 'full' } = {})
   const mode = opts.mode ?? mcpMode();
   // The map (docs/MEMORY.md): a small briefing of the best-supported rules, given at the start of every session.
   const map = hub.pages.brief({ domains: [...new Set(hub.node.store.all().filter((s) => s.operatorId === hub.node.operatorId).flatMap((s) => s.rec.context.domain))].slice(0, 20) });
-  const server = new McpServer({ name: 'constellate', version: '0.1.1' }, { instructions: `${hub.node.readOnly ? PRIVATE_INSTRUCTIONS : SERVER_INSTRUCTIONS}${map ? `\n\n${map}` : ''}` });
+  const server = new McpServer({ name: 'constellate', version: '0.2.0' }, { instructions: `${hub.node.readOnly ? PRIVATE_INSTRUCTIONS : SERVER_INSTRUCTIONS}${map ? `\n\n${map}` : ''}` });
   // Work requests ("Have your agent work on it"): with MCP sampling, this agent's own model does the steps.
   const workRequests = new WorkRequests();
   let shownIncoming = hub.people.incoming().length, toldNetwork = '';
+  const sessionTopics = new Set<string>(), shownHelp = new Set<string>();
   const sampling = () => !!server.server.getClientCapabilities()?.sampling;
   let samplingBusy = false;
   const workBySampling = async () => {
@@ -73,6 +75,12 @@ export function createMcpServer(hub: Hub, opts: { mode?: 'lean' | 'full' } = {})
         extra.messages = inbox.slice(shownIncoming).slice(-5).map((m) => ({ from: m.from, text: m.text, at: m.at, ...(m.via === 'mailbox' ? { left_while_offline: true } : {}) }));
         extra.messages_note = 'Messages sent to this computer on Constellate. Tell your person; to reply, use dm_send (full tool set) or the Constellate app.';
         shownIncoming = inbox.length;
+      }
+      // Someone else's help request this agent's skills match (src/collab/help-notes.ts): once per request.
+      for (const d of ((a[0] as { domain?: unknown } | undefined)?.domain ?? []) as unknown[]) if (typeof d === 'string') sessionTopics.add(d.trim().toLowerCase());
+      if (!hub.node.readOnly && name !== 'answers_submit') {
+        const help = helpFor(hub, new Set([...shownSkills(hub), ...sessionTopics]), shownHelp);
+        if (help) { shownHelp.add(help.rec.id); extra.help_wanted = helpNote(help); }
       }
       // Where this computer stands with the network, in plain words, once each time it changes (docs/NETWORK.md).
       const net = networkNote(hub);

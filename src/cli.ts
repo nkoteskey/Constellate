@@ -13,6 +13,7 @@ import { registerAppRoutes } from './web/app.js';
 import { registerEconomyRoutes } from './economy/routes.js';
 import { TestnetLedger } from './economy/rail.js';
 import { detectDevice, suggestFor, readConditions, POLITE } from './contributor/device.js';
+import { Lend, policyFor, restAfter } from './contributor/lend.js';
 import { registerContributorRoutes } from './contributor/dashboard.js';
 import { runnerFromSpec, providerTable, commands, CATALOG_UPDATED, PROVIDERS } from './contributor/catalog.js';
 import { KeyVault } from './contributor/keyvault.js';
@@ -32,6 +33,8 @@ const USAGE = `Constellate — where humans and agents gather into something gre
   constellate seed [repo…]       Seed the ledger from allow-listed public repos' CI history
   constellate status     Show identity, x0x connection and record counts
   constellate setup      Print one-line setup snippets for MCP clients
+  constellate watch -- <command…>   Run a command; if it fails, print fixes others verified for its error (never publishes)
+  constellate hook claude-code      For a Claude Code hook: read a failed Bash call on stdin, answer with matching fixes (docs/HOOKS.md)
   constellate network join | status | leave    The x0x daemon that connects you to the network (set up on its own by default)
   constellate serve      Open the human app on http://127.0.0.1:4747
       [--model PROVIDER/MODEL]  a model for the plain-language guide, the constitution's model
@@ -50,6 +53,7 @@ const USAGE = `Constellate — where humans and agents gather into something gre
   constellate models     What this machine can run: free open-weight models that fit, and every provider
   constellate contribute Donate idle compute: detect hardware, pick a model, work politely
       [--model PROVIDER/MODEL] [--verifier PROVIDER/MODEL] [--cap-cents N] [--endpoint URL] [--no-ui] [--port N]
+      [--lend]  follow the limits set in the app (hours per night, never on battery, CPU cap), keep a log, pledge the hours
       Opens status and controls (pause, plugged-in only, battery, hours, heat) at http://127.0.0.1:4748
       Any model works: ollama/qwen3:14b, lmstudio/…, groq/llama-3.3-70b-versatile,
       openrouter/<any>, huggingface/…, gemini/…, openai/…, anthropic/claude-opus-5-5,
@@ -58,12 +62,24 @@ const USAGE = `Constellate — where humans and agents gather into something gre
 Environment: X0X_API (default http://127.0.0.1:12700), CONSTELLATE_HOME (~/.constellate),
 CONSTELLATE_PREVIEW=off, CONSTELLATE_PRIVACY=standard|strict, CONSTELLATE_DENY_TERMS=a,b`;
 
+/** A topic's page is written on its own once it has this many verified records (docs/MEMORY.md). */
+const AUTO_PAGE_MIN_VERIFIED = Number(process.env.CONSTELLATE_PAGE_MIN_VERIFIED ?? 3);
+
 async function main(argv: string[]) {
   const cmd = argv[0];
   if (cmd === 'mcp') {
     const hub = argv.includes('--private') ? await Hub.privateMode() : await Hub.fromEnv();
     if (!argv.includes('--private')) importStarter(hub);
     const server = createMcpServer(hub);
+    // Topic pages written on their own (docs/MEMORY.md) for people who use Constellate only through an agent;
+    // when the app runs on this computer, it does this instead.
+    const appAway = async () => { try { return !(await fetch(`${process.env.CONSTELLATE_APP_URL ?? `http://127.0.0.1:${process.env.PORT ?? 4747}`}/api/sky`, { signal: AbortSignal.timeout(1500) })).ok; } catch { return true; } };
+    if (!hub.node.readOnly) {
+      hub.pages.auto(() => new Consolidator(hub, undefined, { minVerified: AUTO_PAGE_MIN_VERIFIED }).sleep(), { allowed: appAway });
+      // Answers to this computer's help requests are checked as they arrive (docs/AGENT_STEPS.md).
+      const { watchHelpAnswers } = await import('./collab/help-notes.js');
+      watchHelpAnswers(hub, appAway);
+    }
     const { Profiles } = await import('./collab/profiles.js');
     hub.onOnline((hub) => {
       // Reachable without the app (docs/MAILBOX.md): listed in the directory as using Constellate through an agent,
@@ -120,6 +136,20 @@ Lend your computer instead: node "${cli}" models, then node "${cli}" contribute`
     return;
   }
   if (cmd === 'keys') return keys(argv.slice(1));
+  if (cmd === 'watch') {
+    // Fixes that arrive when the error happens (docs/HOOKS.md): read-only, nothing is ever published.
+    const { watch } = await import('./watch/watch.js');
+    const rest = argv.slice(1), i = rest.indexOf('--');
+    const json = rest.slice(0, i < 0 ? 0 : i).includes('--json');
+    process.exitCode = await watch(i >= 0 ? rest.slice(i + 1) : rest, { json });
+    return;
+  }
+  if (cmd === 'hook') {
+    const { claudeCodeHook } = await import('./watch/hook.js');
+    if ((argv[1] ?? 'claude-code') !== 'claude-code') throw new Error(`unknown hook: ${argv[1]} (try: constellate hook claude-code)`);
+    process.stdout.write(await claudeCodeHook(await new Promise<string>((r) => { let t = ''; process.stdin.setEncoding('utf8'); process.stdin.on('data', (d) => (t += d)); process.stdin.on('end', () => r(t)); })));
+    return;
+  }
   if (cmd === 'storage') {
     const hub = await Hub.fromEnv();
     try {
@@ -212,6 +242,9 @@ Lend your computer instead: node "${cli}" models, then node "${cli}" contribute`
     if (hub.archive instanceof AutonomiArchive) console.log('Archive: Autonomi mainnet (paid, capped daily)');
     new Consolidator(hub, model).schedule(); // "sleep" every 6 hours: distil related lessons into topic pages
     hub.pages.schedule(); // "dream" every 6 hours: re-check pages whose evidence changed (docs/MEMORY.md)
+    // And on their own: once a topic has enough verified records, its page is written within a minute or so.
+    hub.pages.auto(() => new Consolidator(hub, model, { minVerified: AUTO_PAGE_MIN_VERIFIED }).sleep());
+    (await import('./collab/help-notes.js')).watchHelpAnswers(hub); // answers to this computer's help requests, checked as they arrive
     // Skills across x0x (docs/X0X_SKILLS.md): publish ours to a public x0x data store, keep a public group, pull others'.
     hub.onOnline((h) => { const sk = () => void h.x0xSkills.sync().catch(() => {}); setTimeout(sk, 45_000).unref(); setInterval(sk, 6 * 3600_000).unref(); });
     if (model) { const { Deliberation } = await import('./collective/deliberation.js'); new Deliberation(hub).scheduleReruns(model); } // debates revisited as models change
@@ -396,21 +429,53 @@ async function contribute(args: string[]) {
   const board = hub.x0x ? new X0xBoard(hub.x0x, 'constellate/v1/board') : new MemoryBoard();
   const budget = new Budget(Number(flag(args, '--cap-cents') ?? 0) || (runners.some((r) => r.costPerCall) ? 100 : Infinity));
   const policy = { ...POLITE };
+  // --lend: the desktop app's one-click switch (src/contributor/lend.ts): the person's limits, a log, a pledge.
+  const lend = args.includes('--lend') ? new Lend() : null;
+  let pledged = -1;
+  const applyLimits = async () => {
+    if (!lend) return;
+    const l = lend.limits();
+    Object.assign(policy, policyFor(l, { ...POLITE, paused: policy.paused }));
+    const hours = l.hoursPerNight * 7;
+    if (hours !== pledged) { pledged = hours; await hub.collective.pledge(hours).catch(() => {}); } // compute_pledge, so votes weigh it once delivered
+  };
+  await applyLimits();
+  if (lend) {
+    // Turned off from the app (the process is stopped): the pledge goes back to zero before it exits.
+    const stop = () => { void hub.collective.pledge(0).catch(() => {}).finally(() => process.exit(0)); setTimeout(() => process.exit(0), 3000).unref(); };
+    process.once('SIGTERM', stop); process.once('SIGINT', stop);
+  }
   const workers = runners.map((r) => new Worker(hub, r, hub.problems, board, { policy, power: readConditions, budget }));
   // The contributor app: status and controls in the browser, on this machine only. --no-ui to skip.
   if (!args.includes('--no-ui')) {
     const web = new WebServer(hub);
     registerAppRoutes(web);
-    registerContributorRoutes(web, { workers, budget, policy, device });
+    registerContributorRoutes(web, { workers, budget, policy, device, lend: lend ?? undefined });
     await web.listen(Number(flag(args, '--port') ?? 4748), '127.0.0.1');
     console.log(`Status and controls: ${web.url}/#/compute`);
   }
   let last = '';
   for (;;) {
     let didWork = false;
-    for (const worker of workers) for (const p of hub.problems.list()) {
+    await applyLimits(); // the app may have changed them
+    if (lend && !lend.underTonight()) {
+      for (const w of workers) w.status = { state: 'waiting', message: `Done for tonight: ${lend.limits().hoursPerNight} hours used. Back tomorrow night.` };
+    } else for (const worker of workers) for (const p of hub.problems.list()) {
+      const t0 = Date.now();
+      worker.last = undefined;
       const o = await worker.step(p.rec.id).catch((e) => { console.error(String(e)); return 'idle' as const; });
-      if (o !== 'idle' && o !== 'paused') didWork = true;
+      if (o === 'idle' || o === 'paused') continue;
+      didWork = true;
+      if (lend) {
+        const ms = Date.now() - t0;
+        lend.addUsage(ms / 1000);
+        const did = worker.last as Worker['last']; // set by step()
+        if (did) lend.record({ at: new Date().toISOString(), ...did, outcome: o, seconds: Math.round(ms / 100) / 10 });
+        // The CPU cap: rest in proportion to the time just worked.
+        const rest = restAfter(ms, lend.limits().cpuCapPct);
+        if (rest > 0) await new Promise((r) => setTimeout(r, Math.min(rest, 10 * 60_000)));
+        if (!lend.underTonight()) break;
+      }
     }
     const msg = workers[0].status.message;
     if (msg !== last) { console.log(`● ${msg}`); last = msg; }

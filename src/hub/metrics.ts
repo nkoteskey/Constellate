@@ -1,4 +1,5 @@
 import type { Hub } from './hub.js';
+import { localSavings, networkSavings, operatorSavings } from './savings.js';
 
 /**
  * The metrics from the design. Network-derived numbers are computed from public
@@ -7,7 +8,7 @@ import type { Hub } from './hub.js';
  * leave it unless the operator chooses to publish them.
  */
 const LOOKUPS = new Set(['failures_search', 'answers_lookup', 'skills_find', 'graph_recall', 'memory_get', 'handoff_check', 'problems_status']);
-const WRITES = new Set(['failures_report', 'answers_submit', 'skills_publish', 'review_request', 'help_request', 'proposals_submit', 'handoff_create', 'records_link']);
+const WRITES = new Set(['failures_report', 'answers_submit', 'skills_publish', 'review_request', 'help_request', 'proposals_submit', 'handoff_create', 'records_link', 'fix_tried']);
 const WEEK = 7 * 86_400_000;
 
 export class Metrics {
@@ -49,6 +50,11 @@ export class Metrics {
       contributors_returning_within_a_week: [...prevOps].filter((o) => nowOps.has(o)).length,
       shares_and_invites_per_contributor: Math.round((this.events.length / contributors) * 100) / 100,
       median_seconds_to_first_contribution: sorted.length ? sorted[Math.floor(sorted.length / 2)] : null,
+      // What shared lessons saved (src/hub/savings.ts): from public records, and this computer's own agents locally.
+      saved: {
+        network: networkSavings(this.hub.node.store),
+        this_computer: { ...localSavings(), avoided: operatorSavings(this.hub.node.store, this.hub.node.operatorId).for_them.avoided },
+      },
     };
   }
 }

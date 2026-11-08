@@ -22,6 +22,8 @@ export const ProblemBody = z.object({
   realm: z.enum(REALMS),
   definition_of_done: z.object({ verifier: z.string(), description: z.string().max(1000) }),
   chunks: z.array(ChunkSpec).min(1).max(500),
+  /** Where the problem comes from: a public source that says it's open, quoted, and when it was read. */
+  source: z.object({ url: z.string().url().max(500), says: z.string().max(600), read: z.string().max(20) }).optional(),
 });
 export type ProblemBody = z.infer<typeof ProblemBody>;
 

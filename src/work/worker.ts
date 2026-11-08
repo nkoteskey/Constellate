@@ -25,6 +25,8 @@ export type StepOutcome = 'verified' | 'rejected' | 'worked' | 'idle' | 'paused'
  */
 export class Worker {
   status: Status = { state: 'waiting', message: 'Starting.' };
+  /** What the last step that did something was, for the lending log (src/contributor/lend.ts). */
+  last?: { problem: string; title: string; step: string; did: 'checked' | 'worked'; model: string };
   private stopped = false;
 
   constructor(readonly hub: Hub, readonly runner: ModelRunner, readonly problems: Problems, readonly board: Board, private readonly opts: WorkerOptions = {}) {}
@@ -59,6 +61,7 @@ export class Worker {
         if (verifier.available && !verifier.available()) continue; // e.g. no Lean here: leave it for a computer that has it
         if (!verifier.machineOnly && !this.charge()) return 'paused';
         const chunk = st.problem.chunks.find((x) => x.key === c.key)!;
+        this.last = { problem: problemId, title: st.problem.title, step: chunk.title, did: 'checked', model: verifier.machineOnly ? `machine check (${verifier.name})` : this.runner.id };
         const machine = await verifier.check(chunk.check, rb.output);
         const opinion = verifier.machineOnly ? (machine.ok ? 'YES' : 'NO') : machine.ok
           ? await this.runner.run(`You are verifying another model's answer.\nTask: ${chunk.prompt}\nAnswer: ${rb.output}\nReply YES if the answer is correct, otherwise NO and why.`, { maxTokens: 512 })
@@ -95,12 +98,15 @@ export class Worker {
     for (const c of st.chunks) {
       if (c.checkpoint || c.pending.length) continue;
       const chunk = st.problem.chunks.find((x) => x.key === c.key)!;
+      // Open searches with a witness answer are for agents and people (work_step), not blind model calls.
+      if (verifier.witness) continue;
       // Machine work (e.g. rebuilding a Lean proof) runs on computers that can do it, whatever their model size.
       if (verifier.work) { if (verifier.available && !verifier.available()) continue; }
       else if (chunk.needs.size !== 'any' && chunk.needs.size !== this.runner.size) continue;
       const taskId = await this.board.ensure(`[${problemId.slice(0, 12)}] ${chunk.title}`, { problem: problemId, chunk: c.key, size: chunk.needs.size });
       if (!verifier.work && !this.charge()) return 'paused';
       await this.board.claim(taskId, this.hub.node.agentId);
+      this.last = { problem: problemId, title: st.problem.title, step: chunk.title, did: 'worked', model: verifier.work ? `machine (${verifier.name})` : this.runner.id };
       let output: string, model = this.runner.id, family = this.runner.family;
       if (verifier.work) {
         try { output = await verifier.work(chunk.check); } catch (e) { output = `could not complete: ${(e as Error).message.slice(0, 2000)}`; }

@@ -26,11 +26,14 @@ export async function lendCard(slot) {
       <div class="row" style="margin-top:12px"><button class="btn primary" id="dk-ollama">Get Ollama</button><button class="btn ghost" id="dk-recheck">I’ve installed it</button></div>`;
     else if (missing.length) body = `<p class="muted" style="margin:0">One download and you’re ready: ${missing.map((m) => `<b>${esc(m.name)}</b> (~${m.needGB} GB)`).join(' and ')}. Free, open weights, and it stays on this computer.</p>
       <div class="row" style="margin-top:12px"><button class="btn primary" id="dk-pull">Download ${missing.length > 1 ? 'both' : 'it'}</button></div><div id="dk-progress" class="faint" style="font-size:13px;margin-top:8px"></div>`;
-    else body = `<p class="muted" style="margin:0">${on ? 'Lending this computer: it helps only while it’s idle and plugged in, and stops when you need it. Status and controls are below.' : `Ready: ${esc(sg?.primary?.name ?? s.settings.model)}${sg?.verifier ? ` with ${esc(sg.verifier.name)} as the checker` : ''}. It helps only while this computer is idle and plugged in.`}</p>
+    else body = `<p class="muted" style="margin:0">${on ? 'Lending this computer within the limits below. It stops when you need it.' : `Ready: ${esc(sg?.primary?.name ?? s.settings.model)}${sg?.verifier ? ` with ${esc(sg.verifier.name)} as the checker` : ''}. It helps only within the limits below, and only while this computer is idle. Off until you start it.`}</p>
       <div class="row" style="margin-top:12px"><button class="btn ${on ? '' : 'primary'}" id="dk-toggle" aria-pressed="${on}">${on ? 'Stop lending' : 'Start lending'}</button>
       <label class="row faint" style="gap:6px;font-size:13px"><input type="checkbox" id="dk-login" ${s.settings.openAtLogin ? 'checked' : ''}> Open at login</label></div>
       ${s.contribute?.state === 'failed' ? `<p class="faint" style="font-size:13px;color:var(--warn);margin:8px 0 0">${esc(s.contribute.error)}</p>` : ''}`;
-    slot.innerHTML = `<div class="card"><div class="spread"><b>This computer</b>${netLine(s.x0x)}</div><div style="margin-top:10px">${body}</div></div>`;
+    // The limits it lends within, set once, and a log of every step that ran (src/contributor/lend.ts).
+    const lg = desk.lendLog ? await desk.lendLog().catch(() => null) : null;
+    slot.innerHTML = `<div class="card"><div class="spread"><b>This computer</b>${netLine(s.x0x)}</div><div style="margin-top:10px">${body}</div>${lg ? limitsHtml(lg, on) : ''}</div>`;
+    wireLimits(slot, draw);
     $('#dk-ollama', slot)?.addEventListener('click', () => desk.getOllama());
     $('#dk-recheck', slot)?.addEventListener('click', draw);
     $('#dk-login', slot)?.addEventListener('change', (e) => desk.openAtLogin(e.target.checked));
@@ -49,6 +52,30 @@ export async function lendCard(slot) {
     });
   };
   await draw();
+}
+
+const hh = (h) => `${String(h).padStart(2, '0')}:00`;
+const ago = (iso) => { const m = Math.round((Date.now() - Date.parse(iso)) / 60000); return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : new Date(iso).toLocaleDateString(); };
+function limitsHtml(lg, on) {
+  const l = lg.limits;
+  const used = Math.round((lg.used_tonight_seconds / 3600) * 10) / 10;
+  const opt = (v, cur, label) => `<option value="${v}"${v === cur ? ' selected' : ''}>${label}</option>`;
+  return `<div class="device-fields" id="dk-limits" style="margin-top:14px">
+      <label>Starts at<select id="lim-start">${Array.from({ length: 24 }, (_, h) => opt(h, l.nightStart, hh(h))).join('')}</select></label>
+      <label>Hours per night<select id="lim-hours">${[1, 2, 3, 4, 6, 8, 10, 12].map((h) => opt(h, l.hoursPerNight, `${h} h`)).join('')}</select></label>
+      <label>CPU cap<select id="lim-cpu">${[25, 50, 75, 100].map((c) => opt(c, l.cpuCapPct, c === 100 ? 'No cap' : `${c}%`)).join('')}</select></label>
+      <label style="display:flex;flex-direction:row;align-items:center;gap:8px;align-self:end"><input type="checkbox" id="lim-batt" ${l.neverOnBattery ? 'checked' : ''}> Never on battery</label>
+    </div>
+    <p class="faint" style="font-size:12.5px;margin:8px 0 0">From ${hh(l.nightStart)} to ${hh((l.nightStart + l.hoursPerNight) % 24)}, only while idle${l.neverOnBattery ? ' and plugged in' : ''}, using at most ${l.cpuCapPct}% of the time.${on ? ` Tonight: ${used} of ${l.hoursPerNight} h used.` : ''} Pledged to the network as ${l.hoursPerNight * 7} hours a week while it’s on; your votes count once that time is delivered as checked work.</p>
+    <h3 class="eyebrow" style="margin-top:14px">What ran</h3>
+    ${lg.log.length ? `<ul class="lend-log" style="list-style:none;padding:0;margin:6px 0 0;font-size:13px">${lg.log.slice(0, 12).map((e) => `<li class="spread" style="padding:6px 0;border-top:1px solid var(--line);gap:10px"><span>${e.did === 'checked' ? 'Checked' : 'Worked on'} <a href="#/p/${esc(e.problem)}">${esc(e.title)}</a> · ${esc(e.step)} <span class="faint">(${esc(e.model)}, ${e.seconds} s)</span></span><span class="faint" style="white-space:nowrap">${esc(e.outcome)} · ${ago(e.at)}</span></li>`).join('')}</ul>` : `<p class="faint" style="font-size:13px;margin:6px 0 0">Nothing yet. ${on ? 'Each step it takes will show here.' : 'Off: nothing runs until you start lending.'}</p>`}`;
+}
+function wireLimits(slot, redraw) {
+  const set = async (patch) => { await desk.lendLimits(patch); redraw(); };
+  $('#lim-start', slot)?.addEventListener('change', (e) => set({ nightStart: Number(e.target.value) }));
+  $('#lim-hours', slot)?.addEventListener('change', (e) => set({ hoursPerNight: Number(e.target.value) }));
+  $('#lim-cpu', slot)?.addEventListener('change', (e) => set({ cpuCapPct: Number(e.target.value) }));
+  $('#lim-batt', slot)?.addEventListener('change', (e) => set({ neverOnBattery: e.target.checked }));
 }
 
 /** One-click agent connections, plus the Claude Code command to copy. */
