@@ -326,6 +326,11 @@ Real money, **ready and off by default** (docs/MAINNET.md):
 - **Tested with the real x0x 0.48.1 release** (offline mode). The MCP server answered in about 0.3 s and the session joined in the background. A share made before joining went out over the real daemon, and a second session reused the same daemon. CI now runs that real-daemon gate too.
 - See docs/NETWORK.md.
 
+### Two-computer check, and 0.2.0 (Nov 8)
+- **`scripts/two-computer-check.mjs`:** on computer A, `share` joins the public x0x network the way an agent does and shares one failure with a random tag; on computer B, `wait <tag>` joins and polls `failures_search` until it arrives, then prints the delay. See docs/NETWORK.md.
+- **Tested** with two separate Constellate homes on the stand-in network (`test/gates/two_computer_check.test.ts`). The real two-computer run needs the owner.
+- **Version 0.2.0** (package, MCP server, registry entry, agent card), with notes in docs/releases/v0.2.0.md.
+
 ## Summary of what needs a human
 1. **Live x0x (blocks confidence in every phase):** run the gates against two real `x0xd` daemons. Confirm ML-DSA signature interop between `/agent/sign` and noble, `/stores` and `/task-lists` field names, contacts → pre-trusted operators, and Spaces/DMs for chat.
 2. **Gate 1 behaviour:** `ANTHROPIC_API_KEY=… npx tsx evals/gate1.ts 3`.
@@ -337,8 +342,9 @@ Real money, **ready and off by default** (docs/MAINNET.md):
 8. **Gate 6 for real:** five first-time users, unaided, timed to first contribution.
 9. **Open questions from the sketch, with current defaults:** hub name (working name "Constellate"); MCP server runs locally per agent; deposit and pricing levels (test values only); scrubbing strictness (strict by default in `fromEnv`, preview on); humans can browse the ledger (public reads); reputation bootstraps without a paywall (pre-trusted seeds plus confirming work; deposits optional).
 10. **Desktop release:** `v0.1.0` is tagged (Nov 7) and its release drafted by the Desktop workflow; review it and publish. Code-signing certificates (Apple Developer ID, Windows) would remove first-launch warnings. Check the app's x0x on a real home network.
-11. **npm 0.1.1:** the version is bumped. Once it's on main, `npm publish` (security-key sign-in), then `mcp-publisher publish` for the MCP Registry entry. The ClawHub skill text hasn't changed, so it stays at 0.1.0.
+11. **npm 0.2.0:** the version is bumped (0.1.1 was never published). Once it's on main, `npm publish` (security-key sign-in), then `mcp-publisher publish` for the MCP Registry entry, and push the tag `v0.2.0` (docs/releases/v0.2.0.md). The ClawHub skill text hasn't changed, so it stays at 0.1.0.
 12. **Listings that need the owner's sign-in** (`distribution/LISTINGS.md`): Glama (then the `punkpeye/awesome-mcp-servers` pull request, which needs Glama's badge), cursor.directory, and the mcpservers.org form (it asks for a contact email). Decide whether to turn on GitHub's private vulnerability reporting; Docker's pull request template asks for a security contact.
+13. **Two-computer check:** run `node scripts/two-computer-check.mjs share` on one computer and `… wait <tag>` on another (docs/NETWORK.md), and note the delay.
 
 ## Amendment 1 (Nov 6, 2026)
 Folded into the existing phases; no completed phase was restarted. DESIGN.md (updated Nov 6) is now in the repo and the build was checked against it (see below).

@@ -37,7 +37,7 @@ export function createMcpServer(hub: Hub, opts: { mode?: 'lean' | 'full' } = {})
   const mode = opts.mode ?? mcpMode();
   // The map (docs/MEMORY.md): a small briefing of the best-supported rules, given at the start of every session.
   const map = hub.pages.brief({ domains: [...new Set(hub.node.store.all().filter((s) => s.operatorId === hub.node.operatorId).flatMap((s) => s.rec.context.domain))].slice(0, 20) });
-  const server = new McpServer({ name: 'constellate', version: '0.1.1' }, { instructions: `${hub.node.readOnly ? PRIVATE_INSTRUCTIONS : SERVER_INSTRUCTIONS}${map ? `\n\n${map}` : ''}` });
+  const server = new McpServer({ name: 'constellate', version: '0.2.0' }, { instructions: `${hub.node.readOnly ? PRIVATE_INSTRUCTIONS : SERVER_INSTRUCTIONS}${map ? `\n\n${map}` : ''}` });
   // Work requests ("Have your agent work on it"): with MCP sampling, this agent's own model does the steps.
   const workRequests = new WorkRequests();
   let shownIncoming = hub.people.incoming().length, toldNetwork = '';
