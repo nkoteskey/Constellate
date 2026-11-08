@@ -20,7 +20,9 @@ RUN npm run build && node desktop/scripts/starter.mjs starter/starter.cbor && np
 
 FROM node:22-slim
 WORKDIR /app
-ENV NODE_ENV=production CONSTELLATE_HOME=/data
+# In a container (MCP directories start it to list the tools), x0x isn't set up on its own: the agent gets
+# network_join to join when it's really used (docs/NETWORK.md).
+ENV NODE_ENV=production CONSTELLATE_HOME=/data CONSTELLATE_X0X=ask
 COPY --from=build /app/package.json ./
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist

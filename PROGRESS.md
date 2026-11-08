@@ -295,6 +295,37 @@ Real money, **ready and off by default** (docs/MAINNET.md):
 - **Only open work:** problems the constitution has cleared, unanswered steps, and never steps the machine does itself.
 - See docs/AGENT_STEPS.md. The default tool list is now nine tools, about 2,400 tokens.
 
+### Sealed mailbox for people who are offline (Nov 8)
+- **Sealing:** when x0x can't reach someone, a direct message is sealed so only they can read it (ML-KEM-768, then XChaCha20-Poly1305) and left in the x0x store `constellate.mailbox.v1`.
+- **Collecting:** their app collects it the next time it's online, within 14 days.
+- **Senders:** the self-keyed store means a letter can't be left in someone else's name.
+- **Visible to others:** that a letter exists for a recipient tag, and when; never its contents.
+- See docs/MAILBOX.md. Tested on the stand-in x0x network; the live network still needs checking with two computers.
+
+### Names, which agent made what, and agents working from the problem page (Nov 8)
+- **Records say which agent made them.** The new optional field `context.agent` holds `{ client, model? }`, stamped by the MCP server. Set the model with `CONSTELLATE_AGENT_MODEL`; `work_step` and sampling record it themselves. Older nodes still verify these records.
+- **Names on problem pages:** Live reasoning, Conversation and record details show a person's @handle and the agent's name instead of an id, plus "· Claude Code · model" where known.
+- **Naming the agent:** the Me page has "Your agent" to name this computer's agent. The name survives restarts; the app used to republish its profile without it.
+- **"Have your agent work on it" on the problem page:**
+  - Ask your connected agents: works for any agent, through MCP sampling where the client supports it, otherwise as a note in its next Constellate reply.
+  - Start Claude Code in the background.
+  - Paste a line to any agent yourself.
+- See docs/AGENT_STEPS.md.
+
+### People who use Constellate only through an agent (Nov 8)
+- **Shares made offline weren't reaching anyone.** What an agent shared while running without x0x stayed on its computer for good. It now goes out the next time Constellate starts with x0x, once each. The agent is told once that it's offline.
+- **MCP-only users can be reached.** With x0x, the agent's process publishes a profile marked "Uses Constellate through an agent". It collects direct messages and sealed letters when the app isn't running, and passes them to the agent with its next reply.
+- **Catch-up.** The agent's process also answers other computers' catch-up requests.
+
+### The network for npm users (Nov 8)
+- **Joins on its own.** `npx constellate-mcp mcp` sets up the x0x daemon in the background the first time it runs. It uses the same pinned release and committed SHA-256 sums as the desktop app, and a download that doesn't match is refused.
+- **Runs in the background.** The daemon is shared by every agent on the computer and restarted if it stops. If the desktop app's x0x is already running, Constellate uses that instead.
+- **No restart.** The running session switches onto the network: offline shares go out, it catches up from other computers, and its profile and mailbox switch on.
+- **The agent is told in plain words:** "The x0x daemon connects you to global agentic knowledge graphs…".
+- **Controls:** `CONSTELLATE_X0X=off|ask`, and `constellate network join|status|leave`. The Docker image uses `ask`.
+- **Tested with the real x0x 0.48.1 release** (offline mode). The MCP server answered in about 0.3 s and the session joined in the background. A share made before joining went out over the real daemon, and a second session reused the same daemon. CI now runs that real-daemon gate too.
+- See docs/NETWORK.md.
+
 ## Summary of what needs a human
 1. **Live x0x (blocks confidence in every phase):** run the gates against two real `x0xd` daemons. Confirm ML-DSA signature interop between `/agent/sign` and noble, `/stores` and `/task-lists` field names, contacts → pre-trusted operators, and Spaces/DMs for chat.
 2. **Gate 1 behaviour:** `ANTHROPIC_API_KEY=… npx tsx evals/gate1.ts 3`.

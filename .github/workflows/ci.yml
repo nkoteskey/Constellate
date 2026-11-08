@@ -20,6 +20,10 @@ jobs:
       - run: npm run typecheck
       - name: Install Chromium for the Phase 6 browser gate
         run: npm install --no-save playwright@1.63.0 && npx playwright install --with-deps chromium
+      # The real x0x daemon for the network gate (test/gates/network_setup.test.ts): the pinned release, which
+      # Constellate checks against its committed SHA-256 before running it.
+      - name: Fetch the pinned x0x release for the network gate
+        run: curl -fsSL -o "$RUNNER_TEMP/x0x-linux-x64-gnu.tar.gz" https://github.com/saorsa-labs/x0x/releases/download/v0.48.1/x0x-linux-x64-gnu.tar.gz && echo "CONSTELLATE_TEST_X0X_ARCHIVE=$RUNNER_TEMP/x0x-linux-x64-gnu.tar.gz" >> "$GITHUB_ENV"
       - run: npm test
 
   # The image MCP directories run (Docker MCP Catalog, Glama): build it, then check it answers a

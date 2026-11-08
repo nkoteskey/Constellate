@@ -44,6 +44,8 @@ export const ContextSchema = z.object({
   domain: z.array(z.string().max(48)).max(12),
   environment: z.string().max(500).default(''),
   inputs_hash: z.string().regex(/^[0-9a-f]{64}$/).optional(),
+  /** Which agent made it, e.g. { client: 'Claude Code', model: 'claude-sonnet-4.5' } (src/mcp/server.ts sets it). */
+  agent: z.object({ client: z.string().max(60), model: z.string().max(80).optional() }).optional(),
 });
 export type RecordContext = z.infer<typeof ContextSchema>;
 

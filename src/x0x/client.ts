@@ -147,6 +147,7 @@ export class X0xClient {
     try { return fromB64((await this.req<{ value: string }>('GET', `/stores/${encodeURIComponent(topic)}/${encodeURIComponent(key)}`)).value); }
     catch (e) { if (e instanceof X0xError && e.status === 404) return null; throw e; }
   }
+  directoryDelete(topic: string, key: string) { return this.req('DELETE', `/stores/${encodeURIComponent(topic)}/${encodeURIComponent(key)}`); }
   async directoryKeys(topic: string): Promise<string[]> {
     const j = await this.req<{ keys: ({ key: string } | string)[] }>('GET', `/stores/${encodeURIComponent(topic)}/keys`);
     return (j.keys ?? []).map((k) => (typeof k === 'string' ? k : k.key));

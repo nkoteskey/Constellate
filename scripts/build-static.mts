@@ -82,7 +82,7 @@ const skills = store.ofKind('skill').map((s) => { const b = s.rec.body as { name
 write('api/ledger.json', { built: new Date().toISOString(), records: ledger, learned, skills });
 
 // ── App files ──────────────────────────────────────────────────────
-for (const f of ['app.js', 'identity.js', 'logo.svg', 'style.css', 'embed.html', 'js', 'fonts', 'llms.txt']) cpSync(join(pub, f), join(out, f), { recursive: true });
+for (const f of ['app.js', 'identity.js', 'logo.svg', 'style.css', 'embed.html', 'js', 'fonts', 'llms.txt', 'constitution.md']) cpSync(join(pub, f), join(out, f), { recursive: true });
 // The agent skill file, so agents (and people) can read how to use Constellate from the site.
 cpSync(join(root, 'distribution/SKILL.md'), join(out, 'SKILL.md'));
 let html = readFileSync(join(pub, 'index.html'), 'utf8')

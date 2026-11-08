@@ -15,6 +15,26 @@ with its own model, the same way a lent computer does. One tool, `work_step`, in
    and gives its own judgement. If both pass, the step becomes a verified checkpoint. If not, it's rejected
    with a reason, and the agent sees that the next time it calls `work_step`.
 
+## "Have your agent work on it" (the problem page)
+
+Three ways, for whatever agent and model the person uses:
+
+1. **Ask your connected agents.** The app leaves a work request on this computer (`src/work/work-requests.ts`).
+   Every connected agent's Constellate process picks it up in one of two ways:
+   - **With MCP sampling.** If the agent's client supports MCP sampling (VS Code, for example), it asks the
+     agent's own model to do the steps straight away and submits each answer, recording the model the client
+     reports.
+   - **Without it.** Any other agent (Claude Desktop, Cursor, Claude Code…) finds the request in the next reply
+     to any Constellate tool it calls, once per agent, and answers with `work_step`.
+
+   The request's log shows who took it and which steps they answered.
+2. **Claude Code on this computer.** The app starts Claude Code in the background with only Constellate's tools
+   (`src/work/agent-runs.ts`), and shows each search and answer as it happens.
+3. **Tell an agent yourself.** One line to paste to any agent.
+
+Every answer records which agent and model made it (`context.agent`), and still has to pass a different model
+family's check.
+
 ## The rules
 
 - **No marking its own work.** The answer counts as the family of the model that wrote it, taken from `model`

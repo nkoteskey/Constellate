@@ -1,6 +1,10 @@
 import { Hub } from '../hub/hub.js';
 import { StoredRecord } from '../store/records.js';
 import { toB64, utf8 } from '../util/bytes.js';
+import { X0xError } from '../x0x/client.js';
+
+/** Errors that mean "they're not reachable right now", so a sealed letter can wait for them instead. */
+const UNREACHABLE = new Set(['recipient_key_unavailable', 'timeout', 'recipient_offline', 'peer_unreachable', 'no_route']);
 
 /**
  * People and conversation between any mix of humans and agents.
@@ -11,7 +15,7 @@ import { toB64, utf8 } from '../util/bytes.js';
  * - Discovery: find people by realm, problem and interest, with what they contributed.
  */
 const isHuman = (s: StoredRecord) => /^human\b/.test(s.rec.context.environment);
-export interface Mail { from: string; to: string; text: string; at: string; via: 'x0x' | 'demo'; out?: boolean }
+export interface Mail { from: string; to: string; text: string; at: string; via: 'x0x' | 'demo' | 'mailbox'; out?: boolean; /** Sealed in their mailbox, waiting for them to come online. */ waiting?: boolean }
 /** The demo network's shared mailbox: every demo hub lives in one process, so this stands in for x0x DMs. */
 const DEMO_MAIL: Mail[] = [];
 
@@ -25,7 +29,7 @@ export class People {
 
   chat(problemId: string, limit = 50) {
     return this.hub.node.store.referencing(problemId, 'message').sort((a, b) => a.rec.created.localeCompare(b.rec.created)).slice(-limit)
-      .map((m) => ({ id: m.rec.id, from: m.rec.agent_id, operator: m.operatorId, human: isHuman(m), text: (m.rec.body as { text: string }).text, at: m.rec.created }));
+      .map((m) => ({ id: m.rec.id, from: m.rec.agent_id, operator: m.operatorId, human: isHuman(m), text: (m.rec.body as { text: string }).text, at: m.rec.created, agent: m.rec.context.agent ?? null }));
   }
 
   /** Private DM over x0x. Not stored as a record and never gossiped. */
@@ -33,9 +37,19 @@ export class People {
     const msg = { from: opts.from ?? this.hub.node.agentId, to: agentId, text: text.slice(0, 2000), at: new Date().toISOString() };
     if (this.hub.x0x) {
       // Sent from this computer's x0x identity; kept in the sender's own thread so they see it went.
-      const { receipt } = await this.hub.x0x.sendDirect(agentId, toB64(utf8(JSON.stringify({ app: 'constellate', type: 'dm', text: msg.text }))));
-      this.mailbox.push({ ...msg, via: 'x0x', out: true });
-      return { ok: true, via: 'x0x' as const, receipt };
+      try {
+        const { receipt } = await this.hub.x0x.sendDirect(agentId, toB64(utf8(JSON.stringify({ app: 'constellate', type: 'dm', text: msg.text }))));
+        this.mailbox.push({ ...msg, via: 'x0x', out: true });
+        return { ok: true, via: 'x0x' as const, receipt };
+      } catch (e) {
+        // They're offline or out of reach: seal it into their mailbox, to collect when they're next online.
+        if (!(e instanceof X0xError && UNREACHABLE.has(e.code))) throw e;
+        // No mailbox to leave it in (they never ran a Constellate with one, or don't exist): the original reason stands.
+        const letter = await this.hub.mailbox.leave(agentId, msg.text).catch(() => null);
+        if (!letter) throw e;
+        this.mailbox.push({ ...msg, via: 'mailbox', out: true, waiting: true });
+        return { ok: true, via: 'mailbox' as const, expires: letter.expires };
+      }
     }
     if (process.env.CONSTELLATE_DEMO === '1') { DEMO_MAIL.push({ ...msg, via: 'demo' }); return { ok: true, via: 'demo' as const }; }
     throw new Error('direct messages need a running x0x daemon');
@@ -71,6 +85,16 @@ export class People {
       const j = JSON.parse(Buffer.from(payloadB64, 'base64').toString('utf8')) as { app?: string; type?: string; text?: string };
       if (j.app === 'constellate' && j.type === 'dm' && typeof j.text === 'string') this.mailbox.push({ from, to: this.hub.node.agentId, text: j.text.slice(0, 2000), at: new Date().toISOString(), via: 'x0x' });
     } catch { /* not ours */ }
+  }
+
+  /** Messages that came in to this computer (newest last): for an agent without the app, what to pass on. */
+  incoming() { return this.mailbox.filter((m) => !m.out); }
+
+  /** Sealed letters collected from this computer's x0x mailbox (src/collab/mailbox.ts) join the conversations. */
+  async collectMail() {
+    const letters = await this.hub.mailbox.collect().catch(() => []);
+    for (const l of letters) this.mailbox.push({ from: l.from, to: this.hub.node.agentId, text: l.text, at: l.at, via: 'mailbox' });
+    return letters.length;
   }
 
   private mailbox: Mail[] = [];

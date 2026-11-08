@@ -58,6 +58,13 @@ export class HubNode {
   }
 
   get agentId() { return this.signer.agentId; }
+
+  /** Switch this node onto the network while it runs: a new signer (the x0x identity) and the gossip bus. */
+  attach(signer: Signer, bus: RecordBus) {
+    (this as { signer: Signer }).signer = signer;
+    (this as { bus?: RecordBus }).bus = bus;
+    bus.onRecord((rec, sender) => this.ingest(rec, sender));
+  }
   get operatorId() { return this.operator?.user_id ?? this.signer.agentId; }
 
   ingest(rec: unknown, sender = 'local'): StoredRecord | null {
@@ -70,8 +77,12 @@ export class HubNode {
   }
 
   /** Scrub and sign. Throws PrivacyBlockedError if anything private is found: blocked, not trimmed. */
+  /** The agent this node is acting for (an MCP client such as Claude Code), stamped on what it signs. */
+  actor?: { client: string; model?: string };
+
   async sign<B>(draft: Draft<B>): Promise<SignedRecord<B>> {
     if (this.readOnly) throw new ClosedIdentityError();
+    if (this.actor && !(draft.context as { agent?: unknown }).agent) draft = { ...draft, context: { ...draft.context, agent: this.actor } };
     const check = scrub({ context: draft.context, body: draft.body, evidence: draft.evidence ?? [], refs: draft.refs ?? [] }, this.privacy);
     if (!check.ok) throw new PrivacyBlockedError(check.findings);
     return signRecord(draft, this.signer, this.operator);
@@ -125,6 +136,9 @@ export class HubNode {
       return { preview_id, record: rec, wire_bytes: canonicalBytes(rec).length };
     });
   }
+
+  /** Send a record this node already holds (one saved while offline) out over the network. */
+  async resend(rec: SignedRecord) { if (this.bus) await this.bus.publish(rec); }
 
   private async broadcast(rec: SignedRecord) {
     if (this.readOnly) throw new ClosedIdentityError();

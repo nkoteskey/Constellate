@@ -1,8 +1,20 @@
-import { ActivityLog } from '../hub/activity.js';
+import { ActivityLog, clientName } from '../hub/activity.js';
+import { WorkRequests, requestNote, workWithSampling } from '../work/work-requests.js';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { Hub } from '../hub/hub.js';
 import { tool } from './tools.js';
+import { joinNetwork, NETWORK_LINE } from '../x0x/join.js';
+import { networkChoice } from '../x0x/managed.js';
+
+/** What to tell the agent about the network, in plain words, for where this computer stands now. */
+export function networkNote(hub: Hub): string {
+  if (hub.x0x) return 'Connected to the x0x network: new failures, fixes and skills from other agents arrive here, and what you share reaches them (anything shared while offline goes out too).';
+  if (networkChoice() === 'off') return 'Not on the network (turned off on this computer with CONSTELLATE_X0X=off): what you share stays here, and searches use what this computer already has.';
+  if (hub.network.state === 'joining') return `${NETWORK_LINE} Setting it up now (once, about 35 MB, checked against its pinned checksum); this session joins as soon as it's ready. Until then, searches use what this computer already has. To turn it off: CONSTELLATE_X0X=off.`;
+  if (hub.network.state === 'failed') return `Couldn't join the x0x network (${hub.network.detail}). Working from this computer for now; call network_join to try again.`;
+  return `Not on the x0x network yet. ${NETWORK_LINE} Call network_join to join; until then what you share stays on this computer.`;
+}
 import { registerServiceTools, registerTrustTools, registerWorkTools, registerCollectiveTools, registerEconomyTools, registerMemoryTools, registerGraphTools, registerCollabTools, registerPeopleTools } from './services.js';
 
 export const SERVER_INSTRUCTIONS = `Constellate is shared memory, on x0x, of what other agents already tried and what held up.
@@ -26,6 +38,23 @@ export function createMcpServer(hub: Hub, opts: { mode?: 'lean' | 'full' } = {})
   // The map (docs/MEMORY.md): a small briefing of the best-supported rules, given at the start of every session.
   const map = hub.pages.brief({ domains: [...new Set(hub.node.store.all().filter((s) => s.operatorId === hub.node.operatorId).flatMap((s) => s.rec.context.domain))].slice(0, 20) });
   const server = new McpServer({ name: 'constellate', version: '0.1.1' }, { instructions: `${hub.node.readOnly ? PRIVATE_INSTRUCTIONS : SERVER_INSTRUCTIONS}${map ? `\n\n${map}` : ''}` });
+  // Work requests ("Have your agent work on it"): with MCP sampling, this agent's own model does the steps.
+  const workRequests = new WorkRequests();
+  let shownIncoming = hub.people.incoming().length, toldNetwork = '';
+  const sampling = () => !!server.server.getClientCapabilities()?.sampling;
+  let samplingBusy = false;
+  const workBySampling = async () => {
+    if (samplingBusy || !sampling() || hub.node.readOnly) return;
+    samplingBusy = true;
+    try {
+      const by = clientName(server.server.getClientVersion()?.name);
+      await workWithSampling(hub, workRequests, by, async (prompt) => {
+        const r = await server.server.createMessage({ messages: [{ role: 'user', content: { type: 'text', text: prompt } }], maxTokens: 2000 });
+        return { text: r.content.type === 'text' ? r.content.text : '', model: r.model || by };
+      });
+    } finally { samplingBusy = false; }
+  };
+  server.server.oninitialized = () => { void workBySampling().catch(() => {}); setInterval(() => void workBySampling().catch(() => {}), 15_000).unref(); };
   // Instrumentation: count, per connection, whether agents look before they act (stays on this node).
   const session = Math.random().toString(36).slice(2);
   const activity = new ActivityLog();
@@ -33,7 +62,44 @@ export function createMcpServer(hub: Hub, opts: { mode?: 'lean' | 'full' } = {})
   (server as { registerTool: unknown }).registerTool = ((name: string, cfg: never, cb: (...a: unknown[]) => unknown) =>
     mode === 'lean' && !LEAN_TOOLS.has(name) ? undefined : reg0(name, cfg, (async (...a: unknown[]) => {
       hub.metrics.toolCall(session, name);
-      const out = await cb(...a);
+      // What it shares says which agent made it (and the model, when CONSTELLATE_AGENT_MODEL names it).
+      const client = server.server.getClientVersion()?.name;
+      if (client) hub.node.actor = { client: clientName(client), ...(process.env.CONSTELLATE_AGENT_MODEL ? { model: process.env.CONSTELLATE_AGENT_MODEL.slice(0, 80) } : {}) };
+      let out = await cb(...a);
+      // Things the agent should know, added once to its next reply: messages for this computer, and being offline.
+      const extra: Record<string, unknown> = {};
+      const inbox = hub.people.incoming();
+      if (inbox.length > shownIncoming) {
+        extra.messages = inbox.slice(shownIncoming).slice(-5).map((m) => ({ from: m.from, text: m.text, at: m.at, ...(m.via === 'mailbox' ? { left_while_offline: true } : {}) }));
+        extra.messages_note = 'Messages sent to this computer on Constellate. Tell your person; to reply, use dm_send (full tool set) or the Constellate app.';
+        shownIncoming = inbox.length;
+      }
+      // Where this computer stands with the network, in plain words, once each time it changes (docs/NETWORK.md).
+      const net = networkNote(hub);
+      if (net && net !== toldNetwork && !hub.node.readOnly) { toldNetwork = net; extra.network = net; }
+      if (Object.keys(extra).length) {
+        const res = out as { content?: { type: string; text?: string }[] };
+        const text = res.content?.[0]?.text;
+        if (typeof text === 'string') {
+          try { const j = JSON.parse(text); res.content![0].text = JSON.stringify(j && typeof j === 'object' && !Array.isArray(j) ? { ...j, ...extra } : { result: j, ...extra }); }
+          catch { res.content![0].text = `${text}\n\n${JSON.stringify(extra)}`; }
+          out = res;
+        }
+      }
+      // A request from this person for their agents to work on a problem: put it in front of this agent once
+      // per request, with its next reply (agents that support sampling do it on their own; see below).
+      if (!sampling()) {
+        const req = workRequests.open().find((r) => r.status === 'waiting');
+        if (req && client && workRequests.offer(req.id, clientName(client))) {
+          const res = out as { content?: { type: string; text?: string }[] };
+          const text = res.content?.[0]?.text;
+          if (typeof text === 'string') {
+            try { const j = JSON.parse(text); res.content![0].text = JSON.stringify(j && typeof j === 'object' && !Array.isArray(j) ? { ...j, person_asked: requestNote(req) } : { result: j, person_asked: requestNote(req) }); }
+            catch { res.content![0].text = `${text}\n\n${requestNote(req)}`; }
+            out = res;
+          }
+        }
+      }
       // What this agent did, for the person's own app ("Claude Code checked the network 14 times"): local, no query text.
       let parsed: unknown;
       try { parsed = JSON.parse((out as { content?: { text?: string }[] }).content?.[0]?.text ?? 'null'); } catch { parsed = undefined; }
@@ -61,6 +127,13 @@ export function createMcpServer(hub: Hub, opts: { mode?: 'lean' | 'full' } = {})
   tool(server, 'hub_discard', 'Discard a preview without publishing it.', { preview_id: z.string() }, ({ preview_id }) => { hub.node.discard(preview_id); return { discarded: preview_id }; });
 
   registerServiceTools(server, hub);
+  // Not on the network (or it didn't work): one tool to join, or try again. Listed only then.
+  if (!hub.x0x && !hub.node.readOnly && networkChoice() !== 'off') {
+    tool(server, 'network_join',
+      `Join the Constellate network, or try again. ${NETWORK_LINE} Sets up and starts the x0x daemon on this computer (once), then this session joins without a restart. Free.`,
+      {},
+      async () => { const r = await joinNetwork(hub); return { ...r, note: networkNote(hub) }; });
+  }
   registerTrustTools(server, hub);
   registerWorkTools(server, hub);
   registerCollectiveTools(server, hub);

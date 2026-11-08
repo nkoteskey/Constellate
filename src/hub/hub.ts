@@ -1,3 +1,8 @@
+import { Mailbox } from '../collab/mailbox.js';
+import { ManagedX0x, networkChoice } from '../x0x/managed.js';
+import { joinNetwork } from '../x0x/join.js';
+import { AgentRuns } from '../work/agent-runs.js';
+import { WorkRequests } from '../work/work-requests.js';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { HubNode } from './node.js';
@@ -57,6 +62,25 @@ export class Hub {
   readonly node: HubNode;
   readonly archive: Archive;
   readonly x0x?: X0xClient;
+  /** Where this computer stands with the network (src/x0x/join.ts); the MCP server tells the agent when it changes. */
+  network: { state: 'offline' | 'joining' | 'online' | 'failed'; detail: string } = { state: 'offline', detail: '' };
+  private onlineHooks: ((h: Hub) => void)[] = [];
+  /** Run `cb` once this hub is on the network: now if it already is, else when it joins. */
+  onOnline(cb: (h: Hub) => void) { if (this.x0x) cb(this); else this.onlineHooks.push(cb); }
+
+  /** Join the network while running (no restart): the x0x identity signs from now on; offline shares go out. */
+  async goOnline(x0x: X0xClient, home = process.env.CONSTELLATE_HOME ?? join(homedir(), '.constellate')) {
+    if (this.x0x) return false;
+    const signer = await DaemonSigner.connect(x0x);
+    const bus = await X0xBus.connect(x0x);
+    (this as { x0x?: X0xClient }).x0x = x0x;
+    (this.live as unknown as { x0x?: X0xClient }).x0x = x0x;
+    this.node.attach(signer, bus);
+    this.network = { state: 'online', detail: 'Connected to the x0x network.' };
+    for (const cb of this.onlineHooks.splice(0)) { try { cb(this); } catch { /* one hook never stops the rest */ } }
+    setTimeout(() => void this.sendOfflineShares(home).catch(() => {}), 1_000).unref?.();
+    return true;
+  }
   readonly live: LiveState;
   trust: TrustModel;
   readonly reputation: Reputation;
@@ -95,6 +119,32 @@ export class Hub {
   private _x0xSkills?: X0xSkills;
   /** Skills across x0x: published to and pulled from a public x0x data store (docs/X0X_SKILLS.md). */
   get x0xSkills() { return (this._x0xSkills ??= new X0xSkills(this)); }
+  private _mailbox?: Mailbox;
+  /** Sealed letters for people who are offline (docs/MAILBOX.md). */
+  /**
+   * Records shared while this computer ran without x0x are signed with its offline key and kept here; send
+   * each public one out once, now that the network is reachable. Returns how many went out.
+   */
+  async sendOfflineShares(home = process.env.CONSTELLATE_HOME ?? join(homedir(), '.constellate')) {
+    const { existsSync, readFileSync, writeFileSync } = await import('node:fs');
+    const keyFile = join(home, 'agent.key'), sentFile = join(home, 'offline-sent.json');
+    if (!this.x0x || !existsSync(keyFile)) return 0;
+    const offlineId = LocalSigner.loadOrCreate(keyFile).agentId;
+    if (offlineId === this.node.agentId) return 0;
+    let sent: Set<string>; try { sent = new Set(JSON.parse(readFileSync(sentFile, 'utf8')) as string[]); } catch { sent = new Set(); }
+    const due = this.node.store.all().filter((s) => s.visibility === 'public' && s.rec.agent_id === offlineId && !sent.has(s.rec.id));
+    let n = 0;
+    for (const s of due) { try { await this.node.resend(s.rec); sent.add(s.rec.id); n++; } catch { /* next time */ } }
+    writeFileSync(sentFile, JSON.stringify([...sent]));
+    return n;
+  }
+  get mailbox() { return (this._mailbox ??= new Mailbox(this)); }
+  private _agentRuns?: AgentRuns;
+  /** Claude Code on this computer taking steps of a problem, started from the app (src/work/agent-runs.ts). */
+  get agentRuns() { return (this._agentRuns ??= new AgentRuns(this)); }
+  private _workRequests?: WorkRequests;
+  /** Requests for the agents connected on this computer to work on a problem (src/work/work-requests.ts). */
+  get workRequests() { return (this._workRequests ??= new WorkRequests()); }
   private _pages?: Pages;
   /** Topic pages, the session map and dreaming (docs/MEMORY.md). */
   get pages() { return (this._pages ??= new Pages(this)); }
@@ -187,8 +237,19 @@ export class Hub {
     const memoryKey = MemoryKey.loadOrCreate(join(home, 'memory.key'));
     const privacy: ScrubOptions = { level: env.CONSTELLATE_PRIVACY === 'standard' ? 'standard' : 'strict', denyTerms: (env.CONSTELLATE_DENY_TERMS ?? '').split(',').filter(Boolean) };
     const preview = env.CONSTELLATE_PREVIEW !== 'off';
-    const x0x = new X0xClient(env.X0X_API, env.X0X_TOKEN, env.X0X_DATA_DIR);
     const say = (l: string) => { if (env.CONSTELLATE_QUIET !== '1') console.error(l); };
+    // An x0x the person set up themselves (X0X_API / X0X_DATA_DIR, or one at the default address) comes first.
+    // Otherwise, a daemon this computer already runs for Constellate (the desktop app's, or ours) is used if it's up.
+    const configured = !!(env.X0X_API || env.X0X_DATA_DIR);
+    let x0x = new X0xClient(env.X0X_API, env.X0X_TOKEN, env.X0X_DATA_DIR);
+    if (!configured && networkChoice(env) !== 'off') {
+      const atDefault = await (x0x.timeoutMs = 1500, x0x.health().then(() => true, () => false));
+      if (!atDefault) {
+        const managed = new ManagedX0x(home);
+        const up = await managed.running().catch(() => null);
+        if (up) { x0x = new X0xClient(undefined, undefined, up.dir); managed.keepAlive(up.dir); }
+      }
+    }
     // A daemon that is up but busy (joining the network) can be slow to answer at first: a few tries, saying so.
     let reachable = false;
     x0x.timeoutMs = Number(env.CONSTELLATE_X0X_START_TIMEOUT_MS ?? 8000);
@@ -200,7 +261,10 @@ export class Hub {
         const bus = await X0xBus.connect(x0x);
         say(`Connected to x0x as ${signer.agentId.slice(0, 8)}.`);
         x0x.timeoutMs = undefined;
-        return new Hub({ signer, store, bus, archive, x0x, privacy, preview, memoryKey });
+        const hub = new Hub({ signer, store, bus, archive, x0x, privacy, preview, memoryKey });
+        // What was shared while Constellate ran without x0x (signed with this computer's offline key) goes out now.
+        setTimeout(() => void hub.sendOfflineShares(home).catch(() => {}), 3_000).unref?.();
+        return hub;
       } catch (e) {
         if (!reachable) break; // no daemon at all: carry on without one, as before
         say(`x0x is slow to answer (${(e as Error).message}); trying again…`);
@@ -209,6 +273,13 @@ export class Hub {
     }
     x0x.timeoutMs = undefined;
     if (reachable) say('x0x didn’t answer in time: starting without the network for now. Restart Constellate to try again.');
-    return new Hub({ signer: LocalSigner.loadOrCreate(join(home, 'agent.key')), store, archive, privacy, preview, memoryKey });
+    const hub = new Hub({ signer: LocalSigner.loadOrCreate(join(home, 'agent.key')), store, archive, privacy, preview, memoryKey });
+    // No x0x configured or answering: set up this computer's own (docs/NETWORK.md) in the background, so the agent
+    // never waits on it; the hub switches onto the network as soon as it's ready. CONSTELLATE_X0X=off opts out.
+    if (!configured && !reachable && networkChoice(env) === 'auto' && !new ManagedX0x(home).disabled && env.CONSTELLATE_X0X_AUTOJOIN !== '0') {
+      hub.network = { state: 'joining', detail: 'Setting up the x0x daemon.' };
+      setTimeout(() => void joinNetwork(hub, { home, env, log: say }).catch((e: Error) => say(`Couldn’t join the network: ${e.message}`)), 50).unref?.();
+    }
+    return hub;
   }
 }

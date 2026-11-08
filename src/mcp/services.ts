@@ -111,6 +111,9 @@ export function registerWorkTools(server: McpServer, hub: Hub) {
       }
       if (!problem) throw new Error('say which problem');
       const r = await submitStep(hub, { problem, step, answer, model, client });
+      // Answering a step its person asked for: the request shows it.
+      const req = hub.workRequests.open().find((x) => x.problem === problem);
+      if (req) { const by = agentName(client); hub.workRequests.take(req.id, by); hub.workRequests.answered(req.id, step, model?.trim() || by); }
       return { submitted: r.result, next: `Published. A computer running a model that isn't ${r.family} checks it; call work_step later to see how it went.` };
     });
 }

@@ -1,7 +1,7 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { decodeCanonical } from '../core/canonical.js';
-import { ActivityLog } from '../hub/activity.js';
+import { ActivityLog, Presence } from '../hub/activity.js';
 import { X0xError, directSendProblem } from '../x0x/client.js';
 import { agentName, Planner } from '../collective/planner.js';
 import { openBundle, isBundle } from '../store/bundle.js';
@@ -184,7 +184,7 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
     const s = await hub.problems.summary(m[1]);
     const recent = hub.node.store.referencing(m[1]).filter((r) => r.visibility === 'public').sort((a, b) => b.rec.created.localeCompare(a.rec.created)).slice(0, 40).map((r) => {
       const b = r.rec.body as { chunk?: string; family?: string; verifier_family?: string; ok?: boolean };
-      return { id: r.rec.id, kind: r.rec.kind, at: r.rec.created, by: isHuman(r) ? 'human' : 'agent', who: r.rec.agent_id, says: describe(r), chunk: b.chunk, family: b.verifier_family ?? b.family };
+      return { id: r.rec.id, kind: r.rec.kind, at: r.rec.created, by: isHuman(r) ? 'human' : 'agent', who: r.rec.agent_id, says: describe(r), chunk: b.chunk, family: b.verifier_family ?? b.family, agent: r.rec.context.agent ?? null };
     });
     const people = new Map<string, { id: string; type: string; contributions: number }>();
     for (const r of hub.node.store.referencing(m[1])) { const p = people.get(r.operatorId) ?? { id: r.operatorId, type: isHuman(r) ? 'human' : 'agent', contributions: 0 }; p.contributions++; people.set(r.operatorId, p); }
@@ -321,7 +321,7 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
 
   // Profiles: an open x0x directory of who's who (handles, what they do, what they're open to), plus who's online.
   const profiles = new Profiles(hub);
-  if (hub.x0x) void profiles.publishAgent({ open_to: { messages: true, invites: true, reviews: true } }).catch(() => {}); // this computer, listed
+  hub.onOnline(() => void profiles.publishAgent({ open_to: { messages: true, invites: true, reviews: true }, reach: 'app' }).catch(() => {})); // this computer, listed
   web.route('GET', /^\/api\/directory$/, async () => {
     const [list, online] = await Promise.all([profiles.list(), profiles.online()]);
     const count = (id: string) => hub.node.store.all().filter((s) => s.operatorId === id && s.visibility === 'public').length;
@@ -336,6 +336,46 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
         ...(p.kind === 'person' ? { machine: { id: p.host, handle: agentCard.get(p.host)?.handle ?? null, online: online.has(p.host), this_computer: p.host === hub.node.agentId } } : { attached: hosts.has(p.id) }),
       })),
     };
+  });
+  // The x0x Constitution: the live text from this computer's x0x daemon (its version), else the bundled copy (CC0).
+  web.route('GET', /^\/api\/constitution$/, async () => {
+    if (hub.x0x) {
+      try {
+        const j = await (await fetch(`${hub.x0x.baseUrl}/constitution/json`)).json() as { version?: string; status?: string; content?: string };
+        if (typeof j.content === 'string' && j.content.length > 200) return { source: 'x0x', version: j.version ?? null, status: j.status ?? null, content: j.content };
+      } catch { /* daemon busy: the bundled copy */ }
+    }
+    const { readFileSync } = await import('node:fs');
+    const content = readFileSync(new URL('./public/constitution.md', import.meta.url), 'utf8');
+    return { source: 'bundled', version: 'as shipped with x0x 0.48.1', status: null, content };
+  });
+
+  // "Have your agent work on it": what's possible on this computer for a problem, and Claude Code runs.
+  const here = (req: { socket: { remoteAddress?: string } }) => /^(127\.|::1$|::ffff:127\.)/.test(req.socket.remoteAddress ?? '');
+  web.route('GET', /^\/api\/problems\/([0-9a-f]{64})\/agents$/, (req, m) => here(req)
+    ? { claude_code: hub.agentRuns.available(), online: new Presence().online(), prompt: hub.agentRuns.prompt(m[1]), runs: hub.agentRuns.forProblem(m[1]).slice(0, 3), requests: hub.workRequests.forProblem(m[1]).slice(0, 3) }
+    : new HttpReply(403, { error: 'only on this computer' }));
+  web.route('POST', /^\/api\/problems\/([0-9a-f]{64})\/agents$/, async (req, m, _u, body) => {
+    if (!here(req)) return new HttpReply(403, { error: 'only on this computer' });
+    const j = (await body().catch(() => ({}))) as { via?: string };
+    if (j.via === 'any') return tryIt(() => { const p = hub.problems.get(m[1]); if (!p) throw new Error('unknown problem'); return hub.workRequests.create(m[1], (p.rec.body as { title: string }).title); });
+    return tryIt(() => hub.agentRuns.start(m[1]));
+  });
+  web.route('GET', /^\/api\/work-requests\/([0-9a-f]{12})$/, (req, m) => here(req) ? (hub.workRequests.get(m[1]) ?? new HttpReply(404, { error: 'unknown request' })) : new HttpReply(403, { error: 'only on this computer' }));
+  web.route('GET', /^\/api\/agent-runs\/([0-9a-f]{12})$/, (req, m) => here(req) ? (hub.agentRuns.get(m[1]) ?? new HttpReply(404, { error: 'unknown run' })) : new HttpReply(403, { error: 'only on this computer' }));
+
+  // This computer's agent: its name (handle) and one line about it, set by the person using this computer.
+  web.route('GET', /^\/api\/profile\/agent$/, (req) => /^(127\.|::1$|::ffff:127\.)/.test(req.socket.remoteAddress ?? '') ? { id: hub.node.agentId, ...(profiles.ownAgent() ?? { kind: 'agent' }) } : new HttpReply(403, { error: 'only on this computer' }));
+  web.route('POST', /^\/api\/profile\/agent$/, async (req, _m, _u, body) => {
+    if (!/^(127\.|::1$|::ffff:127\.)/.test(req.socket.remoteAddress ?? '')) return new HttpReply(403, { error: 'only on this computer' });
+    const j = (await body()) as { handle?: string; about?: string };
+    const handle = String(j.handle ?? '').trim().replace(/^@/, '');
+    const next: Partial<ProfileBody> = { kind: 'agent', ...(handle ? { handle } : {}), ...(j.about !== undefined ? { about: String(j.about).trim().slice(0, 160) } : {}) };
+    const bad = profileProblem(next);
+    if (bad) return new HttpReply(400, { error: bad });
+    const p = scrub({ context: { task: 'profile', domain: [], environment: '' }, body: next }, hub.node.privacy);
+    if (!p.ok) return new HttpReply(400, { error: 'blocked by privacy check', findings: p.findings });
+    return { published: await profiles.publishAgent({ handle: handle || '', ...(next.about !== undefined ? { about: next.about } : {}) }), handle: handle || null };
   });
   web.route('POST', /^\/api\/profile$/, async (req, _m, _u, body) => {
     if (!/^(127\.|::1$|::ffff:127\.)/.test(req.socket.remoteAddress ?? '')) return new HttpReply(403, { error: 'only on this computer' });
@@ -419,8 +459,10 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
     const sum = agentLog.summary();
     const title = (id: string) => { const b = hub.node.store.get(id)?.rec.body as { approach?: string; question?: string; title?: string; name?: string } | undefined; return b ? String(b.title ?? b.approach ?? b.question ?? b.name ?? '').slice(0, 90) : null; };
     const LABEL: Record<string, string> = { failures_search: 'checked what failed before', answers_lookup: 'looked for a verified answer', skills_find: 'looked for a skill', graph_recall: 'recalled related lessons', problems_list: 'looked at open problems', problems_status: 'checked a problem', handoff_check: 'checked for a hand-off', failures_report: 'shared what failed', answers_submit: 'shared an answer', skills_publish: 'shared a skill', proposals_submit: 'proposed a problem', help_request: 'asked for help', records_link: 'linked two lessons' };
+    const online = new Presence().online();
     return {
-      agents: sum.agents,
+      online,
+      agents: sum.agents.map((x) => ({ ...x, online: online.some((o) => o.client === x.client) })),
       recent: sum.recent.map((e) => ({ ...e, label: `${LABEL[e.tool] ?? e.tool.replace(/_/g, ' ')}${e.results !== undefined ? ` (${e.results} found)` : ''}`, titles: (e.ids ?? []).map((id) => ({ id, title: title(id) })).filter((t) => t.title) })),
     };
   });
