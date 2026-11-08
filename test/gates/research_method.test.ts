@@ -9,7 +9,8 @@ import { MemoryNetwork } from '../../src/transport/bus.js';
 import { LocalArchive } from '../../src/store/archive.js';
 import { TestnetLedger } from '../../src/economy/rail.js';
 import { Economy } from '../../src/economy/economy.js';
-import { seedAgentSkills, seedX0xSkills, ImportedSkill, WrappedSkillFile } from '../../src/seed/agent-skills.js';
+import { seedAgentSkills, seedX0xSkills, ImportedSkill, SkillTestsFile, WrappedSkillFile } from '../../src/seed/agent-skills.js';
+import { MockRunner } from '../../src/contributor/models.js';
 import { AnswerBody, independentOrigins } from '../../src/services/ledger.js';
 import { PlanReport } from '../../src/collective/planner.js';
 import { verifyPrompt } from '../../src/work/worker.js';
@@ -63,6 +64,44 @@ describe('skill discovery', () => {
     expect(out.groups[0]).toMatchObject({ id: 'network', count: 4 });
     expect(out.groups[0].skills.map((k: { name: string }) => k.name)).toContain('Join an x0x group');
     expect((await call('skills_find', { query: 'x0x group' })).results.length).toBeGreaterThan(0);
+  });
+
+  it('the x0x and Autonomi skills carry test cases we wrote from their own text, so they can be trialled', async () => {
+    const tf = json('skill-tests.json') as SkillTestsFile;
+    const skills = (json('agent-skills.json') as { skills: ImportedSkill[] }).skills;
+    for (const [key, tests] of Object.entries(tf.tests)) {
+      const k = skills.find((x) => `${x.source.repo}:${x.source.path}` === key);
+      expect(k, key).toBeDefined();
+      for (const t of tests) {
+        expect(k!.instructions, `${key}: ${t.from}`).toContain(t.from!); // grounded in the skill itself
+        expect(t.input).toMatch(/last word\.$/);
+      }
+    }
+    const h = hub();
+    await seedAgentSkills(h, { skills }, tf);
+    const network = h.skills.catalog().skills.filter((k) => k.group === 'network');
+    expect(network.find((k) => k.name === 'x0x')!.tests).toBe(3);
+    expect(network.find((k) => k.name === 'Building apps on the Autonomi network')!.tests).toBe(3);
+    const x0x = h.node.store.get(network.find((k) => k.name === 'x0x')!.id)!.rec;
+    expect((x0x.body as { notice: string }).notice).toMatch(/Test cases written by Constellate/);
+    expect(x0x.context.environment).toMatch(/3 test cases written by Constellate/);
+    // A model that read the skill answers from it; the trial is a signed run with its score.
+    const answers: Record<string, string> = { 'starts the default': 'start', 'signature scheme': 'ML-DSA-65', 'reports health': '/health' };
+    const runner = new MockRunner('m', 'mock', 'small', (p) => Object.entries(answers).find(([w]) => p.split('Input:')[1]?.includes(w))?.[1] ?? 'unsure');
+    expect(await h.skills.trial(x0x.id, runner)).toMatchObject({ passed: 3, total: 3 });
+  });
+
+  it('cards count real use apart from trials, and by how many operators', async () => {
+    const net = new MemoryNetwork(), archive = new LocalArchive();
+    const mk = () => new Hub({ signer: LocalSigner.generate(), bus: net.bus(), archive, preview: false });
+    const a = mk(), b = mk();
+    const [id] = await seedX0xSkills(a, json('x0x-skills.json') as WrappedSkillFile);
+    const run = (h: Hub, mode: 'use' | 'trial') => h.node.submit({ kind: 'skill_run', context: { task: `${mode} skill`, domain: ['skills'], environment: 'm' }, body: { skill: id, mode, passed: 1, total: 1, model: 'm' }, refs: [id] }, { publish: true });
+    await run(a, 'use'); await run(a, 'use'); await run(a, 'trial');
+    await new Promise((r) => setTimeout(r, 50));
+    await run(b, 'use');
+    await new Promise((r) => setTimeout(r, 100));
+    expect(a.skills.catalog().skills.find((k) => k.id === id)).toMatchObject({ uses: 3, users: 2, trials: 1 });
   });
 });
 

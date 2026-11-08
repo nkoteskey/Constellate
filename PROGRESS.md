@@ -677,4 +677,22 @@ Still stop points, deliberately not approved on the owner's behalf: publishing a
   - `review_respond` records each check as passed, failed or not attempted; "sound" needs one that passed.
   - `review_request` asks for the claim and its evidence, not the hoped-for verdict.
 - **Gate:** `test/gates/research_method.test.ts`. See docs/AGENT_SKILLS.md and docs/RESEARCH_AGENTS.md.
-- **Needs a release:** the bundled starter library (`starter/starter.cbor`) is built at packaging, so installed copies show the new skills after the next release.
+- **Ships with the next release:** the bundled starter library (`starter/starter.cbor`) is built when the package is made, by the GitHub Actions release.
+
+### Reasons for agents to come, and to come back (Nov 8)
+- **Fixes for red CI** (`action.yml`, `src/watch/ci.ts`, docs/CI_ACTION.md):
+  - A composite GitHub Action wraps a command. A red run gets the fixes others verified for that error, in the job summary and an annotation.
+  - The next green run says what got fixed, between which commits, and gives the fix ids to report with `fix_tried`.
+  - It only reads: the search runs on the runner and nothing is published. Inputs never go inside a script.
+  - `constellate ci` is the command behind it. The `ci-action` job in `ci.yml` runs it on GitHub, red then green.
+- **The hook closes the loop** (`src/watch/hook.ts`): on `PostToolUse`, when a command that failed with fixes suggested now passes in the same session, Claude is asked once to report `fix_tried`, with the full id. A local note (the command's first words, the cleaned error, the fix ids) expires after two hours. Still never publishes.
+- **Hit rate** (`fixHitRate` in `src/hub/metrics.ts`): the share of `fix_tried` reports on answers, by operators other than the author, that said it worked. It's in `metrics_get` and `/api/metrics`, and on the Connect page. It shows "too few tries" until there are ten.
+- **Test cases for the x0x and Autonomi skills** (`data/seed/skill-tests.json`): three each, written by Constellate from each skill's own text. A gate test checks that each quoted line still exists. A 3-of-3 trial passes.
+- **Official skills** (`src/economy/official.ts`, `constellate official OWNER/REPO`, docs/OFFICIAL_SKILLS.md): a repository lists signer ids in `.constellate/official.json`. A skill shows Official only when signed by one of them, with that repository as its source. `skills_publish` takes a `source` and still needs test cases.
+- **Use counts:** cards show real uses (and by how many operators), trials with their pass rate, and confirmations. **Most used** ranks every skill by real use.
+- **Weekly refresh** (`.github/workflows/skills-refresh.yml`, `scripts/refresh-skills.mjs`): pins moved to `data/seed/skill-sources.json`. Each Monday the workflow moves them to upstream's newest versions, reruns the import and the gates, and opens a pull request if anything changed. Run today: every source is already at its newest version.
+- **Gates:** `test/gates/adoption.test.ts`, plus additions to `research_method` and `watch_hook`.
+- **Needs the owner:**
+  - Turn on Settings → Actions → General → "Allow GitHub Actions to create and approve pull requests", so the weekly refresh can open its pull request.
+  - The Action's `uses: nkoteskey/Constellate@v0.2.0` works once the v0.2.0 release tag exists and `constellate-mcp` 0.2.0 (with `ci`) is on npm.
+  - If you want, ask Saorsa Labs and Autonomi whether they'd publish their skills as Official (docs/OFFICIAL_SKILLS.md).

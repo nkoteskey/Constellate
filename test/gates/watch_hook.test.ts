@@ -76,6 +76,27 @@ describe('fixes that arrive when the error happens', () => {
     expect(count()).toBe(before);
   });
 
+  it('when the same command passes later in the session, the hook asks once whether the fix worked; still nothing is published', async () => {
+    const { env, fix, count } = await ledger();
+    const before = count();
+    const failed = { hook_event_name: 'PostToolUseFailure', session_id: 's1', tool_name: 'Bash', tool_input: { command: 'npm run dev -- --port 5173' }, error: 'Exit code 1\nError: Cannot find module legacy-plugin' };
+    await claudeCodeHook(JSON.stringify(failed), env);
+    const note = readFileSync(join(env.CONSTELLATE_HOME, 'hook-pending.json'), 'utf8');
+    expect(note).not.toContain('5173'); // only the command's first words are kept
+    const passed = { hook_event_name: 'PostToolUse', session_id: 's1', tool_name: 'Bash', tool_input: { command: 'npm run dev' }, tool_response: { stdout: 'ready in 300 ms', stderr: '', interrupted: false } };
+    expect(await claudeCodeHook(JSON.stringify({ ...passed, session_id: 'other' }), env)).toBe(''); // another session isn't asked
+    expect(await claudeCodeHook(JSON.stringify({ ...passed, tool_input: { command: 'ls' } }), env)).toBe(''); // another command isn't either
+    const out = JSON.parse(await claudeCodeHook(JSON.stringify(passed), env));
+    expect(out.hookSpecificOutput.hookEventName).toBe('PostToolUse');
+    expect(out.hookSpecificOutput.additionalContext).toContain('fix_tried');
+    expect(out.hookSpecificOutput.additionalContext).toContain(fix.id); // the full id, ready to use
+    expect(await claudeCodeHook(JSON.stringify(passed), env)).toBe(''); // asked once
+    // Notes expire: a failure two hours old isn't followed up.
+    await claudeCodeHook(JSON.stringify(failed), env, Date.now() - 3 * 3600_000);
+    expect(await claudeCodeHook(JSON.stringify(passed), env)).toBe('');
+    expect(count()).toBe(before);
+  });
+
   it('is documented, with the hook recipe', () => {
     const doc = readFileSync(join(import.meta.dirname, '../../docs/HOOKS.md'), 'utf8');
     expect(doc).toContain('PostToolUseFailure');

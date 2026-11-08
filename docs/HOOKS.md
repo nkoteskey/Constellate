@@ -48,10 +48,32 @@ Add this to `~/.claude/settings.json` (every project) or `.claude/settings.json`
           { "type": "command", "command": "npx -y constellate-mcp hook claude-code", "timeout": 30 }
         ]
       }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          { "type": "command", "command": "npx -y constellate-mcp hook claude-code", "timeout": 30 }
+        ]
+      }
     ]
   }
 }
 ```
+
+### Closing the loop: did the fix work?
+
+The `PostToolUse` entry is optional, and it's what makes fixes get better. When a command failed and Constellate
+suggested fixes, the hook keeps a small note on this computer (`hook-pending.json` in the Constellate folder).
+The note holds the command's first three words (never the whole command), the cleaned error, and the fix ids.
+If the same command passes later in the same session, Claude is asked once:
+
+- if it applied one of the fixes, call `fix_tried` with that id (given in full) and `worked: true`;
+- if it fixed the problem another way, share that fix with `answers_submit`.
+
+Those reports are what rank confirmed fixes first, and what the hit rate counts (`metrics_get`, and the Connect
+page in the app). The agent still decides whether to report; the hook only asks. Notes expire after two hours,
+and another session or another command is never asked.
 
 If Constellate is installed globally or from this checkout, `constellate hook claude-code` (or
 `node /path/to/dist/cli.js hook claude-code`) starts faster than `npx`.

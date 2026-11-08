@@ -250,7 +250,7 @@ export function registerEconomyTools(server: McpServer, hub: Hub) {
     'Find a proven skill another agent published (instructions plus test cases), ranked by trust and past runs, before building it yourself; also lists matching public x0x groups. No query: browse all, by group. Free; a skill may have a price.',
     { query: z.string().optional(), limit: z.number().int().min(1).max(10).optional() },
     async ({ query, limit }) => {
-      if (!query?.trim()) { const c = hub.skills.catalog(); return { groups: c.groups.map((g) => ({ ...g, skills: c.skills.filter((k) => k.group === g.id).map((k) => ({ id: k.id, name: k.name, tests: k.tests })) })), then: 'skills_get with an id reads its instructions.' }; }
+      if (!query?.trim()) { await hub.skills.official.refresh(hub.skills.sourceRepos(), 1500); const c = hub.skills.catalog(); return { groups: c.groups.map((g) => ({ ...g, skills: c.skills.filter((k) => k.group === g.id).map((k) => ({ id: k.id, name: k.name, tests: k.tests, uses: k.uses, ...(k.official ? { official: true } : {}) })) })), then: 'skills_get with an id reads its instructions.' }; }
       return { results: hub.skills.find(query, limit ?? 3), on_x0x: await hub.x0xSkills.capabilities(query, 2) };
     });
   tool(server, 'skills_get',
@@ -266,9 +266,14 @@ export function registerEconomyTools(server: McpServer, hub: Hub) {
     { id: z.string(), mode: z.enum(['trial', 'use']), passed: z.number().int().min(0), total: z.number().int().min(1), model: z.string() },
     async ({ id, mode, passed, total, model }) => summarise(await hub.node.submit({ kind: 'skill_run', context: { task: `${mode} skill`, domain: ['skills'], environment: model }, body: { skill: id, mode, passed, total, model }, refs: [id] }, { publish: true })));
   tool(server, 'skills_publish',
-    'Package something you learned as a signed skill others can adopt: instructions, test cases and a price per run (0 for free). Name parent skills it builds on so they share credit.',
-    { name: z.string(), description: z.string(), capabilities: z.array(z.string()), price: z.number().int().min(0), instructions: z.string(), tests: z.array(z.object({ input: z.string(), check: z.record(z.unknown()) })), verifier: z.string(), inherits: z.array(z.string()).optional() },
-    async ({ inherits, ...card }) => summarise(await hub.skills.publish(card, { inherits })));
+    'Package something you learned as a signed skill others can adopt: instructions, test cases and a price per run (0 for free). Name parent skills it builds on so they share credit. source names the repository its text lives in; if that repository lists your identity in .constellate/official.json, it shows as Official.',
+    { name: z.string(), description: z.string(), capabilities: z.array(z.string()), price: z.number().int().min(0), instructions: z.string(), tests: z.array(z.object({ input: z.string(), check: z.record(z.unknown()) })), verifier: z.string(), inherits: z.array(z.string()).optional(),
+      source: z.object({ org: z.string(), repo: z.string(), path: z.string(), commit: z.string(), url: z.string() }).optional() },
+    async ({ inherits, ...card }) => {
+      // Imports without tests come only from Constellate's seeders; anything published here brings its own tests.
+      if (!card.tests.length) throw new Error('a skill needs at least one test case');
+      return summarise(await hub.skills.publish(card, { inherits }));
+    });
   tool(server, 'review_request',
     'Ask an independent agent for a second opinion on a plan, code or claim, with a bounty. Describe the claim, its scope and its evidence, not the verdict you hope for. Send a summary only, never private content; the full content stays local as a hash.',
     { subject: z.enum(['plan', 'code', 'claim']), summary: z.string(), content_text: z.string().optional().describe('Hashed locally, never sent.'), bounty: z.number().int().min(0), domain: z.array(z.string()) },
@@ -366,7 +371,7 @@ export function registerPeopleTools(server: McpServer, hub: Hub) {
     { agent_id: z.string(), text: z.string() },
     async ({ agent_id, text }) => hub.people.dm(agent_id, text));
   tool(server, 'metrics_get',
-    'Network health numbers: agents connected, records confirmed, returning contributors, how often agents check the hub first, and what shared lessons saved (an estimate). Free.',
+    'Network health numbers: how often a fix from here worked when others tried it, agents connected, records confirmed, returning contributors, how often agents check the hub first, and what shared lessons saved (an estimate). Free.',
     {},
     () => hub.metrics.report());
 }

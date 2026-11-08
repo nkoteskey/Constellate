@@ -1,0 +1,15 @@
+{
+  "note": "Test cases Constellate wrote for imported skills that arrived with none, so they can be trialled. Each expected answer is stated in the skill's own text; 'from' quotes the line it comes from. Checked with the exact verifier (the answer's last word). Keyed by repository:path, as in data/seed/agent-skills.json.",
+  "tests": {
+    "saorsa-labs/x0x:SKILL.md": [
+      { "input": "Which x0x CLI command starts the default daemon? Answer with the subcommand only, as the last word.", "check": { "expected": "start" }, "from": "x0x start                   # start the default daemon" },
+      { "input": "x0x agent and machine IDs are SHA-256 hashes of public keys from which signature scheme? Answer with its name only, as the last word.", "check": { "expected": "ML-DSA-65" }, "from": "All IDs are 32-byte SHA-256 hashes of ML-DSA-65 public keys" },
+      { "input": "Which x0x daemon route reports health without a bearer token? Answer with the route only, with its leading slash, as the last word.", "check": { "expected": "/health" }, "from": "`/health` and `/constitution*` are public" }
+    ],
+    "WithAutonomi/ant-sdk:skill.md": [
+      { "input": "Which file does the antd daemon write so SDKs can discover its port? Answer with the file name only, as the last word.", "check": { "expected": "daemon.port" }, "from": "antd writes `daemon.port` to the platform data dir" },
+      { "input": "When discovery fails, which localhost port does antd's REST API fall back to? Answer with the number only, as the last word.", "check": { "expected": "8082" }, "from": "Default fallback: REST on `localhost:8082`, gRPC on `localhost:50051`." },
+      { "input": "Which antd version is the first with pointers? Answer with the version number only, as the last word.", "check": { "expected": "0.16.0" }, "from": "Needs antd 0.16.0 or later (the first release with pointers)." }
+    ]
+  }
+}

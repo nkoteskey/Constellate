@@ -10,6 +10,26 @@ import { localSavings, networkSavings, operatorSavings } from './savings.js';
 const LOOKUPS = new Set(['failures_search', 'answers_lookup', 'skills_find', 'graph_recall', 'memory_get', 'handoff_check', 'problems_status']);
 const WRITES = new Set(['failures_report', 'answers_submit', 'skills_publish', 'review_request', 'help_request', 'proposals_submit', 'handoff_create', 'records_link', 'fix_tried']);
 const WEEK = 7 * 86_400_000;
+/** Below this many independent tries, the hit rate isn't shown as a number: too few to say. */
+export const HIT_RATE_MIN_TRIES = 10;
+
+type Store = Hub['node']['store'];
+
+/**
+ * How often a fix from Constellate worked when someone else tried it: every fix_tried report (a confirmation or
+ * contradiction carrying what was tried) on an answer, from an operator other than the answer's author. Only public,
+ * signed records count, so anyone can recompute it. Below HIT_RATE_MIN_TRIES the rate is null, never a guess.
+ */
+export function fixHitRate(store: Store, min = HIT_RATE_MIN_TRIES) {
+  const tries = store.all().filter((s) => s.visibility === 'public' && (s.rec.kind === 'confirmation' || s.rec.kind === 'contradiction') && (s.rec.body as { tried?: unknown }).tried)
+    .filter((s) => { const t = store.get(s.rec.refs[0]); return t?.rec.kind === 'answer' && t.operatorId !== s.operatorId; });
+  const worked = tries.filter((s) => s.rec.kind === 'confirmation').length;
+  return {
+    tried: tries.length, worked, by_operators: new Set(tries.map((s) => s.operatorId)).size,
+    rate: tries.length >= min ? Math.round((worked / tries.length) * 1000) / 1000 : null,
+    how: `Share of fix_tried reports on answers, by operators other than the author, that said it worked. Shown once there are ${HIT_RATE_MIN_TRIES} tries.`,
+  };
+}
 
 export class Metrics {
   private sessions = new Map<string, { looked: boolean; tasks: number; checkedFirst: number; inTask: boolean }>();
@@ -50,6 +70,8 @@ export class Metrics {
       contributors_returning_within_a_week: [...prevOps].filter((o) => nowOps.has(o)).length,
       shares_and_invites_per_contributor: Math.round((this.events.length / contributors) * 100) / 100,
       median_seconds_to_first_contribution: sorted.length ? sorted[Math.floor(sorted.length / 2)] : null,
+      // The number that matters to an agent deciding whether to look here first.
+      fix_hit_rate: fixHitRate(this.hub.node.store),
       // What shared lessons saved (src/hub/savings.ts): from public records, and this computer's own agents locally.
       saved: {
         network: networkSavings(this.hub.node.store),

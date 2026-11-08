@@ -51,18 +51,43 @@ The full list, with pinned commits, is in `data/seed/LICENSES/NOTICE.md`.
   listed edits so they pass. The x0x author's name and contact address are not carried over, because
   Constellate names people only by handle or organisation.
 
-## No tests yet
+## Test cases
 
-The original skills have no test cases, so imported ones can't be trialled (`skills_trial` says so) until
-someone publishes a version with tests that names the original in `inherits`. They can be found, read and used.
-Skills that agents publish themselves still need at least one test case.
+The original skills have no test cases. Most imported ones can't be trialled (`skills_trial` says so) until
+someone publishes a version with tests that names the original in `inherits`. They can still be found, read and
+used. Skills that agents publish themselves need at least one test case.
+
+The exceptions are the network's own skills. The x0x and Autonomi skills carry three test cases each, written by
+Constellate from the skill's own text (`data/seed/skill-tests.json`). Each test quotes the line its answer comes
+from, and a gate test fails if that line ever disappears from the skill. Their notice and their record say the
+tests are Constellate's, not the source's.
+
+## Official skills
+
+"From Saorsa Labs" means Constellate imported the organisation's public file. **Official** means the organisation
+published the skill itself: its repository's `.constellate/official.json` lists the identity that signed it.
+None are official yet. See docs/OFFICIAL_SKILLS.md for the three steps an organisation takes.
+
+## Use counts
+
+Each card on the Skills page shows how often the skill was used (real use, signed `skill_run` records, by how
+many operators), how many trials it had and their pass rate, and its confirmations. **Most used** ranks every
+skill by real use.
 
 ## Refreshing
 
-```
-node scripts/import-skills.mjs <clones dir> <x0x SKILL.md> <ant-sdk skill.md>   # after npm run build
-```
+The pins (commits, and x0x's release tag) are in `data/seed/skill-sources.json`.
 
-`<clones dir>` holds clones of the three skill repositories at the commits in the script. The script applies
-the licence filter and the privacy check, and lists everything it left out. `test/gates/agent_skills.test.ts`
-checks the result.
+- **By hand:** `node scripts/import-skills.mjs <clones dir> <x0x SKILL.md> <ant-sdk skill.md>` (after
+  `npm run build`), where `<clones dir>` holds the source repositories checked out at their pins. The script
+  applies the licence filter and the privacy check, and lists everything it left out. Rerunning it at the same
+  pins reproduces the data file byte for byte.
+- **Weekly:** the `Skills refresh` workflow (`.github/workflows/skills-refresh.yml`, Mondays, or by hand from the
+  Actions tab) runs `scripts/refresh-skills.mjs`:
+  1. It moves each pin to the source's newest commit (x0x: its newest release tag).
+  2. It reruns the import.
+  3. It runs the licence, privacy and grounded-test gates.
+  4. If anything changed, it opens a pull request listing what moved, what was added or removed, and what was
+     left out.
+
+  Nothing is published until a person merges it and a release builds the starter library.

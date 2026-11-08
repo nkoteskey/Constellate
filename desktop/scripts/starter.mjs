@@ -30,7 +30,7 @@ const { PaperSeeder } = await load('seed/papers.js');
 const research = await new PaperSeeder(hub).seed(json('scientist-two.json'));
 // Openly licensed public agent skills, credited and pinned to their source (src/seed/agent-skills.ts).
 const skillSeed = await load('seed/agent-skills.js');
-const skills = await skillSeed.seedAgentSkills(hub, json('agent-skills.json'));
+const skills = await skillSeed.seedAgentSkills(hub, json('agent-skills.json'), json('skill-tests.json'));
 // x0x's wrapped how-tos, each with a test case, so they can be trialled (data/seed/x0x-skills.json).
 const x0xSkills = await skillSeed.seedX0xSkills(hub, json('x0x-skills.json'));
 // Command usage from tldr-pages (CC BY 4.0), the licence kept on every record (src/seed/tldr.ts).

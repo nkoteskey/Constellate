@@ -5,6 +5,7 @@ import { VerifierRegistry } from '../work/verifiers.js';
 import { bm25 } from '../services/search.js';
 import { Economy } from './economy.js';
 import { TESTNET_PRICING } from './pricing.js';
+import { OfficialMarks } from './official.js';
 
 /**
  * Skill marketplace. A skill card is a signed record: what the skill does, its
@@ -47,6 +48,8 @@ export function skillGroup(repo: string, org?: string): SkillGroup {
 }
 
 export class Skills {
+  /** Which repositories' own identities signed which skills (src/economy/official.ts). */
+  readonly official = new OfficialMarks();
   constructor(private readonly hub: Hub, private readonly economy?: Economy, private readonly verifiers = new VerifierRegistry()) {}
 
   /** Publish a skill. `inherits` names parent skills it was derived from, so their authors share in its earnings. */
@@ -76,11 +79,16 @@ export class Skills {
    * and Autonomi) first, then those agents shared, then the research method, then the public collections. Within
    * a group, skills with test cases and past runs come first.
    */
+  /** The repositories skills name as their source, for checking official marks. */
+  sourceRepos() { return [...new Set(this.hub.node.store.ofKind('skill').map((s) => (s.rec.body as unknown as SkillCard).source?.repo).filter((r): r is string => !!r))]; }
+
   catalog() {
     const store = this.hub.node.store;
     const items = store.ofKind('skill').map((s) => {
       const b = s.rec.body as unknown as SkillCard;
-      const runs = this.runs(s.rec.id).map((r) => r.rec.body as { passed: number; total: number });
+      const runRecs = this.runs(s.rec.id);
+      const runs = runRecs.map((r) => r.rec.body as { passed: number; total: number; mode?: string });
+      const used = runRecs.filter((r) => (r.rec.body as { mode?: string }).mode === 'use');
       const where = b.source?.repo ?? (s.rec.evidence.find((e) => /github\.com\/saorsa-labs\/x0x\b/.test(e)) ? 'saorsa-labs/x0x' : '');
       const group = skillGroup(where, b.source?.org);
       return {
@@ -89,13 +97,17 @@ export class Skills {
         // skill file, so they say so rather than reading as Saorsa Labs' own.
         from: b.source ? `${b.source.org} (${b.source.repo})` : where === 'saorsa-labs/x0x' ? 'adapted from Saorsa Labs’ x0x skill file' : null,
         adapted: !b.source && where === 'saorsa-labs/x0x',
+        // Official only when the repository's own file lists the identity that signed this record.
+        official: b.source ? this.official.isOfficial(b.source.repo, s.rec.agent_id) === true : false,
         url: b.source?.url ?? s.rec.evidence.find((e) => /^https?:\/\//.test(e)) ?? null, license: b.license, price: b.price, tests: b.tests.length, runs: runs.length,
         pass_rate: runs.length ? Math.round((runs.reduce((n, r) => n + r.passed / r.total, 0) / runs.length) * 100) / 100 : null,
         confirmations: store.referencing(s.rec.id, 'confirmation').length,
+        // Real use, not trials: how often it was used, and by how many different operators.
+        uses: used.length, users: new Set(used.map((r) => r.operatorId)).size, trials: runs.length - used.length,
       };
     });
     const order = SKILL_GROUPS.map((g) => g.id);
-    items.sort((a, b) => order.indexOf(a.group) - order.indexOf(b.group) || b.tests - a.tests || b.runs - a.runs || b.confirmations - a.confirmations || a.name.localeCompare(b.name));
+    items.sort((a, b) => order.indexOf(a.group) - order.indexOf(b.group) || Number(b.official) - Number(a.official) || b.tests - a.tests || b.runs - a.runs || b.confirmations - a.confirmations || a.name.localeCompare(b.name));
     return { groups: SKILL_GROUPS.map((g) => ({ ...g, count: items.filter((k) => k.group === g.id).length })).filter((g) => g.count), skills: items };
   }
 

@@ -18,7 +18,7 @@ import { settleFounding } from './economy/economy.js';
 import { Seeder } from './seed/seeder.js';
 import { seedFeatured } from './seed/featured.js';
 import { PaperSeeder, PaperLessons } from './seed/papers.js';
-import { seedAgentSkills, seedX0xSkills, ImportedSkill, WrappedSkillFile } from './seed/agent-skills.js';
+import { seedAgentSkills, seedX0xSkills, ImportedSkill, SkillTestsFile, WrappedSkillFile } from './seed/agent-skills.js';
 import { GitHubSource } from './seed/github.js';
 import { IssueSeeder, IssueDump } from './seed/issues.js';
 import { RecordStore } from './store/records.js';
@@ -248,7 +248,7 @@ export async function seedDemo(opts: { steps?: number; knowledge?: number | 'all
     for (const id of await seedX0xSkills(mk(), seedJson('x0x-skills.json') as WrappedSkillFile)) await agents[1].confirm(id, { note: 'followed it against a local daemon' }, { publish: true });
   } catch { /* skill file not shipped with this build */ }
   // ── Openly licensed public agent skills (Anthropic, Hugging Face, OpenAI, x0x, Autonomi), credited, no tests yet ──
-  try { await seedAgentSkills(mk(), seedJson('agent-skills.json') as { skills: ImportedSkill[] }); } catch { /* not shipped with this build */ }
+  try { await seedAgentSkills(mk(), seedJson('agent-skills.json') as { skills: ImportedSkill[] }, seedJson('skill-tests.json') as SkillTestsFile); } catch { /* not shipped with this build */ }
 
   // ── Calls for help: questions agents posted mid-task, on the problem they're about ──
   await agents[1].collab.askForHelp({ question: 'Which Mathlib lemma turns a sum over range (n+1) into a sum over range n plus the last term?', needs: 'any', verifier: 'exact', check: { expected: 'Finset.sum_range_succ' }, bounty: 0 }, new MemoryBoard(), ['maths_physics', 'lean'], [lean]);

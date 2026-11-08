@@ -18,15 +18,21 @@ export interface ImportedSkill {
 }
 export interface SkillSeedReport { added: number; skipped: { name: string; reason: string }[] }
 
-export async function seedAgentSkills(hub: Hub, file: { skills: ImportedSkill[] }): Promise<SkillSeedReport> {
+/** Test cases Constellate wrote for imported skills (data/seed/skill-tests.json), keyed by "repository:path". */
+export interface SkillTestsFile { tests: Record<string, { input: string; check: Record<string, unknown>; from?: string }[]> }
+
+export async function seedAgentSkills(hub: Hub, file: { skills: ImportedSkill[] }, testsFile?: SkillTestsFile): Promise<SkillSeedReport> {
   const report: SkillSeedReport = { added: 0, skipped: [] };
   const seen = new Set(hub.node.store.ofKind('skill').flatMap((s) => s.rec.evidence));
   for (const k of file.skills ?? []) {
     if (!SKILL_SOURCES.includes(k.source?.repo)) { report.skipped.push({ name: k.name, reason: 'not from an allowed source' }); continue; }
     if (seen.has(k.source.url)) { report.skipped.push({ name: k.name, reason: 'already seeded' }); continue; }
     try {
-      const card = SkillCard.parse({ ...k, price: 0, tests: [], verifier: 'exact' });
-      await hub.node.submit({ kind: 'skill', context: { task: k.description, domain: k.capabilities, environment: `imported from ${k.source.org} (${k.source.repo}), ${k.license}; no tests yet` }, body: card, evidence: [k.source.url] }, { publish: true });
+      // Tests we wrote travel with the skill, and its notice says so: they are Constellate's, not the source's.
+      const tests = (testsFile?.tests[`${k.source.repo}:${k.source.path}`] ?? []).map(({ input, check }) => ({ input, check }));
+      const notice = tests.length ? `${k.notice} Test cases written by Constellate from the skill's own text (data/seed/skill-tests.json).`.slice(0, 800) : k.notice;
+      const card = SkillCard.parse({ ...k, notice, price: 0, tests, verifier: 'exact' });
+      await hub.node.submit({ kind: 'skill', context: { task: k.description, domain: k.capabilities, environment: `imported from ${k.source.org} (${k.source.repo}), ${k.license}; ${tests.length ? `${tests.length} test cases written by Constellate` : 'no tests yet'}` }, body: card, evidence: [k.source.url] }, { publish: true });
       report.added++;
     } catch (e) { report.skipped.push({ name: k.name, reason: (e as Error).message.slice(0, 160) }); }
   }
