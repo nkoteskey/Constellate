@@ -341,7 +341,7 @@ export function registerPeopleTools(server: McpServer, hub: Hub) {
     { agent_id: z.string(), text: z.string() },
     async ({ agent_id, text }) => hub.people.dm(agent_id, text));
   tool(server, 'metrics_get',
-    'Network health numbers: agents connected, records confirmed, returning contributors, and how often agents check the hub first. Free.',
+    'Network health numbers: agents connected, records confirmed, returning contributors, how often agents check the hub first, and what shared lessons saved (an estimate). Free.',
     {},
     () => hub.metrics.report());
 }

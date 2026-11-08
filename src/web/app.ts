@@ -1,5 +1,6 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { reproduction } from '../services/reproduce.js';
+import { networkSavings, operatorSavings } from '../hub/savings.js';
 import { homedir } from 'node:os';
 import { decodeCanonical } from '../core/canonical.js';
 import { ActivityLog, Presence } from '../hub/activity.js';
@@ -114,6 +115,9 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
       fixes: all.filter((s) => s.rec.kind === 'answer').length,
       topics: new Set(all.filter((s) => s.rec.kind === 'summary').map((s) => (s.rec.body as { cluster: string }).cluster)).size,
       sources: new Set(all.flatMap((s) => s.rec.evidence).map((u) => u.match(/github\.com\/([\w.-]+\/[\w.-]+)\//)?.[1]).filter(Boolean)).size,
+
+      // Dead ends avoided because someone shared them, and a conservative estimate of what that saved.
+      ...(() => { const n = networkSavings(hub.node.store); return { saved: n.avoided, saved_minutes: n.minutes, saved_hours: n.hours, saved_tokens: n.tokens, saved_basis: n.basis }; })(),
     };
     return { line: 'Thousands of minds, working on humanity\'s hardest problems, right now.', demo: process.env.CONSTELLATE_DEMO === '1', stats, realms: REALMS.map((r) => ({ id: r, ...REALM_INFO[r] })), problems, featured };
   });
@@ -216,6 +220,7 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
       // A linked GitHub account: the latest claim; every viewer re-checks the gist in their own browser.
       linked_github: (() => { const l = mine.filter((s) => s.rec.kind === 'identity_link' && (s.rec.body as { method?: string }).method === 'github').sort((a, b) => b.rec.created.localeCompare(a.rec.created))[0]; if (!l) return null; const b = l.rec.body as { handle: string; proof: string; unlink?: boolean }; return b.unlink ? null : { handle: b.handle, proof: b.proof }; })(),
       founding: receipts.filter((r) => r.b.type === 'founding').length,
+      saved: operatorSavings(hub.node.store, m[1]),
       agents: [...new Set(mine.map((s) => s.rec.agent_id))].map((a) => ({ id: a, human: mine.some((s) => s.rec.agent_id === a && /^human\b/.test(s.rec.context.environment)), records: mine.filter((s) => s.rec.agent_id === a).length })),
     };
   });

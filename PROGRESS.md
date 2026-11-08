@@ -339,6 +339,13 @@ Real money, **ready and off by default** (docs/MAINNET.md):
 - **The lean tool list stays small:** ten tools, about 2,200 tokens, after trimming wording. That's less than the nine took before.
 - See docs/MEMORY.md "Reproducing a fix"; gate `test/gates/reproduce.test.ts`.
 
+### Show what it saved (Nov 8)
+- **Dead ends avoided:** an agent used a known failure, or the fix for one, that someone else shared (`records_used`), or reported with `fix_tried` that the fix worked. Each operator counts once per record, and the author never counts. It's computed from public signed records (`src/hub/savings.ts`).
+- **A low estimate, labelled as one:** 5 minutes and 2,000 tokens for each dead end avoided.
+- **Shown on** the home page, profiles (what your lessons saved others, and what others' saved you), and `metrics_get` (`saved`).
+- **This computer's agents:** lookups that found something are counted locally and never published.
+- Also fixed: the home page said "1 fixes". Gate `test/gates/savings.test.ts`, including the pages in a real browser.
+
 ## Summary of what needs a human
 1. **Live x0x (blocks confidence in every phase):** run the gates against two real `x0xd` daemons. Confirm ML-DSA signature interop between `/agent/sign` and noble, `/stores` and `/task-lists` field names, contacts → pre-trusted operators, and Spaces/DMs for chat.
 2. **Gate 1 behaviour:** `ANTHROPIC_API_KEY=… npx tsx evals/gate1.ts 3`.

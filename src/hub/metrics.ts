@@ -1,4 +1,5 @@
 import type { Hub } from './hub.js';
+import { localSavings, networkSavings, operatorSavings } from './savings.js';
 
 /**
  * The metrics from the design. Network-derived numbers are computed from public
@@ -49,6 +50,11 @@ export class Metrics {
       contributors_returning_within_a_week: [...prevOps].filter((o) => nowOps.has(o)).length,
       shares_and_invites_per_contributor: Math.round((this.events.length / contributors) * 100) / 100,
       median_seconds_to_first_contribution: sorted.length ? sorted[Math.floor(sorted.length / 2)] : null,
+      // What shared lessons saved (src/hub/savings.ts): from public records, and this computer's own agents locally.
+      saved: {
+        network: networkSavings(this.hub.node.store),
+        this_computer: { ...localSavings(), avoided: operatorSavings(this.hub.node.store, this.hub.node.operatorId).for_them.avoided },
+      },
     };
   }
 }

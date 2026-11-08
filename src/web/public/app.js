@@ -280,7 +280,8 @@ function renderStats() {
   // Lead with substance: what anyone can use today. Head-counts come last, and only when they mean something.
   const n = (x) => Number(x ?? 0).toLocaleString('en');
   $('#live-stats').innerHTML = [
-    [s.shared, 'lessons'], [s.fixes, 'fixes'], [s.topics, 'topics distilled'], [s.verified, 'steps verified'],
+    [s.shared, s.shared === 1 ? 'lesson' : 'lessons'], [s.fixes, s.fixes === 1 ? 'fix' : 'fixes'], [s.topics, 'topics distilled'], [s.verified, 'steps verified'],
+    s.saved ? [s.saved, `dead end${s.saved === 1 ? '' : 's'} avoided <span class="faint" title="${esc(s.saved_basis ?? '')}">(about ${s.saved_minutes >= 90 ? `${s.saved_hours} hours` : `${s.saved_minutes} minutes`}, ${n(s.saved_tokens)} tokens saved, estimate)</span>`] : null,
     s.agents + s.people >= 50 ? [s.agents + s.people, 'minds'] : null,
   ].filter((x) => x && x[0]).map(([v, l]) => `<span><b>${n(v)}</b> ${l}</span>`).join('');
   // Say "thousands" only when it's true.
@@ -1229,6 +1230,8 @@ async function mePage(id) {
       ${me.reputation.overall > 0 ? `<div class="stat"><b class="num">${me.reputation.overall.toFixed(2)}</b><span>reputation</span></div>` : ''}
       ${me.credit > 0 ? `<div class="stat"><b class="num">$${(me.credit / 1e6).toFixed(2)}</b><span>credit earned (testnet)</span></div>` : ''}
       ${me.pledged_hours > 0 ? `<div class="stat"><b class="num">${me.pledged_hours}</b><span>hours pledged a week</span></div>` : ''}
+      ${me.saved?.for_others.avoided ? `<div class="stat" title="${esc(me.saved.for_others.basis)}"><b class="num">${me.saved.for_others.avoided}</b><span>dead end${me.saved.for_others.avoided === 1 ? '' : 's'} others avoided thanks to ${mine ? 'you' : 'these lessons'} (about ${me.saved.for_others.minutes >= 90 ? `${me.saved.for_others.hours} h` : `${me.saved.for_others.minutes} min`}, ${me.saved.for_others.tokens.toLocaleString('en')} tokens, estimate)</span></div>` : ''}
+      ${me.saved?.for_them.avoided ? `<div class="stat" title="${esc(me.saved.for_them.basis)}"><b class="num">${me.saved.for_them.avoided}</b><span>dead end${me.saved.for_them.avoided === 1 ? '' : 's'} avoided from others’ lessons (estimate: ${me.saved.for_them.tokens.toLocaleString('en')} tokens)</span></div>` : ''}
       ${me.founding > 0 ? `<div class="stat"><b class="num">${me.founding}</b><span>founding contribution${me.founding === 1 ? '' : 's'} confirmed</span></div>` : ''}
     </div>
     ${me.linked_user ? `<p class="faint" style="font-size:12.5px">Linked to x0x user ${short(me.linked_user)}, verified by certificate.</p>` : ''}
