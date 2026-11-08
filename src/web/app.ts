@@ -321,7 +321,7 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
 
   // Profiles: an open x0x directory of who's who (handles, what they do, what they're open to), plus who's online.
   const profiles = new Profiles(hub);
-  if (hub.x0x) void profiles.publishAgent({ open_to: { messages: true, invites: true, reviews: true } }).catch(() => {}); // this computer, listed
+  if (hub.x0x) void profiles.publishAgent({ open_to: { messages: true, invites: true, reviews: true }, reach: 'app' }).catch(() => {}); // this computer, listed
   web.route('GET', /^\/api\/directory$/, async () => {
     const [list, online] = await Promise.all([profiles.list(), profiles.online()]);
     const count = (id: string) => hub.node.store.all().filter((s) => s.operatorId === id && s.visibility === 'public').length;

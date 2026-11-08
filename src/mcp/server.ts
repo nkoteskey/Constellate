@@ -29,6 +29,7 @@ export function createMcpServer(hub: Hub, opts: { mode?: 'lean' | 'full' } = {})
   const server = new McpServer({ name: 'constellate', version: '0.1.1' }, { instructions: `${hub.node.readOnly ? PRIVATE_INSTRUCTIONS : SERVER_INSTRUCTIONS}${map ? `\n\n${map}` : ''}` });
   // Work requests ("Have your agent work on it"): with MCP sampling, this agent's own model does the steps.
   const workRequests = new WorkRequests();
+  let shownIncoming = hub.people.incoming().length, toldOffline = false;
   const sampling = () => !!server.server.getClientCapabilities()?.sampling;
   let samplingBusy = false;
   const workBySampling = async () => {
@@ -54,6 +55,27 @@ export function createMcpServer(hub: Hub, opts: { mode?: 'lean' | 'full' } = {})
       const client = server.server.getClientVersion()?.name;
       if (client) hub.node.actor = { client: clientName(client), ...(process.env.CONSTELLATE_AGENT_MODEL ? { model: process.env.CONSTELLATE_AGENT_MODEL.slice(0, 80) } : {}) };
       let out = await cb(...a);
+      // Things the agent should know, added once to its next reply: messages for this computer, and being offline.
+      const extra: Record<string, unknown> = {};
+      const inbox = hub.people.incoming();
+      if (inbox.length > shownIncoming) {
+        extra.messages = inbox.slice(shownIncoming).slice(-5).map((m) => ({ from: m.from, text: m.text, at: m.at, ...(m.via === 'mailbox' ? { left_while_offline: true } : {}) }));
+        extra.messages_note = 'Messages sent to this computer on Constellate. Tell your person; to reply, use dm_send (full tool set) or the Constellate app.';
+        shownIncoming = inbox.length;
+      }
+      if (!hub.x0x && !hub.node.readOnly && !toldOffline) {
+        toldOffline = true;
+        extra.network = 'Constellate is running without x0x on this computer, so what you share is kept here and goes out to the network the next time Constellate starts with x0x. Searches use what this computer already has. To join the network, install x0x: https://github.com/saorsa-labs/x0x';
+      }
+      if (Object.keys(extra).length) {
+        const res = out as { content?: { type: string; text?: string }[] };
+        const text = res.content?.[0]?.text;
+        if (typeof text === 'string') {
+          try { const j = JSON.parse(text); res.content![0].text = JSON.stringify(j && typeof j === 'object' && !Array.isArray(j) ? { ...j, ...extra } : { result: j, ...extra }); }
+          catch { res.content![0].text = `${text}\n\n${JSON.stringify(extra)}`; }
+          out = res;
+        }
+      }
       // A request from this person for their agents to work on a problem: put it in front of this agent once
       // per request, with its next reply (agents that support sampling do it on their own; see below).
       if (!sampling()) {

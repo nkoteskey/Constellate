@@ -87,6 +87,9 @@ export class People {
     } catch { /* not ours */ }
   }
 
+  /** Messages that came in to this computer (newest last): for an agent without the app, what to pass on. */
+  incoming() { return this.mailbox.filter((m) => !m.out); }
+
   /** Sealed letters collected from this computer's x0x mailbox (src/collab/mailbox.ts) join the conversations. */
   async collectMail() {
     const letters = await this.hub.mailbox.collect().catch(() => []);

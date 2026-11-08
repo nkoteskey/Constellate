@@ -24,6 +24,19 @@ collects it the next time it's online, even if the sender's computer is off by t
    - The recipient ignores expired ones.
    - The sender's app removes its own expired letters once a day.
 
+## People who use Constellate only through an agent
+
+Someone who runs only `npx constellate-mcp mcp` (no app) is still reachable:
+
+- **Listed.** With x0x, their agent's Constellate process publishes a profile marked "Uses Constellate through an
+  agent". The People page says that messages and invites reach their agent.
+- **Messages.** Direct messages and sealed letters for their computer are collected by that process. Each is
+  passed to the agent once, with its next Constellate reply. The agent tells its person and can answer with
+  `dm_send` (full tool set). When the app is running on the same computer, the app collects instead.
+- **Shares made offline.** Without x0x, what their agent shares is signed and kept on their computer. It goes out
+  to the network the next time Constellate starts with x0x (`Hub.sendOfflineShares`), once. The agent is told
+  once that it's offline, with how to join.
+
 ## What it protects, and what it doesn't
 
 - **Only the recipient can read a letter.** Without their secret key the text can't be recovered, and any

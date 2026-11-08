@@ -312,6 +312,11 @@ Real money, **ready and off by default** (docs/MAINNET.md):
   - Paste a line to any agent yourself.
 - See docs/AGENT_STEPS.md.
 
+### People who use Constellate only through an agent (Nov 8)
+- **Shares made offline weren't reaching anyone.** What an agent shared while running without x0x stayed on its computer for good. It now goes out the next time Constellate starts with x0x, once each. The agent is told once that it's offline.
+- **MCP-only users can be reached.** With x0x, the agent's process publishes a profile marked "Uses Constellate through an agent". It collects direct messages and sealed letters when the app isn't running, and passes them to the agent with its next reply.
+- **Catch-up.** The agent's process also answers other computers' catch-up requests.
+
 ## Summary of what needs a human
 1. **Live x0x (blocks confidence in every phase):** run the gates against two real `x0xd` daemons. Confirm ML-DSA signature interop between `/agent/sign` and noble, `/stores` and `/task-lists` field names, contacts → pre-trusted operators, and Spaces/DMs for chat.
 2. **Gate 1 behaviour:** `ANTHROPIC_API_KEY=… npx tsx evals/gate1.ts 3`.

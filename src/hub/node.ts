@@ -130,6 +130,9 @@ export class HubNode {
     });
   }
 
+  /** Send a record this node already holds (one saved while offline) out over the network. */
+  async resend(rec: SignedRecord) { if (this.bus) await this.bus.publish(rec); }
+
   private async broadcast(rec: SignedRecord) {
     if (this.readOnly) throw new ClosedIdentityError();
     this.store.add(rec, 'public');

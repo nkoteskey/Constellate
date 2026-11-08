@@ -63,6 +63,20 @@ async function main(argv: string[]) {
     const hub = argv.includes('--private') ? await Hub.privateMode() : await Hub.fromEnv();
     if (!argv.includes('--private')) importStarter(hub);
     const server = createMcpServer(hub);
+    if (hub.x0x) {
+      // Reachable without the app (docs/MAILBOX.md): listed in the directory as using Constellate through an agent,
+      // direct messages and sealed letters reach the agent with its next Constellate reply, and other computers
+      // can catch up from here. When the app is running on this computer, it does the collecting instead.
+      const { Profiles } = await import('./collab/profiles.js');
+      const profiles = new Profiles(hub);
+      if (!profiles.ownAgent()) void profiles.publishAgent({ about: 'Uses Constellate through an agent', reach: 'agent', open_to: { messages: true, invites: true } }).catch(() => {});
+      const appUrl = process.env.CONSTELLATE_APP_URL ?? `http://127.0.0.1:${process.env.PORT ?? 4747}`;
+      const appRunning = async () => { try { return (await fetch(`${appUrl}/api/sky`, { signal: AbortSignal.timeout(1500) })).ok; } catch { return false; } };
+      hub.x0x.directEvents((m) => { if (!hub.sync.handle(m.sender, m.payload)) void appRunning().then((up) => { if (!up) hub.people.receive(m.sender, m.payload); }); });
+      const collect = async () => { if (!(await appRunning())) await hub.people.collectMail().catch(() => 0); };
+      setTimeout(() => void collect(), 5_000).unref();
+      setInterval(() => void collect(), 60_000).unref();
+    }
     // While this runs, the app on this computer counts this agent as connected (src/hub/activity.ts Presence).
     const { Presence } = await import('./hub/activity.js');
     const presence = new Presence(), since = new Date().toISOString();

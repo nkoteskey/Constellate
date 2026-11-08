@@ -100,6 +100,23 @@ export class Hub {
   get x0xSkills() { return (this._x0xSkills ??= new X0xSkills(this)); }
   private _mailbox?: Mailbox;
   /** Sealed letters for people who are offline (docs/MAILBOX.md). */
+  /**
+   * Records shared while this computer ran without x0x are signed with its offline key and kept here; send
+   * each public one out once, now that the network is reachable. Returns how many went out.
+   */
+  async sendOfflineShares(home = process.env.CONSTELLATE_HOME ?? join(homedir(), '.constellate')) {
+    const { existsSync, readFileSync, writeFileSync } = await import('node:fs');
+    const keyFile = join(home, 'agent.key'), sentFile = join(home, 'offline-sent.json');
+    if (!this.x0x || !existsSync(keyFile)) return 0;
+    const offlineId = LocalSigner.loadOrCreate(keyFile).agentId;
+    if (offlineId === this.node.agentId) return 0;
+    let sent: Set<string>; try { sent = new Set(JSON.parse(readFileSync(sentFile, 'utf8')) as string[]); } catch { sent = new Set(); }
+    const due = this.node.store.all().filter((s) => s.visibility === 'public' && s.rec.agent_id === offlineId && !sent.has(s.rec.id));
+    let n = 0;
+    for (const s of due) { try { await this.node.resend(s.rec); sent.add(s.rec.id); n++; } catch { /* next time */ } }
+    writeFileSync(sentFile, JSON.stringify([...sent]));
+    return n;
+  }
   get mailbox() { return (this._mailbox ??= new Mailbox(this)); }
   private _agentRuns?: AgentRuns;
   /** Claude Code on this computer taking steps of a problem, started from the app (src/work/agent-runs.ts). */
@@ -212,7 +229,10 @@ export class Hub {
         const bus = await X0xBus.connect(x0x);
         say(`Connected to x0x as ${signer.agentId.slice(0, 8)}.`);
         x0x.timeoutMs = undefined;
-        return new Hub({ signer, store, bus, archive, x0x, privacy, preview, memoryKey });
+        const hub = new Hub({ signer, store, bus, archive, x0x, privacy, preview, memoryKey });
+        // What was shared while Constellate ran without x0x (signed with this computer's offline key) goes out now.
+        setTimeout(() => void hub.sendOfflineShares(home).catch(() => {}), 3_000).unref?.();
+        return hub;
       } catch (e) {
         if (!reachable) break; // no daemon at all: carry on without one, as before
         say(`x0x is slow to answer (${(e as Error).message}); trying again…`);

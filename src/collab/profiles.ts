@@ -27,6 +27,8 @@ export interface ProfileBody {
   open_to?: { messages?: boolean; invites?: boolean; reviews?: boolean };
   can?: string[];
   github?: { handle: string; proof: string };
+  /** How this computer uses Constellate: the app, or only through an agent (messages then reach the agent). */
+  reach?: 'app' | 'agent';
 }
 
 export interface Profile extends ProfileBody { id: string; host: string; updated: string; }
@@ -38,6 +40,7 @@ export function profileProblem(b: Partial<ProfileBody>): string | null {
   if (b.about !== undefined && (typeof b.about !== 'string' || b.about.length > 160)) return 'about is one line, up to 160 characters';
   if (b.realms !== undefined && (!Array.isArray(b.realms) || b.realms.some((r) => !(REALMS as readonly string[]).includes(r)))) return 'unknown area';
   if (b.can !== undefined && (!Array.isArray(b.can) || b.can.length > 8 || b.can.some((c) => typeof c !== 'string' || c.length > 60))) return 'up to 8 short skills';
+  if (b.reach !== undefined && b.reach !== 'app' && b.reach !== 'agent') return 'reach is app or agent';
   if (b.github !== undefined && !(HANDLE.test(b.github.handle) && /^https:\/\/gist\.github\.com\/[A-Za-z0-9-]+\/[0-9a-f]{20,40}$/.test(b.github.proof))) return 'bad GitHub link';
   return null;
 }
