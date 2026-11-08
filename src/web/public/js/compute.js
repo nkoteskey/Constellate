@@ -219,7 +219,7 @@ export function computePage(page) {
   page(`<div class="page narrow"><div class="eyebrow">Help for free</div>
     <h1 class="display" style="font-size:var(--d-md);margin:10px 0">Your computer, helping while you sleep</h1>
     <p class="muted" style="max-width:60ch">Your computer runs a free AI model and works on open problems while you’re not using it. You don’t need an AI account, and you don’t pay anything.</p>
-    <div id="start-slot" style="margin:18px 0 14px"></div>
+    ${DESKTOP ? '<div id="desk-slot" style="margin:18px 0 14px"></div>' : '<div id="start-slot" style="margin:18px 0 14px"></div>'}
     <div id="dash-slot"></div>
     <div class="card" style="margin:14px 0 18px"><ul class="plain-list" style="margin:0;padding-left:18px;display:grid;gap:6px;font-size:13.5px">
       <li><b>What runs:</b> a free, open model on this computer (or right in this browser tab). It fits your machine, so it won’t slow you down.</li>
@@ -231,7 +231,6 @@ export function computePage(page) {
     ${STATIC ? '' : '<div id="fund-slot"></div>'}
 
     <details class="more-options"><summary><span>More options<span class="mo-sub">Choose a different model, see what fits this computer, bring any model, check storage, or use the command line</span></span></summary>
-    ${DESKTOP ? '<div id="desk-slot" style="margin:12px 0"></div>' : ''}
     <div id="bc-slot" style="margin-top:12px"></div>
     <h2 class="section">What this device can run</h2>
     <div class="card" id="dev"><span class="faint">Looking at this device…</span></div>
@@ -277,7 +276,8 @@ export function computePage(page) {
     sync();
     $('#bc-slot').innerHTML = browserPanel(d);
     wireBrowser();
-    void startCard($('#start-slot'));
+    // In the desktop app, lending is one card: the switch, its limits and what ran (js/desktop.js lendCard).
+    if (!DESKTOP) void startCard($('#start-slot'));
   });
   if (!STATIC) {
     if (DESKTOP) void lendCard($('#desk-slot'));

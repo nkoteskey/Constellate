@@ -13,6 +13,7 @@ import { registerAppRoutes } from './web/app.js';
 import { registerEconomyRoutes } from './economy/routes.js';
 import { TestnetLedger } from './economy/rail.js';
 import { detectDevice, suggestFor, readConditions, POLITE } from './contributor/device.js';
+import { Lend, policyFor, restAfter } from './contributor/lend.js';
 import { registerContributorRoutes } from './contributor/dashboard.js';
 import { runnerFromSpec, providerTable, commands, CATALOG_UPDATED, PROVIDERS } from './contributor/catalog.js';
 import { KeyVault } from './contributor/keyvault.js';
@@ -52,6 +53,7 @@ const USAGE = `Constellate — where humans and agents gather into something gre
   constellate models     What this machine can run: free open-weight models that fit, and every provider
   constellate contribute Donate idle compute: detect hardware, pick a model, work politely
       [--model PROVIDER/MODEL] [--verifier PROVIDER/MODEL] [--cap-cents N] [--endpoint URL] [--no-ui] [--port N]
+      [--lend]  follow the limits set in the app (hours per night, never on battery, CPU cap), keep a log, pledge the hours
       Opens status and controls (pause, plugged-in only, battery, hours, heat) at http://127.0.0.1:4748
       Any model works: ollama/qwen3:14b, lmstudio/…, groq/llama-3.3-70b-versatile,
       openrouter/<any>, huggingface/…, gemini/…, openai/…, anthropic/claude-opus-5-5,
@@ -427,21 +429,53 @@ async function contribute(args: string[]) {
   const board = hub.x0x ? new X0xBoard(hub.x0x, 'constellate/v1/board') : new MemoryBoard();
   const budget = new Budget(Number(flag(args, '--cap-cents') ?? 0) || (runners.some((r) => r.costPerCall) ? 100 : Infinity));
   const policy = { ...POLITE };
+  // --lend: the desktop app's one-click switch (src/contributor/lend.ts): the person's limits, a log, a pledge.
+  const lend = args.includes('--lend') ? new Lend() : null;
+  let pledged = -1;
+  const applyLimits = async () => {
+    if (!lend) return;
+    const l = lend.limits();
+    Object.assign(policy, policyFor(l, { ...POLITE, paused: policy.paused }));
+    const hours = l.hoursPerNight * 7;
+    if (hours !== pledged) { pledged = hours; await hub.collective.pledge(hours).catch(() => {}); } // compute_pledge, so votes weigh it once delivered
+  };
+  await applyLimits();
+  if (lend) {
+    // Turned off from the app (the process is stopped): the pledge goes back to zero before it exits.
+    const stop = () => { void hub.collective.pledge(0).catch(() => {}).finally(() => process.exit(0)); setTimeout(() => process.exit(0), 3000).unref(); };
+    process.once('SIGTERM', stop); process.once('SIGINT', stop);
+  }
   const workers = runners.map((r) => new Worker(hub, r, hub.problems, board, { policy, power: readConditions, budget }));
   // The contributor app: status and controls in the browser, on this machine only. --no-ui to skip.
   if (!args.includes('--no-ui')) {
     const web = new WebServer(hub);
     registerAppRoutes(web);
-    registerContributorRoutes(web, { workers, budget, policy, device });
+    registerContributorRoutes(web, { workers, budget, policy, device, lend: lend ?? undefined });
     await web.listen(Number(flag(args, '--port') ?? 4748), '127.0.0.1');
     console.log(`Status and controls: ${web.url}/#/compute`);
   }
   let last = '';
   for (;;) {
     let didWork = false;
-    for (const worker of workers) for (const p of hub.problems.list()) {
+    await applyLimits(); // the app may have changed them
+    if (lend && !lend.underTonight()) {
+      for (const w of workers) w.status = { state: 'waiting', message: `Done for tonight: ${lend.limits().hoursPerNight} hours used. Back tomorrow night.` };
+    } else for (const worker of workers) for (const p of hub.problems.list()) {
+      const t0 = Date.now();
+      worker.last = undefined;
       const o = await worker.step(p.rec.id).catch((e) => { console.error(String(e)); return 'idle' as const; });
-      if (o !== 'idle' && o !== 'paused') didWork = true;
+      if (o === 'idle' || o === 'paused') continue;
+      didWork = true;
+      if (lend) {
+        const ms = Date.now() - t0;
+        lend.addUsage(ms / 1000);
+        const did = worker.last as Worker['last']; // set by step()
+        if (did) lend.record({ at: new Date().toISOString(), ...did, outcome: o, seconds: Math.round(ms / 100) / 10 });
+        // The CPU cap: rest in proportion to the time just worked.
+        const rest = restAfter(ms, lend.limits().cpuCapPct);
+        if (rest > 0) await new Promise((r) => setTimeout(r, Math.min(rest, 10 * 60_000)));
+        if (!lend.underTonight()) break;
+      }
     }
     const msg = workers[0].status.message;
     if (msg !== last) { console.log(`● ${msg}`); last = msg; }

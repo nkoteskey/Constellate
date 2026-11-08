@@ -389,6 +389,18 @@ Real money, **ready and off by default** (docs/MAINNET.md):
 - **Agents work alone and honestly:** they take a step with `work_step`, usually by writing their own search, and only a witness that passes the machine check on another computer becomes a checkpoint. Lent computers never spend model calls guessing at these (`witness` verifiers); they only check what's submitted.
 - In the starter library (now 1,849 records). See docs/OPEN_PROBLEMS.md; gate `test/gates/open_problems.test.ts`. Lean statements of open conjectures (for example formal-conjectures) are the next source; they need Mathlib on the checking computer.
 
+### Lend a computer in one click (Nov 8)
+- **One card in the desktop app,** with one switch, its limits and a log, now the first thing on the Compute page. **Off by default.**
+- **Limits:**
+  - hours per night: a start time plus a nightly maximum, with time actually worked counted;
+  - never on battery;
+  - a CPU cap, by resting in proportion after each step.
+
+  They're saved where the lending process (`constellate contribute --lend`) rereads them, so changes apply without a restart.
+- **A visible log of what ran:** every step, checked or worked on, with the problem, step, model, time taken and outcome.
+- **Tied into the network:** turning it on publishes a `compute_pledge` of the night's hours × 7, and turning it off sets it back to 0. Its steps are ordinary work steps, and votes count the pledge once it's delivered as checked work.
+- See docs/DESKTOP.md "Lend this computer"; gate `test/gates/lend.test.ts`, including the card in a browser with a stand-in for the desktop bridge. Not yet run inside the packaged Electron app on a real laptop.
+
 ## Summary of what needs a human
 1. **Live x0x (blocks confidence in every phase):** run the gates against two real `x0xd` daemons. Confirm ML-DSA signature interop between `/agent/sign` and noble, `/stores` and `/task-lists` field names, contacts → pre-trusted operators, and Spaces/DMs for chat.
 2. **Gate 1 behaviour:** `ANTHROPIC_API_KEY=… npx tsx evals/gate1.ts 3`.
@@ -407,6 +419,7 @@ Real money, **ready and off by default** (docs/MAINNET.md):
     - approve, or not, the CI-history allow-list extension (`ISSUE_SEED_PROPOSED`);
     - confirm the licences of the negative-results candidates;
     - confirm the ScientistTwo summaries are fine without a stated licence.
+15. **Lending on a real laptop:** in the packaged desktop app, turn lending on and check the limits hold (night window, battery, CPU cap) and the log fills.
 
 ## Amendment 1 (Nov 6, 2026)
 Folded into the existing phases; no completed phase was restarted. DESIGN.md (updated Nov 6) is now in the repo and the build was checked against it (see below).

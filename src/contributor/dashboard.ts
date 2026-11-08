@@ -2,6 +2,7 @@ import { WebServer, HttpReply } from '../web/server.js';
 import { Worker } from '../work/worker.js';
 import { Budget } from './models.js';
 import { Device, Policy, readConditions, suggestFor } from './device.js';
+import type { Lend } from './lend.js';
 
 /**
  * The contributor app's status and controls, served on this machine only:
@@ -9,7 +10,7 @@ import { Device, Policy, readConditions, suggestFor } from './device.js';
  * the polite policy (plugged in, battery, hours, heat, pause). The app's
  * "Lend your computer" page shows it when it's running.
  */
-export function registerContributorRoutes(web: WebServer, c: { workers: Worker[]; budget: Budget; policy: Policy; device: Device }) {
+export function registerContributorRoutes(web: WebServer, c: { workers: Worker[]; budget: Budget; policy: Policy; device: Device; lend?: Lend }) {
   web.route('GET', /^\/api\/contributor$/, () => {
     const cond = readConditions();
     return {
@@ -20,6 +21,8 @@ export function registerContributorRoutes(web: WebServer, c: { workers: Worker[]
       conditions: cond,
       device: c.device,
       suggestion: suggestFor(c.device),
+      // Lending from the app: its limits, tonight's use and what ran (src/contributor/lend.ts).
+      ...(c.lend ? { lend: { limits: c.lend.limits(), used_tonight_seconds: Math.round(c.lend.usedTonight()), log: c.lend.recent(30) } } : {}),
     };
   });
   web.route('POST', /^\/api\/contributor\/policy$/, async (req, _m, _u, body) => {

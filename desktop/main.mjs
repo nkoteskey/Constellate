@@ -65,7 +65,7 @@ async function startContributor() {
     if (missing.length) throw Object.assign(new Error(`Download ${missing.join(' and ')} first.`), { code: 'model-missing', missing });
   }
   await contributor?.stop();
-  contributor = new Service({ ...common, name: 'contributor', args: ['contribute', '--model', model, ...(verifier ? ['--verifier', verifier] : [])], env: x0x.env(), ready: () => isListening(DASH_URL) });
+  contributor = new Service({ ...common, name: 'contributor', args: ['contribute', '--lend', '--model', model, ...(verifier ? ['--verifier', verifier] : [])], env: x0x.env(), ready: () => isListening(DASH_URL) });
   return contributor.start();
 }
 
@@ -147,6 +147,10 @@ function handle(channel, fn) { ipcMain.handle(channel, async (e, ...a) => { if (
 handle('desktop:status', async () => ({ ...status(), ollama: await ollamaStatus(), suggestion: await suggestion().catch(() => null) }));
 handle('desktop:contribute', (_e, on) => setContribute(Boolean(on)));
 handle('desktop:setModel', (_e, model, verifier) => { save({ model: model || null, verifier: verifier || null }); return status().settings; });
+// Lending limits and the log of what ran (src/contributor/lend.ts): files the lending process rereads as they change.
+const lend = async () => new (await import(pathToFileURL(join(ROOT, 'dist', 'contributor', 'lend.js')).href)).Lend();
+handle('desktop:lendLimits', async (_e, patch) => { const l = await lend(); return patch && typeof patch === 'object' ? l.setLimits(patch) : l.limits(); });
+handle('desktop:lendLog', async () => { const l = await lend(); return { log: l.recent(30), used_tonight_seconds: Math.round(l.usedTonight()), limits: l.limits() }; });
 handle('desktop:openAtLogin', (_e, on) => { setOpenAtLogin(Boolean(on)); return settings.openAtLogin; });
 handle('desktop:getOllama', () => shell.openExternal(OLLAMA_DOWNLOAD));
 handle('desktop:pull', async (e, model) => {

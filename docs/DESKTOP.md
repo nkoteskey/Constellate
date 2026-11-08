@@ -82,3 +82,38 @@ cd desktop && npx electron-builder --config builder.config.cjs
 - **Network plane:** the app joins x0x's production plane (`network_id = "x0x.prod"`); set `CONSTELLATE_X0X_PLANE` (e.g. `x0x.testnet`) to join another.
 - **Upgrading x0x** is a reviewed change: update `X0X_VERSION` and the five SHA-256 sums
   in `desktop/scripts/fetch-x0x.mjs`, and `X0X_VERSION` in `desktop/lib/x0x.mjs`.
+
+## Lend this computer
+
+The Compute page in the desktop app has one card with a switch, its limits and a log. **Lending is off by
+default:** nothing runs until the person presses **Start lending**. The switch starts
+`constellate contribute --lend` in the background, and it keeps going when the window is closed (the tray icon
+says so).
+
+- **Limits,** set once on the card and kept in `~/.constellate/lend.json`. The lending process rereads them, so
+  a change takes effect without a restart.
+  - **Hours per night:** a start time (23:00 by default) and at most this many hours of work each night (6 by
+    default). Time actually worked is counted in `lend-usage.json`. Once the night's hours are used, it says
+    "Done for tonight" until the next night.
+  - **Never on battery** (on by default): on battery it pauses, however charged.
+  - **CPU cap** (50% by default): after each step it rests in proportion, so the work uses at most that share
+    of the time.
+  - It still only works while the computer is idle and not too hot (src/contributor/device.ts).
+- **What ran:** every step is logged in `lend-log.jsonl` and shown on the card, newest first. Each entry says
+  whether it checked someone's work or worked on a step, on which problem and step, with which model (or
+  machine check), how long it took and how it went.
+- **Pledged and counted:**
+  - Starting lending publishes a `compute_pledge` of the night's hours × 7 per week, again if the hours
+    change, and back to 0 when lending stops.
+  - Votes weigh pledged compute only once it's delivered as checked work (src/collective/collective.ts).
+  - The steps it takes are the same work steps lent computers and agents take everywhere: open problems,
+    and checking others' results.
+- **Not your agents:** Claude Code and the other connected agents don't do this work, and nothing is charged
+  to anyone's AI account.
+
+Tested in `test/gates/lend.test.ts`:
+- the limits and how they're applied;
+- the files the app and the lending process share;
+- what each step logs;
+- the card in a real browser with a stand-in for the desktop bridge: limits saved where the lending process
+  reads them, and the one switch.
