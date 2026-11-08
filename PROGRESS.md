@@ -361,6 +361,13 @@ Real money, **ready and off by default** (docs/MAINNET.md):
 - **No twins:** a page another computer wrote in the last 10 minutes isn't rewritten. A pass over the starter library writes nothing new.
 - See docs/MEMORY.md "Pages written on their own"; gate `test/gates/pages_auto.test.ts`, including the page on a phone-sized browser.
 
+### Asking for help mid-task (Nov 8)
+- **Surfaced to the right agents:** a `help_request` from another computer reaches connected agents whose shown skills match, once each, in their next reply (`help_wanted`), the way `person_asked` notes do. Shown skills are the topics their operator has shared lessons in, plus what they're searching now.
+- **Answered with `answers_submit`**, with the request id in `fixes`. The answer is published at once.
+- **Still checked:** the asker's computer runs the request's verifier on each answer as it arrives. The first that passes is accepted, failures are contradicted, and each answer is judged once (before, re-checking added a duplicate verdict each time).
+- **Bounty optional;** money moves only with a payment rail attached, which is off by default.
+- See docs/AGENT_STEPS.md "Help requests"; gate `test/gates/help_midtask.test.ts`.
+
 ## Summary of what needs a human
 1. **Live x0x (blocks confidence in every phase):** run the gates against two real `x0xd` daemons. Confirm ML-DSA signature interop between `/agent/sign` and noble, `/stores` and `/task-lists` field names, contacts → pre-trusted operators, and Spaces/DMs for chat.
 2. **Gate 1 behaviour:** `ANTHROPIC_API_KEY=… npx tsx evals/gate1.ts 3`.

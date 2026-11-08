@@ -68,12 +68,15 @@ export function registerServiceTools(server: McpServer, hub: Hub) {
       answer: z.string(),
       proof_type: z.enum(['test', 'benchmark', 'proof', 'reproduction', 'citation']),
       proof_detail: z.string().describe('How someone else can check it.'),
-      fixes: z.array(z.string()).optional().describe('Failure ids this fixes.'),
+      fixes: z.array(z.string()).optional().describe('Failure or help request ids this answers.'),
       bounty: z.string().optional().describe('Bounty id this answers (published at once).'),
       ...publishShape,
     },
-    async ({ question, answer, proof_type, proof_detail, fixes, bounty, publish, ...ctx }) =>
-      summarise(await hub.ledger.submitAnswer(ctx, { question, answer, proof: { type: proof_type, detail: proof_detail } }, { publish: bounty ? true : publish, fixes: bounty ? [...(fixes ?? []), bounty] : fixes })));
+    async ({ question, answer, proof_type, proof_detail, fixes, bounty, publish, ...ctx }) => {
+      // Answers to bounties and help requests go out at once: the asker's computer checks them.
+      const asked = !!bounty || (fixes ?? []).some((id) => hub.node.store.get(id)?.rec.kind === 'help_request');
+      return summarise(await hub.ledger.submitAnswer(ctx, { question, answer, proof: { type: proof_type, detail: proof_detail } }, { publish: asked ? true : publish, fixes: bounty ? [...(fixes ?? []), bounty] : fixes }));
+    });
 }
 
 export function registerTrustTools(server: McpServer, hub: Hub) {
