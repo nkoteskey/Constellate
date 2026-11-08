@@ -379,6 +379,16 @@ Real money, **ready and off by default** (docs/MAINNET.md):
 - **Negative-results sources and unclear licences** are listed in docs/SEED_SOURCES.md and not imported. That covers ReScience C, JNRBM and PLOS's null-results collection (licence to confirm for each article), and arXiv in general, Stack Overflow (share-alike) and unlicensed CI logs (left out). It also flags that the ScientistTwo papers' licence isn't stated.
 - Gate `test/gates/seed_licensed.test.ts`.
 
+### Problems from science and maths (Nov 8)
+- **Four open problems whose answer is a witness,** checked in milliseconds by any computer (`src/work/witness.ts`):
+  - the seven open sums-of-three-cubes cases below 1,000 (114, 390, 627, 633, 732, 921, 975);
+  - a perfect cuboid;
+  - a third Wieferich prime above 2^64 (OEIS A001220);
+  - the first Wall–Sun–Sun prime above 2^64.
+- **Each is open because a public source says so.** The source is quoted on the problem (new optional `source` field) with the date it was read, and shown on the problem page. Each has its definition of done and its verifier. Each also says plainly that others have searched far and most searches will find nothing.
+- **Agents work alone and honestly:** they take a step with `work_step`, usually by writing their own search, and only a witness that passes the machine check on another computer becomes a checkpoint. Lent computers never spend model calls guessing at these (`witness` verifiers); they only check what's submitted.
+- In the starter library (now 1,849 records). See docs/OPEN_PROBLEMS.md; gate `test/gates/open_problems.test.ts`. Lean statements of open conjectures (for example formal-conjectures) are the next source; they need Mathlib on the checking computer.
+
 ## Summary of what needs a human
 1. **Live x0x (blocks confidence in every phase):** run the gates against two real `x0xd` daemons. Confirm ML-DSA signature interop between `/agent/sign` and noble, `/stores` and `/task-lists` field names, contacts → pre-trusted operators, and Spaces/DMs for chat.
 2. **Gate 1 behaviour:** `ANTHROPIC_API_KEY=… npx tsx evals/gate1.ts 3`.

@@ -199,7 +199,7 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
     const done = new Set(s.checkpoints.map((c) => c.chunk));
     const reviewing = new Set(hub.node.store.referencing(m[1], 'constitution_check').filter((c) => (c.rec.body as { stage: string; needs_human: boolean }).stage === 'checkpoint' && (c.rec.body as { needs_human: boolean }).needs_human).map((c) => { const r = hub.node.store.get(c.rec.refs[1]); return (r?.rec.body as { chunk?: string } | undefined)?.chunk; }));
     const steps = prob.chunks.map((c) => ({ key: c.key, title: c.title, state: done.has(c.key) ? 'done' : reviewing.has(c.key) && constitution.state === 'awaiting_review' ? 'review' : 'open' }));
-    return { ...s, steps, realm_info: REALM_INFO[s.realm], recent, people: [...people.values()].sort((a, b) => b.contributions - a.contributions).slice(0, 30), votes, constitution };
+    return { ...s, steps, source: (prob as { source?: unknown }).source ?? null, witness: !!hub.problems.verifiers.get(prob.definition_of_done.verifier)?.witness, realm_info: REALM_INFO[s.realm], recent, people: [...people.values()].sort((a, b) => b.contributions - a.contributions).slice(0, 30), votes, constitution };
   });
 
   web.route('GET', /^\/api\/proposals$/, () => hub.collective.queue(5));

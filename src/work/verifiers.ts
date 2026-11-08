@@ -3,6 +3,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { leanProjectVerifier } from './lean-project.js';
+import { WITNESS_VERIFIERS } from './witness.js';
 
 /**
  * Machine checks for "definition of done". Only problems with checkable
@@ -16,6 +17,8 @@ export interface Verifier {
   work?(spec: Record<string, unknown>): Promise<string>;
   /** The machine check is the whole judgement; no model opinion is asked for. */
   readonly machineOnly?: boolean;
+  /** Open search with a witness answer: lent computers don't try it with blind model calls (src/work/witness.ts). */
+  readonly witness?: boolean;
   /** Whether this computer can run it (e.g. has Lean installed). Steps it can't run are left for others. */
   available?(): boolean;
 }
@@ -73,7 +76,7 @@ export const leanVerifier: Verifier = {
 
 export class VerifierRegistry {
   private m = new Map<string, Verifier>();
-  constructor(vs: Verifier[] = [exactVerifier, sumSquaresModVerifier, leanVerifier, leanProjectVerifier]) { for (const v of vs) this.m.set(v.name, v); }
+  constructor(vs: Verifier[] = [exactVerifier, sumSquaresModVerifier, leanVerifier, leanProjectVerifier, ...WITNESS_VERIFIERS]) { for (const v of vs) this.m.set(v.name, v); }
   register(v: Verifier) { this.m.set(v.name, v); }
   get(name: string) { return this.m.get(name); }
   names() { return [...this.m.keys()]; }

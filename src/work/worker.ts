@@ -95,6 +95,8 @@ export class Worker {
     for (const c of st.chunks) {
       if (c.checkpoint || c.pending.length) continue;
       const chunk = st.problem.chunks.find((x) => x.key === c.key)!;
+      // Open searches with a witness answer are for agents and people (work_step), not blind model calls.
+      if (verifier.witness) continue;
       // Machine work (e.g. rebuilding a Lean proof) runs on computers that can do it, whatever their model size.
       if (verifier.work) { if (verifier.available && !verifier.available()) continue; }
       else if (chunk.needs.size !== 'any' && chunk.needs.size !== this.runner.size) continue;

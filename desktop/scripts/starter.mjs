@@ -35,6 +35,9 @@ const sleep = await new Consolidator(hub, undefined, { written: json('cluster-su
 // Featured work: re-check the Aaronson–Ambainis proof, and debate its statement (src/seed/featured.ts).
 const featured = await (await load('seed/featured.js')).seedFeatured(hub);
 if (!featured.problem) throw new Error('the featured problem was not accepted');
+// Open problems from mathematics with machine-checkable answers, each with its public source (src/seed/open-problems.ts).
+const openProblems = await (await load('seed/open-problems.js')).seedOpenProblems(hub);
+if (openProblems.length !== 4) throw new Error(`open problems: ${openProblems.length} of 4 accepted`);
 // One signature over the whole library (a batch root), so the bundle needn't carry 1,158 of them (docs/STORAGE.md).
 const { merkle, signRecord } = await load('core/record.js');
 const ids = hub.node.store.all().map((s) => s.rec.id);
@@ -43,4 +46,4 @@ const root = await signRecord({ kind: 'batch_root', context: { task: 'batch', do
 const bytes = exportSnapshot(hub.node.store, [{ root, ids }]);
 mkdirSync(dirname(out), { recursive: true });
 writeFileSync(out, bytes);
-console.log(`starter library: ${report.failures} failures, ${report.answers} fixes, ${research.failures + research.answers} research lessons from ${research.papers} papers, ${skills.added} public skills, ${tldr.added} tldr-pages commands, ${sleep.summarised} summaries, 1 featured problem and debate (${hub.node.store.all().length} signed records, ${(bytes.length / 1e6).toFixed(1)} MB) → ${out}`);
+console.log(`starter library: ${report.failures} failures, ${report.answers} fixes, ${research.failures + research.answers} research lessons from ${research.papers} papers, ${skills.added} public skills, ${tldr.added} tldr-pages commands, ${sleep.summarised} summaries, 1 featured problem and debate, ${openProblems.length} open problems (${hub.node.store.all().length} signed records, ${(bytes.length / 1e6).toFixed(1)} MB) → ${out}`);
