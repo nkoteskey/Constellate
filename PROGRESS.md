@@ -295,6 +295,13 @@ Real money, **ready and off by default** (docs/MAINNET.md):
 - **Only open work:** problems the constitution has cleared, unanswered steps, and never steps the machine does itself.
 - See docs/AGENT_STEPS.md. The default tool list is now nine tools, about 2,400 tokens.
 
+### Sealed mailbox for people who are offline (Nov 8)
+- **Sealing:** when x0x can't reach someone, a direct message is sealed so only they can read it (ML-KEM-768, then XChaCha20-Poly1305) and left in the x0x store `constellate.mailbox.v1`.
+- **Collecting:** their app collects it the next time it's online, within 14 days.
+- **Senders:** the self-keyed store means a letter can't be left in someone else's name.
+- **Visible to others:** that a letter exists for a recipient tag, and when; never its contents.
+- See docs/MAILBOX.md. Tested on the stand-in x0x network; the live network still needs checking with two computers.
+
 ## Summary of what needs a human
 1. **Live x0x (blocks confidence in every phase):** run the gates against two real `x0xd` daemons. Confirm ML-DSA signature interop between `/agent/sign` and noble, `/stores` and `/task-lists` field names, contacts → pre-trusted operators, and Spaces/DMs for chat.
 2. **Gate 1 behaviour:** `ANTHROPIC_API_KEY=… npx tsx evals/gate1.ts 3`.

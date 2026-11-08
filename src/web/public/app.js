@@ -80,13 +80,13 @@ async function dmSheet(to, opts = {}) {
   const load = async () => { if (!meId && hasIdentity()) meId = (await ID()).identity().agentId; return meId ? (await api(`/api/dm/${meId}`)).messages.filter((m) => m.to === to || m.from === to) : []; };
   const el = sheet(`<div class="spread"><div class="eyebrow">Message ${esc(opts.name ?? short(to))}</div><button class="btn ghost sm" data-close>Close</button></div>
     <p class="faint" style="font-size:12.5px;margin:6px 0 12px">Private: sent over x0x direct messages, never stored as a public record.</p>
-    ${opts.offline ? '<p class="card" style="font-size:13px;margin:0 0 12px;padding:10px 12px">They’re offline right now. x0x delivers a direct message only while both computers are online, so this may not go through. You’ll see “Delivered” if it does; if not, nothing was sent and you can try again when they’re online.</p>' : ''}
+    ${opts.offline ? '<p class="card" style="font-size:13px;margin:0 0 12px;padding:10px 12px">They’re offline right now. Your message will be sealed so only they can read it and left in their x0x mailbox; they’ll get it next time they’re online (it keeps for 14 days).</p>' : ''}
     <div class="feed" id="dm-list" style="max-height:40vh;overflow:auto"></div>
     <form class="chat-form" id="dm-form"><input class="field" id="dm-text" maxlength="2000" placeholder="Say hello" aria-label="Message" required><button class="btn">Send</button></form>`, { label: 'Direct message' });
   if (opts.draft) { $('#dm-text', el).value = opts.draft; $('#dm-text', el).focus(); }
   const inbox = await import('./js/inbox.js');
   if (opts.name && !/^Agent /.test(opts.name)) inbox.rememberName(to, opts.name);
-  const draw = async () => { const ms = await load(); $('#dm-list', el).innerHTML = ms.map((m) => `<div class="item">${identicon(m.from, m.from === meId, 30)}<div><div class="meta"><span>${m.from === meId ? 'You' : short(m.from)}</span><span>· ${ago(m.at)}</span>${m.via === 'demo' ? '<span class="faint">· demo network</span>' : ''}</div><div class="body">${esc(m.text)}</div></div></div>`).join('') || '<p class="muted">No messages yet.</p>'; };
+  const draw = async () => { const ms = await load(); $('#dm-list', el).innerHTML = ms.map((m) => `<div class="item">${identicon(m.from, m.from === meId, 30)}<div><div class="meta"><span>${m.from === meId ? 'You' : short(m.from)}</span><span>· ${ago(m.at)}</span>${m.via === 'demo' ? '<span class="faint">· demo network</span>' : ''}${m.via === 'mailbox' ? `<span class="faint">· ${m.out ? 'sealed in their mailbox, waiting for them to come online' : 'left in your mailbox while you were away'}</span>` : ''}</div><div class="body">${esc(m.text)}</div></div></div>`).join('') || '<p class="muted">No messages yet.</p>'; };
   $('#dm-form', el).onsubmit = async (e) => {
     e.preventDefault();
     const text = $('#dm-text', el).value.trim(); if (!text) return;
@@ -96,7 +96,8 @@ async function dmSheet(to, opts = {}) {
     btn.disabled = false; btn.textContent = 'Send';
     if (r.error) { toast(r.error, 7000); return; } // the draft stays, so they can try again
     $('#dm-text', el).value = '';
-    toast(r.via === 'x0x' ? (r.receipt ? 'Delivered over x0x.' : 'Sent over x0x (their x0x doesn’t send delivery receipts).') : 'Sent.');
+    toast(r.via === 'mailbox' ? 'They’re offline, so it’s sealed (only they can read it) and left in their x0x mailbox. They’ll get it next time they’re online, within 14 days.'
+      : r.via === 'x0x' ? (r.receipt ? 'Delivered over x0x.' : 'Sent over x0x (their x0x doesn’t send delivery receipts).') : 'Sent.', 6500);
     opts.onSent?.();
     await draw();
   };

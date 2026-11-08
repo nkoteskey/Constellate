@@ -200,6 +200,14 @@ Lend your computer instead: node "${cli}" models, then node "${cli}" contribute`
     if (model) console.log(`Model: ${model.id} (guide, constitution review, summaries, debate re-runs)`);
     // Incoming direct messages: history sync between computers, otherwise a person's message for the app's inbox.
     hub.x0x?.directEvents((m) => { if (!hub.sync.handle(m.sender, m.payload)) hub.people.receive(m.sender, m.payload); });
+    // Sealed letters left while this computer was offline (docs/MAILBOX.md): publish the mailbox key, collect
+    // now and every minute, and clear this computer's own expired letters once a day.
+    if (hub.x0x) {
+      const collect = () => void hub.people.collectMail().catch(() => {});
+      setTimeout(() => { void hub.mailbox.publishKey().catch(() => {}); collect(); }, 5_000).unref();
+      setInterval(collect, 60_000).unref();
+      setInterval(() => void hub.mailbox.tidy().catch(() => {}), 24 * 3600_000).unref();
+    }
     // Catch up: gossip has no replay, so ask a few online peers for what this computer missed (docs/STORAGE.md).
     if (hub.x0x) setTimeout(() => void hub.x0x!.presenceOnline().then((ids) => hub.sync.request(ids)).catch(() => {}), 15_000).unref();
     // Pack history compactly once a day (keys once, binary, batch proofs); loose files stay until then.

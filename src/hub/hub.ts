@@ -1,3 +1,4 @@
+import { Mailbox } from '../collab/mailbox.js';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { HubNode } from './node.js';
@@ -95,6 +96,9 @@ export class Hub {
   private _x0xSkills?: X0xSkills;
   /** Skills across x0x: published to and pulled from a public x0x data store (docs/X0X_SKILLS.md). */
   get x0xSkills() { return (this._x0xSkills ??= new X0xSkills(this)); }
+  private _mailbox?: Mailbox;
+  /** Sealed letters for people who are offline (docs/MAILBOX.md). */
+  get mailbox() { return (this._mailbox ??= new Mailbox(this)); }
   private _pages?: Pages;
   /** Topic pages, the session map and dreaming (docs/MEMORY.md). */
   get pages() { return (this._pages ??= new Pages(this)); }
