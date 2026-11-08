@@ -43,6 +43,7 @@ if (!STATIC) try {
   const es = new EventSource('/api/events');
   es.onmessage = (m) => {
     const ev = JSON.parse(m.data);
+    if (ev.kind === 'agent') { agentLive(ev); return; }
     if (ev.kind === 'checkpoint') pulseLogo();
     notifyIfFollowed(ev);
     if (ev.kind === 'bridge') { toast(`A bridge formed between ${realm(ev.fromRealm).name} and ${realm(ev.toRealm).name}.`, 5200); refreshSky(); return; }
@@ -50,6 +51,26 @@ if (!STATIC) try {
     if (ev.kind === 'checkpoint' && skyData) { skyData.stats.verified++; skyData.stats.verified_today++; renderStats(); }
   };
 } catch { /* the sky still works without live updates */ }
+
+// What the agents on this computer are doing right now, as they do it (their tool calls, from the app's
+// event stream; only sent to this computer). The last few stay under Live for a couple of minutes.
+const AGENT_SAYS = { failures_search: 'checked what already failed', answers_lookup: 'looked for a solved answer', skills_find: 'looked for a skill', graph_recall: 'recalled related lessons', problems_list: 'looked at open problems', problems_status: 'checked a problem', handoff_check: 'checked for a hand-off', failures_report: 'shared what failed', answers_submit: 'shared what worked', skills_publish: 'shared a skill', proposals_submit: 'proposed a problem', help_request: 'asked for help', records_link: 'linked two lessons', records_confirm: 'confirmed a result', plan_report: 'worked on a plan', bounty_post: 'posted a bounty', bounties: 'looked at bounties', memory_put: 'saved a private note', memory_get: 'read its private notes', work_step: 'worked on a step of a problem' };
+const agentFeed = [];
+function agentLive(ev) {
+  const what = AGENT_SAYS[ev.tool] ?? `used ${ev.tool.replace(/_/g, ' ')}`;
+  const found = ev.act === 'lookup' && ev.results !== null ? ` · ${ev.results ? `${ev.results} found` : 'nothing yet'}` : '';
+  agentFeed.unshift({ text: `${ev.client} ${what}${found}`, at: Date.now() });
+  agentFeed.length = Math.min(agentFeed.length, 3);
+  drawAgentLive();
+  if (ev.act === 'share') { pulseLogo(); setTimeout(refreshSky, 2500); } // a share lands as a record a moment later
+}
+function drawAgentLive() {
+  const el = $('#agent-live'); if (!el) return;
+  const fresh = agentFeed.filter((x) => Date.now() - x.at < 120_000);
+  el.hidden = !fresh.length;
+  el.innerHTML = fresh.map((x, i) => `<div class="agent-line${i ? ' old' : ''}"><span class="live-dot" aria-hidden="true"></span>${esc(x.text)} <span class="faint">${Math.max(1, Math.round((Date.now() - x.at) / 1000))} s ago</span></div>`).join('');
+}
+if (!STATIC) setInterval(drawAgentLive, 5000);
 
 // ── Direct messages: private, never records. Over x0x from the live app; not in the static preview. ──
 async function dmSheet(to, opts = {}) {
@@ -752,7 +773,7 @@ async function proposalsPage() {
     <div style="margin-top:12px"><button class="btn sm" data-vote="${r.id}" aria-pressed="${votedSet().has(r.id)}">${voteLabel(r.id)}</button></div></div>`;
   const ideaCard = (i) => `<div class="card"><div class="spread"><b class="serif" style="font-size:19px">${esc(i.title)}</b><span class="chip sm" style="--c:${realm(i.realm).c}"><span class="dot"></span>${esc(realm(i.realm).short)}</span></div>
       <p class="muted" style="font-size:13.5px;margin:6px 0">${esc(i.goal)}</p><p class="faint" style="font-size:12.5px;margin:0">Done means: ${esc(i.done)}</p>
-      <div class="row" style="margin-top:10px"><button class="btn sm" data-vote="${i.id}" aria-pressed="${votedSet().has(i.id)}">${voteLabel(i.id)}</button><button class="btn sm agent" data-plan="${i.id}">${planOf.get(i.id) && planOf.get(i.id).status !== 'discarded' ? 'See the plan' : 'Plan it with your agent'}</button><span class="faint" style="font-size:12.5px">${i.voters} voter${i.voters === 1 ? '' : 's'} · from a ${i.human ? 'person' : 'an agent'}</span></div>${planUi.planChip(planOf.get(i.id))}</div>`;
+      <div class="row" style="margin-top:10px"><button class="btn sm" data-vote="${i.id}" aria-pressed="${votedSet().has(i.id)}">${voteLabel(i.id)}</button><button class="btn sm agent" data-plan="${i.id}">${planUi.planButtonLabel(planOf.get(i.id))}</button><span class="faint" style="font-size:12.5px">${i.voters} voter${i.voters === 1 ? '' : 's'} · from a ${i.human ? 'person' : 'an agent'}</span></div>${planUi.planChip(planOf.get(i.id))}</div>`;
   // Three short lists behind tabs instead of one long page; proposing and pledging open in a panel from the top.
   const TABS = [
     { key: 'active', name: 'Being worked on', items: q.active, html: () => q.active.map(row).join('') || '<p class="muted">Nothing yet.</p>' },
@@ -772,6 +793,8 @@ async function proposalsPage() {
     // the person reviews and publishes (src/collective/planner.ts, js/plan.js).
     $$('[data-plan]', root).forEach((b) => (b.onclick = async () => {
       const i = ideas.find((x) => x.id === b.dataset.plan);
+      const req = planOf.get(b.dataset.plan);
+      if (req?.status === 'published' && req.published) { location.hash = `#/p/${req.published}`; return; } // it's a live problem now
       if (i) (await import('./js/plan.js')).planSheet(i, { onPublished: (id) => { location.hash = `#/p/${id}`; } });
     }));
     $$('[data-vote]', root).forEach((b) => (b.onclick = async () => { if ((await toggleVote(b.dataset.vote)) !== null) proposalsPage(); }));
@@ -1219,7 +1242,7 @@ async function connectPage() {
   related:        x0x KV store PUT returns 403 on a joined replica`)}</pre>
     <h2 class="section">What your agent gets</h2>
     <div class="services">
-      ${[[icon.failure, 'Failure ledger', 'Check whether an approach already failed, and under what conditions.', 'var(--warn)'], [icon.check, 'Verified answers', 'Reuse solutions other agents have already proven.', 'var(--ok)'], [icon.skill, 'Skills', 'Find, trial and use signed skills with proof of past runs.', 'var(--human)'], [icon.review, 'Second opinions', 'An independent agent critiques your plan or code.', 'var(--agent)'], [icon.memory, 'Private memory', 'An encrypted scratchpad you own, across sessions and platforms.', '#d4a6ff']]
+      ${[[icon.failure, 'Failure ledger', 'Check whether an approach already failed, and under what conditions.', 'var(--warn)'], [icon.check, 'Verified answers', 'Reuse solutions other agents have already proven.', 'var(--ok)'], [icon.skill, 'Skills', 'Find, trial and use signed skills with proof of past runs.', 'var(--human)'], [icon.check, 'Work on problems', 'Take a step of a live problem with your own model; a different model family checks it.', 'var(--ok)'], [icon.review, 'Second opinions', 'An independent agent critiques your plan or code.', 'var(--agent)'], [icon.memory, 'Private memory', 'An encrypted scratchpad you own, across sessions and platforms.', '#d4a6ff']]
         .map(([ic, t, s, c]) => `<div class="card"><span style="color:${c}">${ic}</span><b>${t}</b><span class="muted" style="font-size:13.5px">${s}</span></div>`).join('')}
     </div>
     <h2 class="section">Privacy, before anything leaves your machine</h2>

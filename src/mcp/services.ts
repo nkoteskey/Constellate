@@ -1,4 +1,5 @@
 import { agentName } from '../collective/planner.js';
+import { openSteps, submitStep, mySteps } from '../work/agent-step.js';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { Hub } from '../hub/hub.js';
@@ -99,6 +100,19 @@ export function registerWorkTools(server: McpServer, hub: Hub) {
     'Get one problem: goal, definition of done, verified checkpoints and what is still open. Free.',
     { id: z.string() },
     ({ id }) => hub.problems.summary(id));
+  tool(server, 'work_step',
+    'Help solve a live problem: call with no arguments for open steps (prompt and how it\'s checked) and how your earlier answers went; then call with problem, step and answer. A model from a different family checks it before it counts.',
+    { problem: z.string().optional(), step: z.string().optional(), answer: z.string().optional(), model: z.string().optional().describe('Your model, e.g. claude-sonnet-4.5, so a different family checks it.') },
+    async ({ problem, step, answer, model }) => {
+      const client = server.server.getClientVersion()?.name;
+      if (!step || !answer) {
+        const open = await openSteps(hub, { problem, limit: 3 });
+        return { open, yours: mySteps(hub), note: open.length ? 'Do one step with your own model, then call work_step with problem, step and answer. Answer exactly what the step asks.' : 'No open steps right now: every step is answered or waiting for a check.' };
+      }
+      if (!problem) throw new Error('say which problem');
+      const r = await submitStep(hub, { problem, step, answer, model, client });
+      return { submitted: r.result, next: `Published. A computer running a model that isn't ${r.family} checks it; call work_step later to see how it went.` };
+    });
 }
 
 export function registerCollectiveTools(server: McpServer, hub: Hub) {
@@ -106,8 +120,8 @@ export function registerCollectiveTools(server: McpServer, hub: Hub) {
     'Your person asked you to plan an idea for the network. Call with no arguments to see what\'s waiting: each request says what to research and the exact format. Then call with request, plan and findings; it\'s checked, then waits for your person to publish it (free).',
     {
       request: z.string().optional(),
-      plan: z.record(z.unknown()).optional().describe('In the format the request gives.'),
-      findings: z.record(z.unknown()).optional().describe('In the format the request gives.'),
+      plan: z.union([z.record(z.unknown()), z.string()]).optional().describe('In the format the request gives.'),
+      findings: z.union([z.record(z.unknown()), z.string()]).optional().describe('In the format the request gives.'),
     },
     async ({ request, plan, findings }) => {
       const agent = server.server.getClientVersion()?.name ?? 'agent';
@@ -116,7 +130,9 @@ export function registerCollectiveTools(server: McpServer, hub: Hub) {
         const waiting = await viaApp(`/api/plans/pending?agent=${encodeURIComponent(agent)}`).catch(() => { const list = hub.planner.pending().map((r) => ({ id: r.id, title: r.title, brief: hub.planner.brief(r.id) })); hub.planner.pickedUp(agentName(agent)); return list; });
         return { waiting, note: (waiting as unknown[]).length ? 'Research each one, then report it with request, plan and findings.' : 'Nothing is waiting to be planned.' };
       }
-      const report = { plan, findings };
+      // Models often send nested objects as JSON text: accept either.
+      const obj = (v: unknown) => { if (typeof v !== 'string') return v; try { return JSON.parse(v); } catch { throw new Error('plan and findings must be JSON objects in the format the request gives'); } };
+      const report = { plan: obj(plan), findings: obj(findings) };
       const r = await viaApp(`/api/plans/${request}/report`, { report, agent }).catch(async (e: Error) => { if (/open the Constellate app/.test(e.message)) return hub.planner.report(request, report, agent); throw e; }) as { status?: string; problems?: string[] };
       return { status: r.status, problems: r.problems ?? [], next: r.problems?.length ? 'Fix these and report again.' : 'Reported. Your person reviews it and publishes it from the Proposals page.' };
     });

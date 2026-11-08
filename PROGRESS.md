@@ -279,6 +279,22 @@ Real money, **ready and off by default** (docs/MAINNET.md):
 - **Version 0.1.1** carries these fixes (package, MCP server, registry entry and agent card).
 - **Docker MCP Catalog:** pull request docker/mcp-registry#6754 adds `servers/constellate/server.yaml`, built from the `Dockerfile` at a pinned commit (8a752b2 for now; it moves to the 0.1.1 commit once that's on main), with the `/data` volume and an optional daemon address and token. Docker's team reviews it.
 
+### Live shows the agents on this computer (Nov 7)
+- An agent such as Claude Code runs Constellate's MCP server as its own process. Live only heard about records added inside the app's process, so nothing an agent did showed up.
+- `serve` now does two things:
+  - It picks up records an agent's process saves into the shared store every 2 s, each one verified like any other record. They reach Live, the sky and search at once.
+  - It follows the agents' activity log and streams each tool call, to browsers on this computer only.
+- The home page shows the last few under Live, for example "Claude Code checked what already failed · 4 found". This was tested end to end with a separate `constellate mcp` process.
+
+### Agents can work on problems (Nov 8)
+- **`work_step`, in the default tool set:**
+  - With no arguments, it lists up to three open steps from live problems, with each step's prompt and how it's checked, and how this agent's earlier answers went.
+  - With `problem`, `step` and `answer`, it publishes the answer as a signed `task_result`.
+- **Checks are the same as for lent computers:** a computer running a different model family verifies the answer into a checkpoint or rejects it with a reason.
+- **The step's check is never shown, and nothing is pre-checked,** since an exact check holds the answer.
+- **Only open work:** problems the constitution has cleared, unanswered steps, and never steps the machine does itself.
+- See docs/AGENT_STEPS.md. The default tool list is now nine tools, about 2,400 tokens.
+
 ## Summary of what needs a human
 1. **Live x0x (blocks confidence in every phase):** run the gates against two real `x0xd` daemons. Confirm ML-DSA signature interop between `/agent/sign` and noble, `/stores` and `/task-lists` field names, contacts → pre-trusted operators, and Spaces/DMs for chat.
 2. **Gate 1 behaviour:** `ANTHROPIC_API_KEY=… npx tsx evals/gate1.ts 3`.

@@ -15,6 +15,17 @@ function activity(req) {
     ${req.status === 'published' ? '' : '<p class="faint" style="font-size:12.5px;margin:8px 0 0">“Being worked on” changes only after you publish the plan: it becomes a live problem, and votes give it computer time.</p>'}</div>`;
 }
 
+/** The idea card's planning button, saying what clicking it will do for where its plan stands. */
+export function planButtonLabel(req) {
+  switch (req?.status) {
+    case 'waiting': case 'running': return 'See how it’s going';
+    case 'reported': return 'Review the plan';
+    case 'failed': return 'Try planning again';
+    case 'published': return 'Open the live problem';
+    default: return 'Plan it with your agent'; // none yet, or discarded
+  }
+}
+
 /** One line for an idea's card on the Proposals page: where its plan stands. */
 export function planChip(req) {
   if (!req || req.status === 'discarded') return '';
@@ -81,7 +92,9 @@ export async function planSheet(idea, { onPublished } = {}) {
     const again = $('#plan-again', body); if (again) again.onclick = () => { stop(); draw(null); };
   };
   const watch = (id) => { stop(); timer = setInterval(async () => { const r = await api(`/api/plans/${id}`).catch(() => null); if (!r || !document.body.contains(el)) return stop(); draw(r); if (!['waiting', 'running'].includes(r.status)) stop(); }, 3000); };
-  const open = d.requests.find((r) => ['waiting', 'running', 'reported'].includes(r.status));
+  // An attempt still going or waiting for review; otherwise, if the latest one failed, that one, so the person
+  // sees why (its log) before trying again.
+  const open = d.requests.find((r) => ['waiting', 'running', 'reported'].includes(r.status)) ?? (d.requests[0]?.status === 'failed' ? d.requests[0] : undefined);
   draw(open ?? null);
   if (open && open.status !== 'reported') watch(open.id);
 }

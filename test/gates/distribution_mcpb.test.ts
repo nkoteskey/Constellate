@@ -29,8 +29,8 @@ describe('distribution: one-click Claude Desktop bundle', () => {
       await client.close();
       return t;
     };
-    // Lean by default (docs/STORAGE.md): the eight tools agents use, under a third of the tokens.
-    expect((await tools({})).sort()).toEqual(['answers_lookup', 'answers_submit', 'bounties', 'bounty_post', 'failures_report', 'failures_search', 'plan_report', 'skills_find']);
+    // Lean by default (docs/STORAGE.md): the nine tools agents use, under a third of the tokens.
+    expect((await tools({})).sort()).toEqual(['answers_lookup', 'answers_submit', 'bounties', 'bounty_post', 'failures_report', 'failures_search', 'plan_report', 'skills_find', 'work_step']);
     const full = await tools({ CONSTELLATE_MCP_TOOLS: 'full' });
     expect(full).toEqual(expect.arrayContaining(['failures_search', 'answers_lookup', 'skills_find', 'review_request', 'memory_put']));
     expect(full.length).toBeGreaterThan(40);

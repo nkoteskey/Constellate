@@ -14,7 +14,7 @@ export interface ActivityEvent { at: string; client: string; tool: string; kind:
 
 const LOOKUPS = new Set(['failures_search', 'answers_lookup', 'skills_find', 'graph_recall', 'problems_status', 'problems_list', 'handoff_check']);
 const SHARES = new Set(['failures_report', 'answers_submit', 'skills_publish', 'proposals_submit', 'records_link', 'help_request']);
-const WORK = new Set(['queue_get', 'review_request', 'votes_cast', 'confirm', 'records_confirm']);
+const WORK = new Set(['queue_get', 'review_request', 'votes_cast', 'confirm', 'records_confirm', 'work_step']);
 const KEEP = 4000; // lines read back; older history is summarised by the counts that matter
 
 /** Friendly names for the MCP clients people use. */
@@ -47,6 +47,20 @@ export class ActivityLog {
     const e: ActivityEvent = { at: new Date().toISOString(), client: clientName(client), tool, kind, ...(Array.isArray(list) ? { results: list.length } : {}), ...(ids?.length ? { ids } : kind === 'share' && typeof (shared?.published ?? shared?.id) === 'string' ? { ids: [String(shared!.published ?? shared!.id)] } : {}) };
     try { mkdirSync(dirname(this.file), { recursive: true }); appendFileSync(this.file, JSON.stringify(e) + '\n'); } catch { /* activity is best-effort; never break a tool call */ }
   }
+
+  /** Events appended since `from` (a byte offset), and where to read from next time. */
+  since(from: number): { events: ActivityEvent[]; next: number } {
+    try {
+      const size = statSync(this.file).size;
+      if (size < from) return { events: [], next: size }; // the file was replaced
+      if (size === from) return { events: [], next: from };
+      const buf = readFileSync(this.file).subarray(from);
+      const end = buf.lastIndexOf(10) + 1; // only whole lines (offsets are in bytes)
+      const events = buf.subarray(0, end).toString('utf8').split('\n').filter(Boolean).map((l) => { try { return JSON.parse(l) as ActivityEvent; } catch { return null; } }).filter((x): x is ActivityEvent => !!x);
+      return { events, next: from + end };
+    } catch { return { events: [], next: from }; }
+  }
+  size(): number { try { return statSync(this.file).size; } catch { return 0; } }
 
   events(): ActivityEvent[] {
     if (!existsSync(this.file)) return [];

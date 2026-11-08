@@ -102,7 +102,7 @@ describe('plan it with your agent', () => {
       expect(args).toContain('--strict-mcp-config');
       expect(args[args.indexOf('--allowedTools') + 1].split(',')).toEqual(['mcp__constellate__plan_report', 'mcp__constellate__failures_search', 'mcp__constellate__answers_lookup', 'mcp__constellate__skills_find']);
       expect(JSON.parse(args[args.indexOf('--mcp-config') + 1]).mcpServers.constellate.args.at(-1)).toBe('mcp');
-      expect(hub.planner.get(r.id)).toMatchObject({ status: 'failed', error: 'Claude Code finished without reporting a plan' });
+      expect(hub.planner.get(r.id)).toMatchObject({ status: 'failed', error: 'Claude Code finished without reporting a plan.' });
       expect(args.slice(args.indexOf('--output-format'), args.indexOf('--output-format') + 3)).toEqual(['--output-format', 'stream-json', '--verbose']);
     } finally { delete process.env.CONSTELLATE_HOME; delete process.env.CONSTELLATE_CLAUDE; }
   });
@@ -143,8 +143,55 @@ describe('plan it with your agent', () => {
         'Searched what already failed: “Ramsey lower bounds”',
         'Looked for solved answers: “best known R(5,5) lower bound”',
         'Claude Code finished in 3 s (about $0.04 of your Claude usage).',
-        'Stopped: Claude Code finished without reporting a plan',
+        'Stopped: Claude Code finished without reporting a plan. Its last words: “thinking”',
       ]);
     } finally { delete process.env.CONSTELLATE_HOME; delete process.env.CONSTELLATE_APP_URL; delete process.env.CONSTELLATE_CLAUDE; }
+  });
+
+  it('when Claude Code ends without plan_report, it says why, and a plan written in its reply still counts', async () => {
+    const { hub, idea, home } = await withIdea();
+    const fake = join(home, 'claude');
+    const run = async (lines: unknown[]) => {
+      writeFileSync(fake, `#!/usr/bin/env node\nfor (const l of ${JSON.stringify(lines.map((x) => JSON.stringify(x)))}) console.log(l);\n`);
+      chmodSync(fake, 0o755);
+      const r = await hub.planner.start(idea, 'claude_code');
+      for (let i = 0; i < 100 && hub.planner.get(r.id)?.status === 'running'; i++) await wait(30);
+      return hub.planner.get(r.id)!;
+    };
+    process.env.CONSTELLATE_CLAUDE = fake;
+    try {
+      // Constellate's tools didn't connect, a tool call failed, and it gave up: each is said, with its last words.
+      const failed = await run([
+        { type: 'system', subtype: 'init', mcp_servers: [{ name: 'constellate', status: 'failed' }] },
+        { type: 'user', message: { content: [{ type: 'tool_result', is_error: true, content: [{ type: 'text', text: 'No such tool available: mcp__constellate__plan_report' }] }] } },
+        { type: 'result', duration_ms: 1000, result: 'I could not reach the plan_report tool.' },
+      ]);
+      expect(failed.status).toBe('failed');
+      expect(failed.log!.map((l) => l.text)).toEqual(expect.arrayContaining([
+        "Claude Code started, but Constellate's tools didn't connect (failed), so it can't search or report back.",
+        'A tool call failed: No such tool available: mcp__constellate__plan_report',
+      ]));
+      expect(failed.error).toBe('Claude Code finished without reporting a plan. Its last words: “I could not reach the plan_report tool.”');
+
+      // It wrote the plan out instead of calling plan_report: that's taken, and checked like any report.
+      const written = await run([{ type: 'result', duration_ms: 1000, result: `Here is the plan:\n${JSON.stringify(good)}` }]);
+      expect(written).toMatchObject({ status: 'reported', problems: [], agent: 'Claude Code' });
+      expect(written.log!.at(-1)!.text).toMatch(/Took the plan from Claude Code’s reply/);
+    } finally { delete process.env.CONSTELLATE_HOME; delete process.env.CONSTELLATE_CLAUDE; }
+  });
+
+  it('plan_report accepts the plan as JSON text as well as an object (models often send it that way)', async () => {
+    const { hub, idea } = await withIdea();
+    process.env.CONSTELLATE_APP_URL = 'http://127.0.0.1:9';
+    try {
+      const r = await hub.planner.start(idea, 'any_agent');
+      const server = createMcpServer(hub);
+      const [a, b] = InMemoryTransport.createLinkedPair();
+      const client = new Client({ name: 'claude-code', version: '1' });
+      await Promise.all([server.connect(a), client.connect(b)]);
+      const out = JSON.parse(((await client.callTool({ name: 'plan_report', arguments: { request: r.id, plan: JSON.stringify(good.plan), findings: JSON.stringify(good.findings) } })).content as { text: string }[])[0].text);
+      expect(out).toMatchObject({ status: 'reported', problems: [] });
+      await client.close();
+    } finally { delete process.env.CONSTELLATE_HOME; delete process.env.CONSTELLATE_APP_URL; }
   });
 });

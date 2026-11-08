@@ -116,7 +116,8 @@ ${related}
 3. Call plan_report with request "${r.id}" and:
    plan: { title, hook (one line), goal, realm (one of ${REALMS.join(', ')}), verifier, done_description, steps: [{ key, title, prompt, check, size }] }
    findings: { related: [{ id?, title, why }], risks: [..], open_questions: [..], why_checkable }
-Report only what you found; don't publish anything. The person reviews the plan before it goes live.`;
+Report only what you found; don't publish anything. The person reviews the plan before it goes live.
+If plan_report isn't available or keeps failing, end your reply with the same { "plan": …, "findings": … } as one JSON object instead.`;
   }
 
   /** Start planning an idea with one of the available agents. */
@@ -198,22 +199,48 @@ Report only what you found; don't publish anything. The person reviews the plan 
     child.stderr.on('data', (d) => { err = (err + d).slice(-4000); });
     // Its progress, streamed as JSON lines: say when it starts, each Constellate tool it uses, and how it ended.
     createInterface({ input: child.stdout }).on('line', (line) => {
-      let ev: { type?: string; subtype?: string; model?: string; message?: { content?: { type: string; name?: string; input?: Record<string, unknown> }[] }; is_error?: boolean; duration_ms?: number; total_cost_usd?: number; result?: string };
+      let ev: { type?: string; subtype?: string; model?: string; mcp_servers?: { name: string; status: string }[]; message?: { content?: { type: string; name?: string; text?: string; input?: Record<string, unknown>; is_error?: boolean; content?: unknown }[] }; is_error?: boolean; duration_ms?: number; total_cost_usd?: number; result?: string };
       try { ev = JSON.parse(line); } catch { return; }
-      if (ev.type === 'system' && ev.subtype === 'init') this.note(id, `Claude Code started${ev.model ? ` (${ev.model})` : ''} with Constellate connected.`);
-      else if (ev.type === 'assistant') {
-        for (const c of ev.message?.content ?? []) if (c.type === 'tool_use' && c.name) this.note(id, toolLine(c.name, c.input ?? {}));
-      } else if (ev.type === 'result') this.note(id, `Claude Code finished in ${Math.round((ev.duration_ms ?? 0) / 1000)} s${ev.total_cost_usd ? ` (about $${ev.total_cost_usd.toFixed(2)} of your Claude usage)` : ''}${ev.is_error ? `, with an error: ${String(ev.result ?? '').slice(0, 200)}` : ''}.`);
+      if (ev.type === 'system' && ev.subtype === 'init') {
+        const c = ev.mcp_servers?.find((m) => m.name === 'constellate');
+        this.note(id, c && c.status !== 'connected' ? `Claude Code started${ev.model ? ` (${ev.model})` : ''}, but Constellate's tools didn't connect (${c.status}), so it can't search or report back.` : `Claude Code started${ev.model ? ` (${ev.model})` : ''} with Constellate connected.`);
+      } else if (ev.type === 'assistant') {
+        for (const c of ev.message?.content ?? []) {
+          if (c.type === 'tool_use' && c.name) this.note(id, toolLine(c.name, c.input ?? {}));
+          if (c.type === 'text' && c.text?.trim()) lastText = c.text;
+        }
+      } else if (ev.type === 'user') {
+        // A tool call that failed: say why, so a plan that was rejected doesn't vanish silently.
+        for (const c of ev.message?.content ?? []) if (c.type === 'tool_result' && c.is_error) this.note(id, `A tool call failed: ${textOf(c.content).slice(0, 220)}`);
+      } else if (ev.type === 'result') {
+        if (typeof ev.result === 'string' && ev.result.trim()) lastText = ev.result;
+        this.note(id, `Claude Code finished in ${Math.round((ev.duration_ms ?? 0) / 1000)} s${ev.total_cost_usd ? ` (about $${ev.total_cost_usd.toFixed(2)} of your Claude usage)` : ''}${ev.is_error ? `, with an error: ${String(ev.result ?? '').slice(0, 200)}` : ''}.`);
+      }
     });
+    let lastText = '';
     const timer = setTimeout(() => child.kill(), 15 * 60_000);
     this.runs.set(id, { kill: () => child.kill() });
     child.on('error', (e) => { clearTimeout(timer); this.fail(id, `Claude Code couldn’t start: ${e.message}`); });
-    child.on('close', (code) => {
+    child.on('close', async (code) => {
       clearTimeout(timer); this.runs.delete(id);
-      const r = this.get(id);
-      if (r?.status === 'running') this.fail(id, code === 0 ? 'Claude Code finished without reporting a plan' : `Claude Code stopped (${code}): ${err.slice(-300)}`);
+      if (this.get(id)?.status !== 'running') return;
+      // It didn't call plan_report: if it wrote the plan out instead, take that (checked like any report).
+      const json = lastText.slice(lastText.indexOf('{'), lastText.lastIndexOf('}') + 1);
+      if (json.length > 2) {
+        try { await this.report(id, JSON.parse(json), 'Claude Code'); this.note(id, 'Took the plan from Claude Code’s reply (it didn’t send it through plan_report).'); return; } catch { /* not a plan: say what it said */ }
+      }
+      if (this.get(id)?.status !== 'running') return;
+      const said = lastText.trim() ? ` Its last words: “${lastText.trim().replace(/\s+/g, ' ').slice(0, 240)}”` : '';
+      this.fail(id, code === 0 ? `Claude Code finished without reporting a plan.${said}` : `Claude Code stopped (${code}): ${err.trim().slice(-300) || 'no error output'}${said}`);
     });
   }
+}
+
+/** The text of a tool result, however it's shaped. */
+function textOf(c: unknown): string {
+  if (typeof c === 'string') return c;
+  if (Array.isArray(c)) return c.map((x) => (x as { text?: string })?.text ?? '').join(' ');
+  return JSON.stringify(c ?? '');
 }
 
 /** One line for a tool an agent used while planning. */

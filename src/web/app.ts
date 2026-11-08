@@ -524,7 +524,22 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
     return new RawReply(Buffer.from(card(title, line, prog)), 'image/svg+xml');
   });
 
+  // The agents on this computer run their own Constellate process: follow their activity log and pass each
+  // tool call to browsers on this computer, so Live shows an agent at work (searches too, not only what it shares).
+  const agentSubs = new Set<(e: ReturnType<ActivityLog['since']>['events'][number]) => void>();
+  let agentAt = 0, agentTick: ReturnType<typeof setInterval> | null = null;
+  const followAgents = (cb: (e: ReturnType<ActivityLog['since']>['events'][number]) => void) => {
+    agentSubs.add(cb);
+    if (!agentTick) {
+      agentAt = agentLog.size();
+      agentTick = setInterval(() => { const { events, next } = agentLog.since(agentAt); agentAt = next; for (const e of events) for (const f of agentSubs) f(e); }, 1500);
+      agentTick.unref?.();
+    }
+    return () => { agentSubs.delete(cb); if (!agentSubs.size && agentTick) { clearInterval(agentTick); agentTick = null; } };
+  };
   web.route('GET', /^\/api\/events$/, (req) => new StreamReply((res) => {
+    const here = /^(127\.|::1$|::ffff:127\.)/.test(req.socket.remoteAddress ?? '');
+    const offA = here ? followAgents((e) => res.write(`data: ${JSON.stringify({ kind: 'agent', client: e.client, tool: e.tool, act: e.kind, results: e.results ?? null, ids: e.ids ?? [], at: e.at })}\n\n`)) : () => {};
     const off = hub.node.store.onAdd((s) => {
       if (s.visibility !== 'public') return;
       let root: StoredRecord | undefined = s;
@@ -533,7 +548,7 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
       res.write(`data: ${JSON.stringify({ id: s.rec.id, kind: s.rec.kind, by: isHuman(s) ? 'human' : 'agent', operator: s.operatorId, root: root?.rec.id ?? null, newOperator, at: s.rec.created })}\n\n`);
     });
     const offB = hub.graph.onBridge((b) => res.write(`data: ${JSON.stringify({ kind: 'bridge', ...b })}\n\n`));
-    req.on('close', () => { off(); offB(); });
+    req.on('close', () => { off(); offB(); offA(); });
   }));
 }
 
