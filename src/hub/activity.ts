@@ -14,7 +14,7 @@ export interface ActivityEvent { at: string; client: string; tool: string; kind:
 
 const LOOKUPS = new Set(['failures_search', 'answers_lookup', 'skills_find', 'graph_recall', 'problems_status', 'problems_list', 'handoff_check']);
 const SHARES = new Set(['failures_report', 'answers_submit', 'skills_publish', 'proposals_submit', 'records_link', 'help_request']);
-const WORK = new Set(['queue_get', 'review_request', 'votes_cast', 'confirm', 'records_confirm']);
+const WORK = new Set(['queue_get', 'review_request', 'votes_cast', 'confirm', 'records_confirm', 'work_step']);
 const KEEP = 4000; // lines read back; older history is summarised by the counts that matter
 
 /** Friendly names for the MCP clients people use. */

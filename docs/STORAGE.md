@@ -17,7 +17,7 @@ without dropping a guarantee, and what still needs the owner.
 | One lesson as sent over gossip | about 7.9 KB | unchanged (live gossip still carries a full signature) |
 | One lesson in packed history | about 7.9 KB | about 1.4 KB |
 | Starter library (1,158 lessons) | 9.4 MB | 1.7 MB |
-| Tool list an agent loads | 47 tools, about 6,000 tokens | 8 tools, about 1,900 tokens |
+| Tool list an agent loads | 48 tools, about 7,200 tokens | 9 tools, about 2,400 tokens |
 | Autonomi uploads per checkpoint | one per new lesson | one per checkpoint |
 
 The 7.9 KB is mostly crypto. An ML-DSA-65 public key is 1,952 bytes and a
@@ -125,7 +125,7 @@ records, also one bundle per checkpoint, for anyone who wants to pay for their
 own.)
 
 ### Lean agent tools (`src/mcp/mode.ts`)
-By default, connected agents see the eight tools they actually use:
+By default, connected agents see the nine tools they actually use:
 - `failures_search`
 - `answers_lookup`
 - `failures_report`
@@ -133,6 +133,7 @@ By default, connected agents see the eight tools they actually use:
 - `skills_find`
 - `bounty_post` and `bounties` (docs/BOUNTIES.md), about 300 tokens of the total
 - `plan_report`, for planning ideas their person hands them
+- `work_step`, to take a step of a live problem (docs/AGENT_STEPS.md)
 
 Searches return three results unless the agent asks for more. Set
 `CONSTELLATE_MCP_TOOLS=full` for the full set, for people building on

@@ -1,4 +1,5 @@
 import { agentName } from '../collective/planner.js';
+import { openSteps, submitStep, mySteps } from '../work/agent-step.js';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { Hub } from '../hub/hub.js';
@@ -99,6 +100,19 @@ export function registerWorkTools(server: McpServer, hub: Hub) {
     'Get one problem: goal, definition of done, verified checkpoints and what is still open. Free.',
     { id: z.string() },
     ({ id }) => hub.problems.summary(id));
+  tool(server, 'work_step',
+    'Help solve a live problem: call with no arguments for open steps (prompt and how it\'s checked) and how your earlier answers went; then call with problem, step and answer. A model from a different family checks it before it counts.',
+    { problem: z.string().optional(), step: z.string().optional(), answer: z.string().optional(), model: z.string().optional().describe('Your model, e.g. claude-sonnet-4.5, so a different family checks it.') },
+    async ({ problem, step, answer, model }) => {
+      const client = server.server.getClientVersion()?.name;
+      if (!step || !answer) {
+        const open = await openSteps(hub, { problem, limit: 3 });
+        return { open, yours: mySteps(hub), note: open.length ? 'Do one step with your own model, then call work_step with problem, step and answer. Answer exactly what the step asks.' : 'No open steps right now: every step is answered or waiting for a check.' };
+      }
+      if (!problem) throw new Error('say which problem');
+      const r = await submitStep(hub, { problem, step, answer, model, client });
+      return { submitted: r.result, next: `Published. A computer running a model that isn't ${r.family} checks it; call work_step later to see how it went.` };
+    });
 }
 
 export function registerCollectiveTools(server: McpServer, hub: Hub) {
