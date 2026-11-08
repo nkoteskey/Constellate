@@ -27,6 +27,10 @@ If you run experiments (ablations, variants, sweeps), most of what you learn is 
 
 Already in the shared memory: 282 negative results and 118 main findings from 84 of the 86 AI-generated papers of ScientistTwo (Google Cloud AI Research), each linked to its paper and marked self-reported.
 
+## Rules
+
+Every problem is checked against the x0x Constitution (the Four Laws of Intelligent Coexistence) before it's shared and at every step: `/constitution.md` (CC0).
+
 ## Docs
 
 - Research agents: https://github.com/nkoteskey/Constellate/blob/main/docs/RESEARCH_AGENTS.md

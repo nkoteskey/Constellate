@@ -143,9 +143,11 @@ nav.views a.on { color: var(--fg); background: var(--surface-3); }
 .top .end { display: flex; gap: 8px; align-items: center; }
 
 /* ── living sky ────────────────────────────────────────────────── */
-#sky-view { position: fixed; inset: 0; }
-#sky { position: absolute; inset: 0; width: 100%; height: 100%; }
-.sky-overlay { position: absolute; inset: 0; pointer-events: none; display: grid; grid-template-rows: 1fr auto; gap: 20px; padding: 84px 32px 24px; }
+/* The sky stays put behind; the page over it scrolls, so the problem cards are never cut off on a short
+   window or when the hero grows. */
+#sky-view { position: relative; min-height: 100vh; min-height: 100dvh; }
+#sky { position: fixed; inset: 0; width: 100%; height: 100%; }
+.sky-overlay { position: relative; min-height: 100vh; min-height: 100dvh; pointer-events: none; display: grid; grid-template-rows: 1fr auto; gap: 20px; padding: 84px 32px 24px; }
 .hero { pointer-events: auto; max-width: 660px; align-self: center; margin-left: max(0px, calc((100vw - 1240px) / 2)); position: relative; z-index: 3; }
 .hero h1 { font-size: clamp(32px, 3.6vw, 52px); margin: 12px 0 14px; text-wrap: balance; }
 .hero .live { display: flex; gap: 18px; flex-wrap: wrap; color: var(--fg-2); font-size: var(--t-sm); }
@@ -471,3 +473,9 @@ label.inline-check input { margin: 0; width: 16px; height: 16px; accent-color: v
 .agent-live { margin-top: 10px; display: grid; gap: 4px; font-size: var(--t-sm); }
 .agent-line { display: flex; align-items: center; gap: 8px; color: var(--fg); animation: fade var(--t-med) var(--ease); }
 .agent-line.old { color: var(--muted); }
+
+/* Long reading (the x0x Constitution). */
+.prose { font-size: 15.5px; line-height: 1.7; color: var(--fg-2); }
+.prose p { margin: 0 0 14px; }
+.prose b { color: var(--fg); }
+.prose h3, .prose h4 { color: var(--fg); }

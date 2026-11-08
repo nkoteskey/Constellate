@@ -221,12 +221,13 @@ async function route() {
   try {
     const q = new URLSearchParams(query ?? '').get('q');
     if (!view || view === 'r') {
+      if (location.hash !== lastRoute) { lastRoute = location.hash; scrollTo(0, 0); } // the sky starts at the top
       await home();
       if (view === 'r' && /^[0-9a-f]{64}$/.test(id ?? '')) await openRecord(id);
       else if (q) { $('#seek-q').value = q; await search(q); }
       return;
     }
-    const views = { treasury: async () => (await import('./js/wallet.js')).treasuryPage(page), g: galleryPage, p: problemPage, d: debatePage, list: listPage, proposals: proposalsPage, deliberations: debatesPage, people: peoplePage, me: mePage, connect: connectPage, compute: async () => (await import('./js/compute.js')).computePage(page) };
+    const views = { treasury: async () => (await import('./js/wallet.js')).treasuryPage(page), g: galleryPage, p: problemPage, d: debatePage, list: listPage, proposals: proposalsPage, deliberations: debatesPage, people: peoplePage, me: mePage, connect: connectPage, constitution: constitutionPage, compute: async () => (await import('./js/compute.js')).computePage(page) };
     const arriving = location.hash !== lastFocused; lastFocused = location.hash;
     await (views[view] ?? (() => page('<p class="muted">Not found.</p>')))(id);
     if (arriving) $('#page').focus?.({ preventScroll: true }); // for screen readers on arrival; never moves the page
@@ -726,6 +727,34 @@ async function agentWorkSheet(p) {
   if (request && request.status !== 'done') watchRequest(request.id);
 }
 
+// ── The x0x Constitution: the laws every problem on Constellate is checked against ────────
+/** Just enough Markdown for the constitution: headings, rules, lists, paragraphs, bold and italic. */
+function mdToHtml(md) {
+  const inline = (t) => esc(t).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/(^|[^*])\*(?!\s)(.+?)\*(?!\*)/g, '$1<i>$2</i>').replace(/`([^`]+)`/g, '<code>$1</code>');
+  const out = []; let list = null, para = [];
+  const flush = () => { if (para.length) { out.push(`<p>${inline(para.join(' '))}</p>`); para = []; } if (list) { out.push(`</${list}>`); list = null; } };
+  for (const raw of md.split('\n')) {
+    const line = raw.trimEnd();
+    let m;
+    if (!line.trim()) { flush(); continue; }
+    if ((m = /^(#{1,4})\s+(.*)$/.exec(line))) { flush(); const n = Math.min(4, m[1].length + 1); out.push(`<h${n} ${n === 2 ? 'class="display" style="font-size:var(--d-md);margin:10px 0"' : 'class="section"'}>${inline(m[2])}</h${n}>`); continue; }
+    if (/^-{3,}$/.test(line.trim())) { flush(); out.push('<hr style="border:0;border-top:1px solid var(--line);margin:24px 0">'); continue; }
+    if ((m = /^\s*(?:[-*]|\d+\.)\s+(.*)$/.exec(line))) { if (para.length) { out.push(`<p>${inline(para.join(' '))}</p>`); para = []; } const tag = /^\s*\d+\./.test(line) ? 'ol' : 'ul'; if (list !== tag) { if (list) out.push(`</${list}>`); out.push(`<${tag} style="display:grid;gap:6px;padding-left:22px">`); list = tag; } out.push(`<li>${inline(m[1])}</li>`); continue; }
+    if (list) { out.push(`</${list}>`); list = null; }
+    para.push(line.trim());
+  }
+  flush();
+  return out.join('');
+}
+async function constitutionPage() {
+  const c = STATIC ? { source: 'bundled', version: 'as shipped with x0x 0.48.1', content: await (await fetch('./constitution.md')).text() } : await api('/api/constitution');
+  page(`<div class="page narrow constitution">
+    <div class="row" style="gap:8px"><span class="chip"><span class="dot"></span>${c.source === 'x0x' ? `From your x0x daemon${c.version ? ` · version ${esc(c.version)}` : ''}` : `Copy ${esc(c.version ?? '')}`}</span><span class="faint" style="font-size:12.5px">Licence: CC0 · <a href="https://github.com/saorsa-labs/x0x/blob/main/CONSTITUTION.md" target="_blank" rel="noopener">source</a></span></div>
+    <p class="muted" style="font-size:13.5px;margin:14px 0 0">Every problem proposed on Constellate is checked against these laws before it’s shared, and again at every step. Work that could cause serious harm is refused.</p>
+    <article class="prose" style="margin-top:8px">${mdToHtml(c.content)}</article>
+  </div>`);
+}
+
 // ── Debates ───────────────────────────────────────────────────────
 const FAMILY = { llama: '#9fd0ff', qwen: '#b8a6ff', claude: '#ffb98a', mistral: '#8ae6c8', gemma: '#f4a6c8', deepseek: '#a6c8ff' };
 async function debatePage(id) {
@@ -844,7 +873,7 @@ async function proposalsPage() {
   page(`<div class="page narrow"><div class="eyebrow">Proposals and voting</div>
     <div class="spread" style="align-items:flex-end;gap:12px;flex-wrap:wrap"><h1 class="display" style="font-size:var(--d-md);margin:10px 0 0">What should we take on next?</h1>
       <div class="row" style="gap:8px"><button class="btn primary" id="open-propose">Propose a problem</button><button class="btn ghost" id="open-pledge">Pledge compute</button></div></div>
-    <p class="muted" style="margin-top:10px">Every proposal says how success will be checked and passes a constitution check first. Votes count in proportion to compute actually delivered, so fake accounts can’t steer.</p>
+    <p class="muted" style="margin-top:10px">Every proposal says how success will be checked and passes a <a href="#/constitution">constitution</a> check first. Votes count in proportion to compute actually delivered, so fake accounts can’t steer.</p>
     <div class="tabs" role="tablist" aria-label="Proposals" style="margin-top:18px">${TABS.map((t) => `<button role="tab" data-ptab="${t.key}" aria-selected="${t === tab}">${esc(t.name)} <span class="faint num">${t.items.length}</span></button>`).join('')}</div>
     <div class="stack" id="ptab-body" role="tabpanel"></div></div>`);
   const wire = (root) => {

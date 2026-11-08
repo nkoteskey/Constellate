@@ -337,6 +337,19 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
       })),
     };
   });
+  // The x0x Constitution: the live text from this computer's x0x daemon (its version), else the bundled copy (CC0).
+  web.route('GET', /^\/api\/constitution$/, async () => {
+    if (hub.x0x) {
+      try {
+        const j = await (await fetch(`${hub.x0x.baseUrl}/constitution/json`)).json() as { version?: string; status?: string; content?: string };
+        if (typeof j.content === 'string' && j.content.length > 200) return { source: 'x0x', version: j.version ?? null, status: j.status ?? null, content: j.content };
+      } catch { /* daemon busy: the bundled copy */ }
+    }
+    const { readFileSync } = await import('node:fs');
+    const content = readFileSync(new URL('./public/constitution.md', import.meta.url), 'utf8');
+    return { source: 'bundled', version: 'as shipped with x0x 0.48.1', status: null, content };
+  });
+
   // "Have your agent work on it": what's possible on this computer for a problem, and Claude Code runs.
   const here = (req: { socket: { remoteAddress?: string } }) => /^(127\.|::1$|::ffff:127\.)/.test(req.socket.remoteAddress ?? '');
   web.route('GET', /^\/api\/problems\/([0-9a-f]{64})\/agents$/, (req, m) => here(req)
