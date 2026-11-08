@@ -70,8 +70,12 @@ export class HubNode {
   }
 
   /** Scrub and sign. Throws PrivacyBlockedError if anything private is found: blocked, not trimmed. */
+  /** The agent this node is acting for (an MCP client such as Claude Code), stamped on what it signs. */
+  actor?: { client: string; model?: string };
+
   async sign<B>(draft: Draft<B>): Promise<SignedRecord<B>> {
     if (this.readOnly) throw new ClosedIdentityError();
+    if (this.actor && !(draft.context as { agent?: unknown }).agent) draft = { ...draft, context: { ...draft.context, agent: this.actor } };
     const check = scrub({ context: draft.context, body: draft.body, evidence: draft.evidence ?? [], refs: draft.refs ?? [] }, this.privacy);
     if (!check.ok) throw new PrivacyBlockedError(check.findings);
     return signRecord(draft, this.signer, this.operator);

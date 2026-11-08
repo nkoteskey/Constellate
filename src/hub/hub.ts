@@ -1,4 +1,6 @@
 import { Mailbox } from '../collab/mailbox.js';
+import { AgentRuns } from '../work/agent-runs.js';
+import { WorkRequests } from '../work/work-requests.js';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { HubNode } from './node.js';
@@ -99,6 +101,12 @@ export class Hub {
   private _mailbox?: Mailbox;
   /** Sealed letters for people who are offline (docs/MAILBOX.md). */
   get mailbox() { return (this._mailbox ??= new Mailbox(this)); }
+  private _agentRuns?: AgentRuns;
+  /** Claude Code on this computer taking steps of a problem, started from the app (src/work/agent-runs.ts). */
+  get agentRuns() { return (this._agentRuns ??= new AgentRuns(this)); }
+  private _workRequests?: WorkRequests;
+  /** Requests for the agents connected on this computer to work on a problem (src/work/work-requests.ts). */
+  get workRequests() { return (this._workRequests ??= new WorkRequests()); }
   private _pages?: Pages;
   /** Topic pages, the session map and dreaming (docs/MEMORY.md). */
   get pages() { return (this._pages ??= new Pages(this)); }

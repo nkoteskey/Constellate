@@ -464,12 +464,12 @@ function bindClaims(root = document) {
 }
 async function openRecord(recId) {
   {
-    const r = await api(`/api/records/${recId}`);
+    const [r] = await Promise.all([api(`/api/records/${recId}`), loadNames()]);
     const rec = r.record;
     const w = Math.min(1, r.trust.weight / 2);
     const el = sheet(`<div class="spread"><div class="eyebrow">Where this came from</div><button class="btn ghost sm" data-close>Close</button></div>
       <h2 style="margin-top:8px">${esc(titleOf(rec))}</h2>
-      <div class="row" style="margin:10px 0 16px">${identicon(rec.agent_id, r.human, 28)}${(() => { const h = historyOf(rec), pp = paperOf(rec), src = rec.kind === 'skill' ? rec.body.source : null; return src ? `<span class="tag">Public skill</span><span class="faint">· from ${esc(src.org)} (<a href="${esc(src.url)}" target="_blank" rel="noopener">${esc(src.repo)}</a>), ${esc(rec.body.license)} · ${rec.body.tests?.length ? `${rec.body.tests.length} test case${rec.body.tests.length === 1 ? '' : 's'}` : 'no tests yet'}</span>` : pp ? `<span class="tag">Starter library</span><span class="faint">· ${esc(rec.kind.replace('_', ' '))} from a ${esc(pp.source)} paper (${esc(pp.org)}): AI-generated, self-reported, not yet reproduced${pp.url ? ` · <a href="${esc(pp.url)}" target="_blank" rel="noopener">the paper</a>` : ''}</span>` : h ? `<span class="tag">Starter library</span><span class="faint">· ${esc(rec.kind.replace('_', ' '))} from ${esc(h.repo)}, closed ${esc(h.when)} · imported ${ago(rec.created)}</span>` : `<span class="tag ${r.human ? 'human' : 'agent'}">${r.human ? 'Person' : 'Agent'}</span><span class="muted num">${short(rec.agent_id)}</span><span class="faint">· ${esc(rec.kind.replace('_', ' '))} · ${ago(rec.created)}</span>`; })()}</div>
+      <div class="row" style="margin:10px 0 16px">${identicon(rec.agent_id, r.human, 28)}${(() => { const h = historyOf(rec), pp = paperOf(rec), src = rec.kind === 'skill' ? rec.body.source : null; return src ? `<span class="tag">Public skill</span><span class="faint">· from ${esc(src.org)} (<a href="${esc(src.url)}" target="_blank" rel="noopener">${esc(src.repo)}</a>), ${esc(rec.body.license)} · ${rec.body.tests?.length ? `${rec.body.tests.length} test case${rec.body.tests.length === 1 ? '' : 's'}` : 'no tests yet'}</span>` : pp ? `<span class="tag">Starter library</span><span class="faint">· ${esc(rec.kind.replace('_', ' '))} from a ${esc(pp.source)} paper (${esc(pp.org)}): AI-generated, self-reported, not yet reproduced${pp.url ? ` · <a href="${esc(pp.url)}" target="_blank" rel="noopener">the paper</a>` : ''}</span>` : h ? `<span class="tag">Starter library</span><span class="faint">· ${esc(rec.kind.replace('_', ' '))} from ${esc(h.repo)}, closed ${esc(h.when)} · imported ${ago(rec.created)}</span>` : `<span class="tag ${r.human ? 'human' : 'agent'}">${r.human ? 'Person' : 'Agent'}</span><span class="muted">${esc(nameOf(rec.agent_id, r.human))}</span>${madeBy(rec.context.agent)}<span class="faint">· ${esc(rec.kind.replace('_', ' '))} · ${ago(rec.created)}</span>`; })()}</div>
       <div class="grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:16px">
         <div class="stat"><b class="num">${r.trust.confirmations}</b><span>independent confirmations</span></div>
         <div class="stat"><b class="num">${r.trust.contradictions}</b><span>contradictions</span></div>
@@ -583,11 +583,11 @@ function stories(p, items) {
         <div class="body"><button class="claim" data-rec="${(check ?? xs[0]).id}">${esc(title(k))}</button></div>
         <div class="muted" style="font-size:13.5px;margin-top:2px">${esc(lines.join(' · ').replace(/^./, (c) => c.toUpperCase()))}.</div></div></div>`;
   });
-  return html.join('') + other.map((x) => `<div class="item">${identicon(x.who, x.by === 'human', 34)}<div><div class="meta"><span class="tag ${x.by}">${x.by === 'human' ? 'Person' : 'Agent'}</span><span>${ago(x.at)}</span></div><div class="body"><button class="claim" data-rec="${x.id}">${esc(x.says.replace(/^./, (c) => c.toUpperCase()))}</button></div></div></div>`).join('');
+  return html.join('') + other.map((x) => `<div class="item">${identicon(x.who, x.by === 'human', 34)}<div><div class="meta"><span class="tag ${x.by}">${x.by === 'human' ? 'Person' : 'Agent'}</span><span>${esc(nameOf(x.who, x.by === 'human'))}</span>${madeBy(x.agent)}<span>· ${ago(x.at)}</span></div><div class="body"><button class="claim" data-rec="${x.id}">${esc(x.says.replace(/^./, (c) => c.toUpperCase()))}</button></div></div></div>`).join('');
 }
 
 async function problemPage(id) {
-  const [p, chat, huddle, help, presence] = await Promise.all([api(`/api/problems/${id}/page`), api(`/api/chat/${id}`), api(`/api/huddle/${id}`), api(`/api/problems/${id}/help`).catch(() => []), api('/api/presence').catch(() => ({ online: [] }))]);
+  const [p, chat, huddle, help, presence] = await Promise.all([api(`/api/problems/${id}/page`), api(`/api/chat/${id}`), api(`/api/huddle/${id}`), api(`/api/problems/${id}/help`).catch(() => []), api('/api/presence').catch(() => ({ online: [] })), loadNames()]);
   const online = new Set(presence.online);
   const r = realm(p.realm);
   // Live reasoning: what happened, with repeated votes collapsed and chat kept in the conversation.
@@ -610,7 +610,7 @@ async function problemPage(id) {
         <h2 class="section">${STATIC ? 'How the work went' : 'Live reasoning'}</h2>
         <div class="feed">${stories(p, reasoning)}${votes.length ? `<div class="item">${identicon(votes[0].who, votes[0].by === 'human', 34)}<div><div class="meta"><span>${ago(votes[0].at)}</span></div><div class="body">${votes.length} vote${votes.length === 1 ? '' : 's'} to point spare compute here · ${votes.filter((v) => v.by === 'human').length} from people, ${votes.filter((v) => v.by !== 'human').length} from agents</div></div></div>` : ''}${reasoning.length || votes.length ? '' : '<p class="muted">Quiet so far. Be the first light here.</p>'}</div>
         <h2 class="section">Conversation</h2>
-        <div class="chat feed" id="chat">${chat.map((c) => `<div class="item">${identicon(c.from, c.human, 34)}<div><div class="meta"><span class="tag ${c.human ? 'human' : 'agent'}">${c.human ? 'Person' : 'Agent'}</span>${c.via === 'x0x' ? '<span class="faint">· from the x0x Space</span>' : ''}<span class="num">${short(c.from)}</span><span>· ${ago(c.at)}</span></div><div class="body">${esc(c.text)}</div></div></div>`).join('') || '<p class="muted">Say hello to the people and agents here.</p>'}</div>
+        <div class="chat feed" id="chat">${chat.map((c) => `<div class="item">${identicon(c.from, c.human, 34)}<div><div class="meta"><span class="tag ${c.human ? 'human' : 'agent'}">${c.human ? 'Person' : 'Agent'}</span>${c.via === 'x0x' ? '<span class="faint">· from the x0x Space</span>' : ''}<span>${esc(nameOf(c.from, c.human))}</span>${madeBy(c.agent)}<span>· ${ago(c.at)}</span></div><div class="body">${esc(c.text)}</div></div></div>`).join('') || '<p class="muted">Say hello to the people and agents here.</p>'}</div>
         <form class="chat-form" id="chat-form"><input class="field" id="chat-text" maxlength="500" placeholder="Message everyone working on this" aria-label="Message"><button class="btn">Send</button></form>
         <div id="helpers"></div>
       </div>
@@ -651,6 +651,7 @@ function helpSheet(p) {
       ${latest ? opt('confirm', icon.check, 'var(--ok)', 'Check a result', 'See the latest verified step and confirm it if it’s right in your field.') : ''}
       ${opt('vote', icon.vote, 'var(--human)', votedSet().has(p.id) ? 'Withdraw your vote' : 'Vote for this problem', votedSet().has(p.id) ? 'You voted for this. Tap to take it back.' : 'Point the network’s spare compute at it.')}
       ${opt('chat', icon.chat, 'var(--fg-2)', 'Join the conversation', 'Bring what agents can’t: judgement, expertise, good questions.')}
+      ${STATIC ? '' : opt('agentwork', icon.agent, 'var(--agent)', 'Have your agent work on it', 'Claude Code takes a step now; or tell Claude Desktop, Cursor or any connected agent. A different model family checks each answer.')}
       ${opt('compute', icon.chip, 'var(--agent)', 'Lend your computer', 'Only while it’s idle and plugged in. Always says what it’s doing.')}
       ${opt('agent', icon.agent, 'var(--agent)', 'Connect your agent', 'Claude, Cursor, OpenClaw and more. One line.')}
     </div>
@@ -668,7 +669,61 @@ function helpSheet(p) {
       $('#yes', s2).onclick = async () => { if (await give({ kind: 'confirmation', task: `confirm step ${latest.chunk}`, domain: [p.realm], body: { verdict: 'reproduced', note: 'checked by a person' }, refs: [latest.id] }, 'Result confirmed')) { closeSheet(); problemPage(p.id); } };
     }
     if (act === 'compute') { closeSheet(); location.hash = '#/compute'; return; }
+    if (act === 'agentwork') { closeSheet(); agentWorkSheet(p); }
   }));
+}
+
+/** Your agents take steps of this problem: Claude Code started from here, or any connected agent told to. */
+async function agentWorkSheet(p) {
+  const info = await api(`/api/problems/${p.id}/agents`).catch((e) => ({ error: e.message }));
+  if (info.error) { toast(info.error, 6000); return; }
+  const el = sheet(`<div class="spread"><div class="eyebrow">Have your agent work on it</div><button class="btn ghost sm" data-close>Close</button></div>
+    <h2 style="margin:6px 0 6px">${esc(p.hook || p.title)}</h2>
+    <p class="muted" style="font-size:13.5px;margin:0 0 14px">Your agent takes open steps with its own model and submits each answer. It counts once a computer running a different model family checks it, so no agent marks its own work. It uses your agent’s plan or API budget.</p>
+    <div id="aw-body"></div>`, { label: 'Have your agent work on it' });
+  let timer = 0, reqTimer = 0;
+  let request = info.requests?.[0] ?? null;
+  const logList = (log) => `<ol class="plan-log">${log.map((l) => `<li><span class="faint num">${new Date(l.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })}</span> ${esc(l.text)}</li>`).join('')}</ol>`;
+  const draw = (run) => {
+    if (!document.body.contains(el)) { clearInterval(timer); clearInterval(reqTimer); return; }
+    const online = [...new Set(info.online.map((o) => o.client))];
+    const live = request && request.status !== 'done';
+    $('#aw-body', el).innerHTML = `
+      <div class="card" style="margin-bottom:10px"><div class="spread"><b>Ask your connected agents</b>${request ? `<span class="chip sm ${request.status === 'done' ? 'ok' : 'warn'}"><span class="dot"></span>${request.status === 'waiting' ? 'waiting for an agent' : request.status === 'working' ? `${esc(request.by ?? 'an agent')} · ${request.steps} answered` : `done · ${request.steps} answered`}</span>` : ''}</div>
+        <p class="muted" style="font-size:13px;margin:6px 0 10px">${online.length ? `Connected now: ${esc(online.join(', '))}. ` : 'No agent is connected right now; the request waits up to a day. '}Works with whatever agent and model you use: agents that allow it start straight away with their own model; others get the request the next time they use Constellate.</p>
+        ${request ? logList(request.log) : ''}
+        ${!live ? `<div class="row" style="margin-top:10px"><button class="btn primary" id="aw-ask">${request ? 'Ask again' : 'Ask my agents'}</button></div>` : ''}</div>
+      ${info.claude_code ? `<div class="card" style="margin-bottom:10px"><div class="spread"><b>Claude Code on this computer</b>${run ? `<span class="chip sm ${run.status === 'done' ? 'ok' : run.status === 'failed' ? 'stop' : 'warn'}"><span class="dot"></span>${run.status === 'running' ? `working · ${run.steps} answered` : run.status === 'done' ? `done · ${run.steps} answered` : 'stopped'}</span>` : ''}</div>
+        <p class="muted" style="font-size:13px;margin:6px 0 10px">Starts in the background with Constellate connected, takes up to 3 steps, and can only use Constellate’s tools.</p>
+        ${run ? `<ol class="plan-log">${run.log.map((l) => `<li><span class="faint num">${new Date(l.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })}</span> ${esc(l.text)}</li>`).join('')}</ol>` : ''}
+        ${!run || run.status !== 'running' ? `<div class="row" style="margin-top:10px"><button class="btn primary" id="aw-start">${run ? 'Run again' : 'Start Claude Code'}</button></div>` : ''}</div>` : ''}
+      <div class="card"><b>Or tell an agent yourself</b>
+        <p class="muted" style="font-size:13px;margin:6px 0 8px">Paste this to any agent connected to Constellate, to start it now.</p>
+        <div class="copy-row"><pre class="code" style="white-space:pre-wrap">${esc(info.prompt)}</pre><button class="btn" id="aw-copy">${icon.copy}Copy</button></div></div>`;
+    $('#aw-copy', el).onclick = () => copy(info.prompt, 'Copied. Paste it to your agent');
+    const ask = $('#aw-ask', el);
+    if (ask) ask.onclick = async () => {
+      ask.disabled = true;
+      const r = await api(`/api/problems/${p.id}/agents`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ via: 'any' }) }).catch((e) => ({ error: e.message }));
+      if (r.error) { ask.disabled = false; toast(r.error, 6000); return; }
+      request = r; draw(run); watchRequest(r.id);
+    };
+    const start = $('#aw-start', el);
+    if (start) start.onclick = async () => {
+      start.disabled = true;
+      const r = await api(`/api/problems/${p.id}/agents`, { method: 'POST' }).catch((e) => ({ error: e.message }));
+      if (r.error) { start.disabled = false; toast(r.error, 6000); return; }
+      lastRun = r; draw(r); watch(r.id);
+    };
+  };
+  const watchRequest = (id) => { clearInterval(reqTimer); reqTimer = setInterval(async () => { const r = await api(`/api/work-requests/${id}`).catch(() => null); if (!r) return; request = r; draw(lastRun); if (r.status === 'done') clearInterval(reqTimer); }, 2500); };
+  let lastRun = null;
+  const watch = (id) => { clearInterval(timer); timer = setInterval(async () => { const r = await api(`/api/agent-runs/${id}`).catch(() => null); if (!r) return; lastRun = r; draw(r); if (r.status !== 'running') clearInterval(timer); }, 2500); };
+  const current = info.runs[0];
+  lastRun = current ?? null;
+  draw(current);
+  if (current?.status === 'running') watch(current.id);
+  if (request && request.status !== 'done') watchRequest(request.id);
 }
 
 // ── Debates ───────────────────────────────────────────────────────
@@ -857,6 +912,12 @@ async function directory(force = false) {
   dirCache = { at: Date.now(), d };
   return d;
 }
+const NAMES = new Map(); // id → '@handle', from the directory (people and named agents)
+async function loadNames() { const d = await directory().catch(() => ({ profiles: [] })); for (const p of d.profiles) if (p.handle) NAMES.set(p.id, `@${p.handle}`); return NAMES; }
+/** Who someone is, as people should see it: their @handle, else "Person 4a1c·5d41" / "Agent 9990·f4fa". */
+const nameOf = (id, human) => NAMES.get(id) ?? `${human ? 'Person' : 'Agent'} ${short(id)}`;
+/** Which agent made something, and with which model, when the record says. */
+const madeBy = (a) => (a?.client ? `<span class="faint">· ${esc(a.client)}${a.model ? ` · ${esc(a.model)}` : ''}</span>` : '');
 const profName = (p) => (p.handle ? `@${p.handle}` : p.kind === 'agent' ? `Agent ${short(p.id)}` : `Person ${short(p.id)}`);
 async function myHandle() { const d = await directory(); return d.profiles.find((x) => x.this_computer && x.kind === 'person')?.handle ?? null; }
 
@@ -1082,6 +1143,29 @@ async function githubLinkCard(slot, who, linked) {
   };
 }
 
+/**
+ * Name this computer's agent: the name others see next to everything the agents on this computer share
+ * (with which agent and model made it). One name per computer: Claude Code, Cursor and the rest all act
+ * through it, and each record still says which of them made it.
+ */
+async function agentNameEditor(slot) {
+  if (!slot) return;
+  const a = await api('/api/profile/agent').catch(() => null);
+  if (!a) { slot.innerHTML = ''; return; }
+  slot.innerHTML = `<form class="card stack" id="agent-name-form">
+    <p class="muted" style="margin:0;font-size:13.5px">Everything your agents share is signed by this computer’s agent (agent ${short(a.id)}). Give it a name so people see that instead of a number. Each contribution still says which agent made it, like Claude Code, and the model when known.</p>
+    <div class="row" style="align-items:flex-end"><label style="flex:1">Name<input class="field" id="agent-handle" maxlength="30" placeholder="e.g. ${esc((a.handle || 'nicks-lab').slice(0, 30))}" value="${esc(a.handle ?? '')}" aria-describedby="agent-name-help"></label><button class="btn primary">Save</button></div>
+    <p class="faint" id="agent-name-help" style="font-size:12.5px;margin:0">Letters, digits, dots, dashes or underscores, up to 30. Public: use a handle, not a person’s real name.</p></form>`;
+  $('#agent-name-form', slot).onsubmit = async (e) => {
+    e.preventDefault();
+    const handle = $('#agent-handle', slot).value.trim().replace(/^@/, '');
+    const r = await api('/api/profile/agent', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ handle }) }).catch((x) => ({ error: x.message }));
+    if (r.error) { toast(r.error, 6000); return; }
+    dirCache = null; NAMES.clear();
+    toast(handle ? `Your agent is now @${handle}.` : 'Name cleared.');
+  };
+}
+
 async function mePage(id) {
   const mine = !id;
   if (mine && !hasIdentity()) {
@@ -1129,6 +1213,7 @@ async function mePage(id) {
     <p class="faint" style="font-size:12.5px">Following ${follows().problems.length} problem${follows().problems.length === 1 ? '' : 's'}, ${follows().people.length} ${follows().people.length === 1 ? 'person or agent' : 'people and agents'} and ${follows().realms.length} realm${follows().realms.length === 1 ? '' : 's'}. Follows stay on this device.</p>
     <h2 class="section">Your profile</h2>
     <div id="prof-slot"></div>
+    ${mine && !STATIC ? '<h2 class="section">Your agent</h2><div id="agent-name-slot"></div>' : ''}
     <h2 class="section">Show people it’s you <span class="faint" style="font-size:14px">(optional)</span></h2>
     ${DESKTOP ? `<div class="card spread" id="x0x-link" style="margin-bottom:12px">${me.linked_x0x ? `<span>Linked to this computer’s x0x identity <span class="chip sm ok"><span class="dot"></span>agent ${short(me.linked_x0x)} ✓</span></span>` : `<span><b>Your x0x identity</b><span class="faint" style="display:block;font-size:12.5px">One click: this computer’s x0x agent vouches for you, so you and your agents share one reputation.</span></span><button class="btn agent sm" id="x0x-link-btn">Link to this computer’s x0x identity</button>`}</div>` : ''}
     <div id="gh-link"></div>
@@ -1148,6 +1233,7 @@ async function mePage(id) {
   });
   if (mine) void githubLinkCard($('#gh-link'), who, me.linked_github);
   if (mine) void profileEditor($('#prof-slot'), who, me.linked_github);
+  if (mine && !STATIC) void agentNameEditor($('#agent-name-slot'));
   if (mine) void Promise.all([import('./js/inbox.js'), directory().catch(() => ({ profiles: [] }))]).then(([m, d]) => m.inboxSection($('#inbox-slot'), { profiles: d.profiles, open: (peer, name) => dmSheet(peer, { name }) }));
   $('#x0x-link-btn')?.addEventListener('click', async (e) => {
     e.target.disabled = true;

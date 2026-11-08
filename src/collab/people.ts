@@ -29,7 +29,7 @@ export class People {
 
   chat(problemId: string, limit = 50) {
     return this.hub.node.store.referencing(problemId, 'message').sort((a, b) => a.rec.created.localeCompare(b.rec.created)).slice(-limit)
-      .map((m) => ({ id: m.rec.id, from: m.rec.agent_id, operator: m.operatorId, human: isHuman(m), text: (m.rec.body as { text: string }).text, at: m.rec.created }));
+      .map((m) => ({ id: m.rec.id, from: m.rec.agent_id, operator: m.operatorId, human: isHuman(m), text: (m.rec.body as { text: string }).text, at: m.rec.created, agent: m.rec.context.agent ?? null }));
   }
 
   /** Private DM over x0x. Not stored as a record and never gossiped. */

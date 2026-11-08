@@ -67,7 +67,8 @@ async function main(argv: string[]) {
     const { Presence } = await import('./hub/activity.js');
     const presence = new Presence(), since = new Date().toISOString();
     const beat = () => presence.beat(server.server.getClientVersion()?.name, since);
-    server.server.oninitialized = beat;
+    const prevInit = server.server.oninitialized;
+    server.server.oninitialized = () => { prevInit?.(); beat(); };
     setInterval(beat, 20_000).unref();
     process.on('exit', () => presence.leave());
     await server.connect(new StdioServerTransport());

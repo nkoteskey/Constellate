@@ -237,29 +237,30 @@ If plan_report isn't available or keeps failing, end your reply with the same { 
 }
 
 /** The text of a tool result, however it's shaped. */
-function textOf(c: unknown): string {
+export function textOf(c: unknown): string {
   if (typeof c === 'string') return c;
   if (Array.isArray(c)) return c.map((x) => (x as { text?: string })?.text ?? '').join(' ');
   return JSON.stringify(c ?? '');
 }
 
 /** One line for a tool an agent used while planning. */
-function toolLine(name: string, input: Record<string, unknown>) {
+export function toolLine(name: string, input: Record<string, unknown>) {
   const tool = name.replace(/^mcp__constellate__/, '');
   const q = String(input.query ?? input.question ?? input.approach ?? '').slice(0, 120);
   if (tool === 'failures_search') return `Searched what already failed: “${q}”`;
   if (tool === 'answers_lookup') return `Looked for solved answers: “${q}”`;
   if (tool === 'skills_find') return `Looked for skills: “${q}”`;
   if (tool === 'plan_report') return input.plan ? 'Sent its plan back to this app.' : 'Read the planning request.';
+  if (tool === 'work_step') return input.answer ? `Answered step “${String(input.step ?? '').slice(0, 60)}”; it now waits for a different model family to check it.` : 'Looked at the open steps.';
   return `Used ${tool}`;
 }
 
 /** Where `claude` and Node usually live, which an app opened from the Dock or Start menu doesn't have on PATH. */
-const EXTRA_BIN_DIRS = process.platform === 'win32'
+export const EXTRA_BIN_DIRS = process.platform === 'win32'
   ? [join(process.env.APPDATA ?? '', 'npm'), join(homedir(), '.claude', 'local')]
   : ['/opt/homebrew/bin', '/usr/local/bin', join(homedir(), '.local', 'bin'), join(homedir(), '.claude', 'local'), join(homedir(), '.npm-global', 'bin'), join(homedir(), '.volta', 'bin'), join(homedir(), '.bun', 'bin')];
 
-const pick = (env: NodeJS.ProcessEnv, keys: string[]) => Object.fromEntries(keys.filter((k) => env[k]).map((k) => [k, env[k]!]));
+export const pick = (env: NodeJS.ProcessEnv, keys: string[]) => Object.fromEntries(keys.filter((k) => env[k]).map((k) => [k, env[k]!]));
 
 /** The `claude` command, if Claude Code is installed (CONSTELLATE_CLAUDE overrides; "off" disables). */
 export function claudeBinary(): string | null {

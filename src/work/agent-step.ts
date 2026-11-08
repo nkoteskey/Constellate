@@ -1,6 +1,7 @@
 import type { Hub } from '../hub/hub.js';
 import type { TaskResultBody } from './problems.js';
 import { familyOf } from '../contributor/catalog.js';
+import { clientName } from '../hub/activity.js';
 
 /**
  * A connected agent (Claude Code, Cursor…) takes a step of a live problem, the same way a lent computer does
@@ -67,7 +68,7 @@ export async function submitStep(hub: Hub, a: { problem: string; step: string; a
   const family = agentFamily(a.model, a.client);
   const model = (a.model?.trim() || a.client || 'agent').slice(0, 80);
   const body: TaskResultBody = { problem: a.problem, chunk: a.step, output: answer.slice(0, 20_000), model, family };
-  const { record } = await hub.node.submit({ kind: 'task_result', context: { task: `${st.problem.title} / ${a.step}`, domain: [st.problem.realm], environment: model }, body: body as unknown as Record<string, unknown>, refs: [a.problem] }, { publish: true });
+  const { record } = await hub.node.submit({ kind: 'task_result', context: { task: `${st.problem.title} / ${a.step}`, domain: [st.problem.realm], environment: model, agent: { client: clientName(a.client) === 'An agent' ? 'Agent' : clientName(a.client), ...(a.model?.trim() ? { model: a.model.trim().slice(0, 80) } : {}) } }, body: body as unknown as Record<string, unknown>, refs: [a.problem] }, { publish: true });
   // Tell lent computers the step is taken (advisory, like theirs).
   try { const chunk = st.problem.chunks.find((x) => x.key === a.step)!; await hub.board.claim(await hub.board.ensure(`[${a.problem.slice(0, 12)}] ${chunk.title}`, { problem: a.problem, chunk: a.step, size: chunk.needs.size }), hub.node.agentId); } catch { /* the board is a hint */ }
   return { result: record.id, family };

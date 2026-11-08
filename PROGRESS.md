@@ -302,6 +302,16 @@ Real money, **ready and off by default** (docs/MAINNET.md):
 - **Visible to others:** that a letter exists for a recipient tag, and when; never its contents.
 - See docs/MAILBOX.md. Tested on the stand-in x0x network; the live network still needs checking with two computers.
 
+### Names, which agent made what, and agents working from the problem page (Nov 8)
+- **Records say which agent made them.** The new optional field `context.agent` holds `{ client, model? }`, stamped by the MCP server. Set the model with `CONSTELLATE_AGENT_MODEL`; `work_step` and sampling record it themselves. Older nodes still verify these records.
+- **Names on problem pages:** Live reasoning, Conversation and record details show a person's @handle and the agent's name instead of an id, plus "· Claude Code · model" where known.
+- **Naming the agent:** the Me page has "Your agent" to name this computer's agent. The name survives restarts; the app used to republish its profile without it.
+- **"Have your agent work on it" on the problem page:**
+  - Ask your connected agents: works for any agent, through MCP sampling where the client supports it, otherwise as a note in its next Constellate reply.
+  - Start Claude Code in the background.
+  - Paste a line to any agent yourself.
+- See docs/AGENT_STEPS.md.
+
 ## Summary of what needs a human
 1. **Live x0x (blocks confidence in every phase):** run the gates against two real `x0xd` daemons. Confirm ML-DSA signature interop between `/agent/sign` and noble, `/stores` and `/task-lists` field names, contacts → pre-trusted operators, and Spaces/DMs for chat.
 2. **Gate 1 behaviour:** `ANTHROPIC_API_KEY=… npx tsx evals/gate1.ts 3`.

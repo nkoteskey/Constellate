@@ -90,9 +90,17 @@ export class Profiles {
     return 'x0x';
   }
 
-  /** This computer's agent describes itself. */
+  /** What this computer's agent last said about itself (its name, if the person gave it one). */
+  ownAgent(): ProfileBody | null {
+    const rec = this.local()[this.hub.node.agentId];
+    return rec ? (rec.body as unknown as ProfileBody) : null;
+  }
+
+  /** This computer's agent describes itself. Keeps what it said before (its name) unless told otherwise. */
   async publishAgent(body: Omit<ProfileBody, 'kind'> = {}) {
-    const b: ProfileBody = { kind: 'agent', about: 'Constellate on a person’s computer', ...body };
+    const prev = this.ownAgent() ?? {};
+    const b: ProfileBody = { about: 'Constellate on a person’s computer', ...prev, ...body, kind: 'agent' };
+    if (b.handle === '') delete b.handle; // cleared
     const problem = profileProblem(b);
     if (problem) throw new Error(problem);
     const rec = await signRecord({ kind: 'profile', context: { task: 'profile', domain: ['people'], environment: '' }, body: b as unknown as Record<string, unknown> }, this.hub.node.signer);

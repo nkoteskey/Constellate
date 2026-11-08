@@ -184,7 +184,7 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
     const s = await hub.problems.summary(m[1]);
     const recent = hub.node.store.referencing(m[1]).filter((r) => r.visibility === 'public').sort((a, b) => b.rec.created.localeCompare(a.rec.created)).slice(0, 40).map((r) => {
       const b = r.rec.body as { chunk?: string; family?: string; verifier_family?: string; ok?: boolean };
-      return { id: r.rec.id, kind: r.rec.kind, at: r.rec.created, by: isHuman(r) ? 'human' : 'agent', who: r.rec.agent_id, says: describe(r), chunk: b.chunk, family: b.verifier_family ?? b.family };
+      return { id: r.rec.id, kind: r.rec.kind, at: r.rec.created, by: isHuman(r) ? 'human' : 'agent', who: r.rec.agent_id, says: describe(r), chunk: b.chunk, family: b.verifier_family ?? b.family, agent: r.rec.context.agent ?? null };
     });
     const people = new Map<string, { id: string; type: string; contributions: number }>();
     for (const r of hub.node.store.referencing(m[1])) { const p = people.get(r.operatorId) ?? { id: r.operatorId, type: isHuman(r) ? 'human' : 'agent', contributions: 0 }; p.contributions++; people.set(r.operatorId, p); }
@@ -336,6 +336,33 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
         ...(p.kind === 'person' ? { machine: { id: p.host, handle: agentCard.get(p.host)?.handle ?? null, online: online.has(p.host), this_computer: p.host === hub.node.agentId } } : { attached: hosts.has(p.id) }),
       })),
     };
+  });
+  // "Have your agent work on it": what's possible on this computer for a problem, and Claude Code runs.
+  const here = (req: { socket: { remoteAddress?: string } }) => /^(127\.|::1$|::ffff:127\.)/.test(req.socket.remoteAddress ?? '');
+  web.route('GET', /^\/api\/problems\/([0-9a-f]{64})\/agents$/, (req, m) => here(req)
+    ? { claude_code: hub.agentRuns.available(), online: new Presence().online(), prompt: hub.agentRuns.prompt(m[1]), runs: hub.agentRuns.forProblem(m[1]).slice(0, 3), requests: hub.workRequests.forProblem(m[1]).slice(0, 3) }
+    : new HttpReply(403, { error: 'only on this computer' }));
+  web.route('POST', /^\/api\/problems\/([0-9a-f]{64})\/agents$/, async (req, m, _u, body) => {
+    if (!here(req)) return new HttpReply(403, { error: 'only on this computer' });
+    const j = (await body().catch(() => ({}))) as { via?: string };
+    if (j.via === 'any') return tryIt(() => { const p = hub.problems.get(m[1]); if (!p) throw new Error('unknown problem'); return hub.workRequests.create(m[1], (p.rec.body as { title: string }).title); });
+    return tryIt(() => hub.agentRuns.start(m[1]));
+  });
+  web.route('GET', /^\/api\/work-requests\/([0-9a-f]{12})$/, (req, m) => here(req) ? (hub.workRequests.get(m[1]) ?? new HttpReply(404, { error: 'unknown request' })) : new HttpReply(403, { error: 'only on this computer' }));
+  web.route('GET', /^\/api\/agent-runs\/([0-9a-f]{12})$/, (req, m) => here(req) ? (hub.agentRuns.get(m[1]) ?? new HttpReply(404, { error: 'unknown run' })) : new HttpReply(403, { error: 'only on this computer' }));
+
+  // This computer's agent: its name (handle) and one line about it, set by the person using this computer.
+  web.route('GET', /^\/api\/profile\/agent$/, (req) => /^(127\.|::1$|::ffff:127\.)/.test(req.socket.remoteAddress ?? '') ? { id: hub.node.agentId, ...(profiles.ownAgent() ?? { kind: 'agent' }) } : new HttpReply(403, { error: 'only on this computer' }));
+  web.route('POST', /^\/api\/profile\/agent$/, async (req, _m, _u, body) => {
+    if (!/^(127\.|::1$|::ffff:127\.)/.test(req.socket.remoteAddress ?? '')) return new HttpReply(403, { error: 'only on this computer' });
+    const j = (await body()) as { handle?: string; about?: string };
+    const handle = String(j.handle ?? '').trim().replace(/^@/, '');
+    const next: Partial<ProfileBody> = { kind: 'agent', ...(handle ? { handle } : {}), ...(j.about !== undefined ? { about: String(j.about).trim().slice(0, 160) } : {}) };
+    const bad = profileProblem(next);
+    if (bad) return new HttpReply(400, { error: bad });
+    const p = scrub({ context: { task: 'profile', domain: [], environment: '' }, body: next }, hub.node.privacy);
+    if (!p.ok) return new HttpReply(400, { error: 'blocked by privacy check', findings: p.findings });
+    return { published: await profiles.publishAgent({ handle: handle || '', ...(next.about !== undefined ? { about: next.about } : {}) }), handle: handle || null };
   });
   web.route('POST', /^\/api\/profile$/, async (req, _m, _u, body) => {
     if (!/^(127\.|::1$|::ffff:127\.)/.test(req.socket.remoteAddress ?? '')) return new HttpReply(403, { error: 'only on this computer' });

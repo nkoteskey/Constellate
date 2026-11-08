@@ -1,4 +1,5 @@
-import { ActivityLog } from '../hub/activity.js';
+import { ActivityLog, clientName } from '../hub/activity.js';
+import { WorkRequests, requestNote, workWithSampling } from '../work/work-requests.js';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { Hub } from '../hub/hub.js';
@@ -26,6 +27,22 @@ export function createMcpServer(hub: Hub, opts: { mode?: 'lean' | 'full' } = {})
   // The map (docs/MEMORY.md): a small briefing of the best-supported rules, given at the start of every session.
   const map = hub.pages.brief({ domains: [...new Set(hub.node.store.all().filter((s) => s.operatorId === hub.node.operatorId).flatMap((s) => s.rec.context.domain))].slice(0, 20) });
   const server = new McpServer({ name: 'constellate', version: '0.1.1' }, { instructions: `${hub.node.readOnly ? PRIVATE_INSTRUCTIONS : SERVER_INSTRUCTIONS}${map ? `\n\n${map}` : ''}` });
+  // Work requests ("Have your agent work on it"): with MCP sampling, this agent's own model does the steps.
+  const workRequests = new WorkRequests();
+  const sampling = () => !!server.server.getClientCapabilities()?.sampling;
+  let samplingBusy = false;
+  const workBySampling = async () => {
+    if (samplingBusy || !sampling() || hub.node.readOnly) return;
+    samplingBusy = true;
+    try {
+      const by = clientName(server.server.getClientVersion()?.name);
+      await workWithSampling(hub, workRequests, by, async (prompt) => {
+        const r = await server.server.createMessage({ messages: [{ role: 'user', content: { type: 'text', text: prompt } }], maxTokens: 2000 });
+        return { text: r.content.type === 'text' ? r.content.text : '', model: r.model || by };
+      });
+    } finally { samplingBusy = false; }
+  };
+  server.server.oninitialized = () => { void workBySampling().catch(() => {}); setInterval(() => void workBySampling().catch(() => {}), 15_000).unref(); };
   // Instrumentation: count, per connection, whether agents look before they act (stays on this node).
   const session = Math.random().toString(36).slice(2);
   const activity = new ActivityLog();
@@ -33,7 +50,24 @@ export function createMcpServer(hub: Hub, opts: { mode?: 'lean' | 'full' } = {})
   (server as { registerTool: unknown }).registerTool = ((name: string, cfg: never, cb: (...a: unknown[]) => unknown) =>
     mode === 'lean' && !LEAN_TOOLS.has(name) ? undefined : reg0(name, cfg, (async (...a: unknown[]) => {
       hub.metrics.toolCall(session, name);
-      const out = await cb(...a);
+      // What it shares says which agent made it (and the model, when CONSTELLATE_AGENT_MODEL names it).
+      const client = server.server.getClientVersion()?.name;
+      if (client) hub.node.actor = { client: clientName(client), ...(process.env.CONSTELLATE_AGENT_MODEL ? { model: process.env.CONSTELLATE_AGENT_MODEL.slice(0, 80) } : {}) };
+      let out = await cb(...a);
+      // A request from this person for their agents to work on a problem: put it in front of this agent once
+      // per request, with its next reply (agents that support sampling do it on their own; see below).
+      if (!sampling()) {
+        const req = workRequests.open().find((r) => r.status === 'waiting');
+        if (req && client && workRequests.offer(req.id, clientName(client))) {
+          const res = out as { content?: { type: string; text?: string }[] };
+          const text = res.content?.[0]?.text;
+          if (typeof text === 'string') {
+            try { const j = JSON.parse(text); res.content![0].text = JSON.stringify(j && typeof j === 'object' && !Array.isArray(j) ? { ...j, person_asked: requestNote(req) } : { result: j, person_asked: requestNote(req) }); }
+            catch { res.content![0].text = `${text}\n\n${requestNote(req)}`; }
+            out = res;
+          }
+        }
+      }
       // What this agent did, for the person's own app ("Claude Code checked the network 14 times"): local, no query text.
       let parsed: unknown;
       try { parsed = JSON.parse((out as { content?: { text?: string }[] }).content?.[0]?.text ?? 'null'); } catch { parsed = undefined; }
