@@ -23,6 +23,19 @@ export type StepOutcome = 'verified' | 'rejected' | 'worked' | 'idle' | 'paused'
  * claims new work that fits its model size. Results, verifications and
  * checkpoints are signed records; the Board is only a coordination hint.
  */
+/**
+ * What a model from another family is asked when it checks a result. Agreeing with the answer is not a check:
+ * it works the task itself, looks for a concrete failure, and says what it checked and what it couldn't.
+ * The machine check has already passed by now; this catches what the machine check can't see.
+ */
+export function verifyPrompt(task: string, answer: string) {
+  return `You are verifying another model's answer, independently. Work the task yourself first, then compare; don't take the answer's own reasoning on trust.
+Task: ${task}
+Answer: ${answer}
+Look for a concrete way it fails (a wrong step, a counterexample, a unit or off-by-one slip, a claim broader than the work shows), not general doubts.
+Reply YES on the first line only if your own check agrees, otherwise NO. Then, in one or two lines, what you checked and anything you couldn't check.`;
+}
+
 export class Worker {
   status: Status = { state: 'waiting', message: 'Starting.' };
   /** What the last step that did something was, for the lending log (src/contributor/lend.ts). */
@@ -64,7 +77,7 @@ export class Worker {
         this.last = { problem: problemId, title: st.problem.title, step: chunk.title, did: 'checked', model: verifier.machineOnly ? `machine check (${verifier.name})` : this.runner.id };
         const machine = await verifier.check(chunk.check, rb.output);
         const opinion = verifier.machineOnly ? (machine.ok ? 'YES' : 'NO') : machine.ok
-          ? await this.runner.run(`You are verifying another model's answer.\nTask: ${chunk.prompt}\nAnswer: ${rb.output}\nReply YES if the answer is correct, otherwise NO and why.`, { maxTokens: 512 })
+          ? await this.runner.run(verifyPrompt(chunk.prompt, rb.output), { maxTokens: 512 })
           : 'NO';
         const agrees = machine.ok && /^\s*yes\b/i.test(opinion);
         const ctx = { task: `verify ${st.problem.title} / ${c.key}`, domain: [st.problem.realm], environment: this.runner.id };

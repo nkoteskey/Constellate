@@ -610,6 +610,9 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
     };
   });
 
+  // The skill catalogue, grouped for browsing (x0x and Autonomi first). Instructions stay on each record's page.
+  web.route('GET', /^\/api\/skills$/, async () => { await hub.skills.official.refresh(hub.skills.sourceRepos()); return hub.skills.catalog(); });
+
   // The utility hook: paste an error or a question, get what failed, what fixed it, and a plain answer.
   web.route('GET', /^\/api\/search$/, async (_r, _m, url) => {
     const q = String(url.searchParams.get('q') ?? '').slice(0, 500).trim();

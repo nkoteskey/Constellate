@@ -16,11 +16,51 @@ export const FailureBody = z.object({
 });
 export type FailureBody = z.infer<typeof FailureBody>;
 
+/**
+ * One piece of evidence behind an answer's claim: where it is (a link, a record id or a citation), the exact place
+ * inside it, and whether it supports or contradicts the claim. `origin` names the original study or run when the
+ * source only retells another, so ten articles retelling one study count as one independent origin, not ten.
+ */
+export const ClaimSource = z.object({
+  source: z.string().min(1).max(400),
+  locator: z.string().min(1).max(200).describe('Section, table, page, row, line or test name.'),
+  relation: z.enum(['supports', 'contradicts']),
+  note: z.string().max(400).optional(),
+  origin: z.string().max(400).optional(),
+});
+export type ClaimSource = z.infer<typeof ClaimSource>;
+
+export const CLAIM_KINDS = ['observation', 'inference', 'hypothesis'] as const;
+export const CLAIM_STATUSES = ['supported', 'refuted', 'contested', 'unresolved'] as const;
+
+/**
+ * An answer. The claim fields are optional, so short answers stay short, but when given they must agree with
+ * each other (the same bookkeeping rules as the Research Loop method's run checker):
+ * supported needs a supporting source, refuted a contradicting one, contested both; an inference or hypothesis
+ * says its limits. Unresolved is a legitimate answer: it keeps the uncertainty visible instead of hiding it.
+ */
 export const AnswerBody = z.object({
   question: z.string().max(600),
   answer: z.string().max(4000),
   proof: z.object({ type: z.enum(['test', 'benchmark', 'proof', 'reproduction', 'citation']), detail: z.string().max(1000) }),
+  claim: z.enum(CLAIM_KINDS).optional(),
+  status: z.enum(CLAIM_STATUSES).optional(),
+  sources: z.array(ClaimSource).max(12).optional(),
+  limits: z.string().max(600).optional(),
+}).superRefine((b, ctx) => {
+  const rel = new Set((b.sources ?? []).map((s) => s.relation));
+  const need = (ok: boolean, message: string) => { if (!ok) ctx.addIssue({ code: z.ZodIssueCode.custom, message }); };
+  if (b.status === 'supported') need(rel.has('supports'), 'a supported claim needs at least one source that supports it');
+  if (b.status === 'refuted') need(rel.has('contradicts'), 'a refuted claim needs at least one source that contradicts it');
+  if (b.status === 'contested') need(rel.has('supports') && rel.has('contradicts'), 'a contested claim needs a source on each side');
+  if (b.claim === 'inference' || b.claim === 'hypothesis') need(!!b.limits?.trim(), `an ${b.claim === 'inference' ? 'inference' : 'hypothesis'} needs its limits: where it hasn't been tested`);
 });
+
+/** How many independent origins stand behind a claim, counting sources that retell the same original once. */
+export function independentOrigins(sources: ClaimSource[] = [], relation: ClaimSource['relation'] = 'supports') {
+  const key = (s: string) => s.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/[#?].*$/, '').replace(/\/+$/, '');
+  return new Set(sources.filter((s) => s.relation === relation).map((s) => key(s.origin || s.source))).size;
+}
 export type AnswerBody = z.infer<typeof AnswerBody>;
 
 export interface CtxInput { task: string; domain: string[]; environment: string; inputs_text?: string }
@@ -92,6 +132,10 @@ export class Ledger {
         ...((b as { license?: string }).license ? { license: (b as { license?: string }).license, attribution: (b as { attribution?: string }).attribution } : {}), environment: s.rec.context.environment, env_match: round(env),
         weight: round(t.weight), confirmations: t.confirmations, contradictions: t.contradictions, confirmed: rep.label, disputed_on_computers: rep.disputed_by.computers, age_days: Math.floor(ageDays(s)), fixes: s.rec.refs,
         neighbours: this.graph?.neighbours(s.rec.id, 3) ?? [],
+        ...(b.claim || b.status || b.sources?.length ? {
+          claim: { kind: b.claim ?? null, status: b.status ?? null, limits: b.limits ?? null, sources: b.sources ?? [],
+            independent: { supporting: independentOrigins(b.sources, 'supports'), contradicting: independentOrigins(b.sources, 'contradicts') } },
+        } : {}),
       };
     });
   }

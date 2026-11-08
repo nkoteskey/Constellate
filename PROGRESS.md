@@ -661,3 +661,38 @@ Still stop points, deliberately not approved on the owner's behalf: publishing a
   - `skills_find` and app search also return matching public x0x groups ("On x0x"), labelled as groups to ask, not Constellate skills.
 - **When:** every 6 hours in `serve` and the desktop app.
 - **Gate:** `test/gates/x0x_skills.test.ts`. See docs/X0X_SKILLS.md.
+
+### Research method and skill discovery (Nov 8)
+- **Skill discovery:** skills could only be found by searching, and search showed two at a time. That's why the x0x and Autonomi skills weren't visible.
+  - New **Skills** page (`#/skills`, in the top bar), grouped: x0x and Autonomi first, then shared by agents, the research method, and the public collections. It has a filter, and each card opens the signed record.
+  - `GET /api/skills` (`Skills.catalog()`), also mirrored on the static site. `skills_find` with no query browses the same groups.
+  - x0x's four tested how-tos (`data/seed/x0x-skills.json`) were seeded only in the demo. They're now in the starter library too (`seedX0xSkills`).
+  - On phones the view tabs wrap to two rows, so all seven stay visible.
+- **Research Loop skills** (wrencanfly/research-loop-skills, MIT, pinned at 52333290066262c448e423795eac7eddee5f51e5): seven skills imported by `scripts/import-skills.mjs`. Rerunning the script reproduces the other 63 byte for byte. The licence text is in `data/seed/LICENSES/MIT-research-loop.txt`.
+- **Claims with evidence** (`src/services/ledger.ts`): answers can carry an optional claim kind, status, sources (with locators and the original study they retell) and limits. The fields must agree. `answers_lookup` counts independent origins. `answers_submit` takes them as one `claim` object, which keeps the lean tool list within its budget.
+- **Plans:** `plan_report` findings can add what the result would change, alternatives with what would weaken each, what would show the plan is wrong, and a stopping rule. The brief asks for them; older reports still parse. The plan review shows them.
+- **Checks, not votes:**
+  - The cross-family verifier works the task itself and looks for a concrete failure (`verifyPrompt` in `src/work/worker.ts`).
+  - The disagreement court states each side's strongest case and names the check that would settle it.
+  - `review_respond` records each check as passed, failed or not attempted; "sound" needs one that passed.
+  - `review_request` asks for the claim and its evidence, not the hoped-for verdict.
+- **Gate:** `test/gates/research_method.test.ts`. See docs/AGENT_SKILLS.md and docs/RESEARCH_AGENTS.md.
+- **Ships with the next release:** the bundled starter library (`starter/starter.cbor`) is built when the package is made, by the GitHub Actions release.
+
+### Reasons for agents to come, and to come back (Nov 8)
+- **Fixes for red CI** (`action.yml`, `src/watch/ci.ts`, docs/CI_ACTION.md):
+  - A composite GitHub Action wraps a command. A red run gets the fixes others verified for that error, in the job summary and an annotation.
+  - The next green run says what got fixed, between which commits, and gives the fix ids to report with `fix_tried`.
+  - It only reads: the search runs on the runner and nothing is published. Inputs never go inside a script.
+  - `constellate ci` is the command behind it. The `ci-action` job in `ci.yml` runs it on GitHub, red then green.
+- **The hook closes the loop** (`src/watch/hook.ts`): on `PostToolUse`, when a command that failed with fixes suggested now passes in the same session, Claude is asked once to report `fix_tried`, with the full id. A local note (the command's first words, the cleaned error, the fix ids) expires after two hours. Still never publishes.
+- **Hit rate** (`fixHitRate` in `src/hub/metrics.ts`): the share of `fix_tried` reports on answers, by operators other than the author, that said it worked. It's in `metrics_get` and `/api/metrics`, and on the Connect page. It shows "too few tries" until there are ten.
+- **Test cases for the x0x and Autonomi skills** (`data/seed/skill-tests.json`): three each, written by Constellate from each skill's own text. A gate test checks that each quoted line still exists. A 3-of-3 trial passes.
+- **Official skills** (`src/economy/official.ts`, `constellate official OWNER/REPO`, docs/OFFICIAL_SKILLS.md): a repository lists signer ids in `.constellate/official.json`. A skill shows Official only when signed by one of them, with that repository as its source. `skills_publish` takes a `source` and still needs test cases.
+- **Use counts:** cards show real uses (and by how many operators), trials with their pass rate, and confirmations. **Most used** ranks every skill by real use.
+- **Weekly refresh** (`.github/workflows/skills-refresh.yml`, `scripts/refresh-skills.mjs`): pins moved to `data/seed/skill-sources.json`. Each Monday the workflow moves them to upstream's newest versions, reruns the import and the gates, and opens a pull request if anything changed. Run today: every source is already at its newest version.
+- **Gates:** `test/gates/adoption.test.ts`, plus additions to `research_method` and `watch_hook`.
+- **Needs the owner:**
+  - Turn on Settings → Actions → General → "Allow GitHub Actions to create and approve pull requests", so the weekly refresh can open its pull request.
+  - The Action's `uses: nkoteskey/Constellate@v0.2.0` works once the v0.2.0 release tag exists and `constellate-mcp` 0.2.0 (with `ci`) is on npm.
+  - If you want, ask Saorsa Labs and Autonomi whether they'd publish their skills as Official (docs/OFFICIAL_SKILLS.md).

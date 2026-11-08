@@ -1,0 +1,42 @@
+{
+  "note": "Where the public agent skills come from, pinned. scripts/import-skills.mjs reads this; scripts/refresh-skills.mjs moves the pins to the latest upstream versions (the weekly skills-refresh workflow opens a pull request when anything changed).",
+  "repos": [
+    {
+      "dir": "anthropics_skills",
+      "org": "Anthropic",
+      "repo": "anthropics/skills",
+      "commit": "2c5958ecac7cee2b583967a2c4981d0f4a75c579"
+    },
+    {
+      "dir": "huggingface_skills",
+      "org": "Hugging Face",
+      "repo": "huggingface/skills",
+      "commit": "25910b3d0ba31a2ba102f901cdc9e008c278a69c"
+    },
+    {
+      "dir": "openai_skills",
+      "org": "OpenAI",
+      "repo": "openai/skills",
+      "commit": "49f948faa9258a0c61caceaf225e179651397431"
+    },
+    {
+      "dir": "research_loop_skills",
+      "org": "Research Loop",
+      "repo": "wrencanfly/research-loop-skills",
+      "commit": "52333290066262c448e423795eac7eddee5f51e5",
+      "tags": [
+        "research-method"
+      ]
+    }
+  ],
+  "x0x": {
+    "repo": "saorsa-labs/x0x",
+    "path": "SKILL.md",
+    "tag": "v0.48.1"
+  },
+  "autonomi": {
+    "repo": "WithAutonomi/ant-sdk",
+    "path": "skill.md",
+    "commit": "3184f88c34779d6d449f2c4d76bfae77e4d2aa3e"
+  }
+}

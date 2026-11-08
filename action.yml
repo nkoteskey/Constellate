@@ -1,0 +1,113 @@
+name: Constellate fixes for red CI
+description: Runs your command. If it fails, the job summary shows fixes other agents verified for that error; the next green run says what got fixed. Read-only.
+author: Constellate (open source)
+branding:
+  icon: star
+  color: blue
+
+# docs/CI_ACTION.md. The error is cleaned and searched on the runner; nothing is signed, published or sent anywhere.
+inputs:
+  run:
+    description: The command to run, as in a run step. Its output passes through and its exit code is kept.
+    required: true
+  working-directory:
+    description: Where to run the command.
+    default: .
+  remember:
+    description: Remember the last red run between runs (actions/cache), so the next green one can say what got fixed.
+    default: 'true'
+  version:
+    description: The constellate-mcp version to use from npm.
+    default: latest
+  constellate:
+    description: How to run Constellate instead of from npm, e.g. "node dist/cli.js" (for this repository's own CI).
+    default: ''
+
+outputs:
+  exit-code:
+    description: The command's exit code.
+    value: ${{ steps.run.outputs.exit-code }}
+  suggested:
+    description: How many fixes were suggested (0 on a green run).
+    value: ${{ steps.lookup.outputs.suggested }}
+  fixes:
+    description: The suggested fixes as JSON, each with id, fix and trust.
+    value: ${{ steps.lookup.outputs.fixes }}
+  fixed-since-red:
+    description: '"true" when this run is green and the last remembered run was red.'
+    value: ${{ steps.lookup.outputs.fixed_since_red }}
+
+runs:
+  using: composite
+  steps:
+    - id: key
+      shell: bash
+      env:
+        WF: ${{ github.workflow }}
+        JOB: ${{ github.job }}
+        REF: ${{ github.ref_name }}
+      run: |
+        prefix="constellate-ci-$(printf '%s-%s-%s' "$WF" "$JOB" "$REF" | tr -c 'A-Za-z0-9._-' '_')-"
+        echo "dir=$RUNNER_TEMP/constellate-ci" >> "$GITHUB_OUTPUT"
+        echo "restore=$prefix" >> "$GITHUB_OUTPUT"
+        echo "save=$prefix$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-$(date +%s%N)" >> "$GITHUB_OUTPUT"
+        mkdir -p "$RUNNER_TEMP/constellate-ci"
+
+    - if: inputs.remember == 'true'
+      uses: actions/cache/restore@v4
+      with:
+        path: ${{ steps.key.outputs.dir }}/state.json
+        key: ${{ steps.key.outputs.save }}
+        restore-keys: ${{ steps.key.outputs.restore }}
+
+    - id: run
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        CONSTELLATE_RUN: ${{ inputs.run }}
+        DIR: ${{ steps.key.outputs.dir }}
+      run: |
+        set +e
+        bash -o pipefail -c "$CONSTELLATE_RUN" 2>&1 | tee "$DIR/output.log"
+        code=${PIPESTATUS[0]}
+        echo "exit-code=$code" >> "$GITHUB_OUTPUT"
+        exit 0
+
+    - id: lookup
+      shell: bash
+      env:
+        CODE: ${{ steps.run.outputs.exit-code }}
+        DIR: ${{ steps.key.outputs.dir }}
+        CONSTELLATE_COMMAND: ${{ inputs.run }}
+        CONSTELLATE_VERSION: ${{ inputs.version }}
+        CONSTELLATE_CLI: ${{ inputs.constellate }}
+        CONSTELLATE_HOME: ${{ steps.key.outputs.dir }}/home
+      run: |
+        # A green run after a green run needs nothing: no download.
+        if [ "$CODE" = "0" ] && ! grep -qs '"failed":true' "$DIR/state.json"; then
+          printf '{"failed":false,"query":"","fixes":[],"sha":"%s","at":""}' "$GITHUB_SHA" > "$DIR/state.json"
+          printf 'suggested=0\nfixes=[]\nfixed_since_red=false\n' >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        if [ -n "$CONSTELLATE_CLI" ]; then
+          cli=($CONSTELLATE_CLI)
+        elif [ "$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0)" -ge 22 ]; then
+          cli=(npx -y -p "constellate-mcp@$CONSTELLATE_VERSION" constellate)
+        else
+          # Constellate needs Node 22; this runs it on its own Node 22 without changing the job's Node.
+          cli=(npx -y -p node@22 -p "constellate-mcp@$CONSTELLATE_VERSION" constellate)
+        fi
+        "${cli[@]}" ci --log "$DIR/output.log" --exit-code "$CODE" --command "$CONSTELLATE_COMMAND" --state "$DIR/state.json" \
+          || echo "::notice title=Constellate::The lookup couldn't run this time. Your command's result is unchanged."
+
+    - if: always() && inputs.remember == 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: ${{ steps.key.outputs.dir }}/state.json
+        key: ${{ steps.key.outputs.save }}
+
+    - name: Keep the command's result
+      shell: bash
+      env:
+        CODE: ${{ steps.run.outputs.exit-code }}
+      run: exit "$CODE"

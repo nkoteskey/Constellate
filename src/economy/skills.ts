@@ -5,6 +5,7 @@ import { VerifierRegistry } from '../work/verifiers.js';
 import { bm25 } from '../services/search.js';
 import { Economy } from './economy.js';
 import { TESTNET_PRICING } from './pricing.js';
+import { OfficialMarks } from './official.js';
 
 /**
  * Skill marketplace. A skill card is a signed record: what the skill does, its
@@ -31,7 +32,24 @@ export const SkillCard = z.object({
 });
 export type SkillCard = z.infer<typeof SkillCard>;
 
+/** How the skill catalogue is grouped, in the order it's shown. */
+export const SKILL_GROUPS = [
+  { id: 'network', title: 'x0x and Autonomi', about: 'The network Constellate runs on: messaging, groups and data on x0x, storage on Autonomi.' },
+  { id: 'shared', title: 'Shared by agents', about: 'Skills agents published here, with their own test cases.' },
+  { id: 'research', title: 'Research method', about: 'Frame a question, map evidence, test alternatives, verify and stop on purpose.' },
+  { id: 'public', title: 'Public skill collections', about: 'Openly licensed skills from public repositories, credited to their source.' },
+] as const;
+export type SkillGroup = (typeof SKILL_GROUPS)[number]['id'];
+
+export function skillGroup(repo: string, org?: string): SkillGroup {
+  if (repo === 'saorsa-labs/x0x' || repo === 'WithAutonomi/ant-sdk') return 'network';
+  if (repo === 'wrencanfly/research-loop-skills') return 'research';
+  return repo || org ? 'public' : 'shared';
+}
+
 export class Skills {
+  /** Which repositories' own identities signed which skills (src/economy/official.ts). */
+  readonly official = new OfficialMarks();
   constructor(private readonly hub: Hub, private readonly economy?: Economy, private readonly verifiers = new VerifierRegistry()) {}
 
   /** Publish a skill. `inherits` names parent skills it was derived from, so their authors share in its earnings. */
@@ -54,6 +72,43 @@ export class Skills {
       const score = rel.get(s.rec.id)! * (0.3 + this.hub.trust.weight(s)) * (0.5 + passRate);
       return { id: s.rec.id, name: b.name, description: b.description, price: b.price, tests: b.tests.length, ...(b.source ? { source: b.source.url, credit: `${b.source.org} (${b.source.repo}), ${b.license}` } : {}), runs: runs.length, pass_rate: Math.round(passRate * 100) / 100, author_reputation: this.hub.trust.explain(s).author_reputation, inherits: s.rec.refs, score };
     }).sort((a, b) => b.score - a.score).slice(0, limit);
+  }
+
+  /**
+   * Every skill, grouped so a person or agent can browse rather than guess a query: the network's own skills (x0x
+   * and Autonomi) first, then those agents shared, then the research method, then the public collections. Within
+   * a group, skills with test cases and past runs come first.
+   */
+  /** The repositories skills name as their source, for checking official marks. */
+  sourceRepos() { return [...new Set(this.hub.node.store.ofKind('skill').map((s) => (s.rec.body as unknown as SkillCard).source?.repo).filter((r): r is string => !!r))]; }
+
+  catalog() {
+    const store = this.hub.node.store;
+    const items = store.ofKind('skill').map((s) => {
+      const b = s.rec.body as unknown as SkillCard;
+      const runRecs = this.runs(s.rec.id);
+      const runs = runRecs.map((r) => r.rec.body as { passed: number; total: number; mode?: string });
+      const used = runRecs.filter((r) => (r.rec.body as { mode?: string }).mode === 'use');
+      const where = b.source?.repo ?? (s.rec.evidence.find((e) => /github\.com\/saorsa-labs\/x0x\b/.test(e)) ? 'saorsa-labs/x0x' : '');
+      const group = skillGroup(where, b.source?.org);
+      return {
+        id: s.rec.id, name: b.name, description: b.description, capabilities: b.capabilities, group,
+        // Imported skills are the upstream text; x0x's short how-tos are Constellate's own adaptations of x0x's
+        // skill file, so they say so rather than reading as Saorsa Labs' own.
+        from: b.source ? `${b.source.org} (${b.source.repo})` : where === 'saorsa-labs/x0x' ? 'adapted from Saorsa Labs’ x0x skill file' : null,
+        adapted: !b.source && where === 'saorsa-labs/x0x',
+        // Official only when the repository's own file lists the identity that signed this record.
+        official: b.source ? this.official.isOfficial(b.source.repo, s.rec.agent_id) === true : false,
+        url: b.source?.url ?? s.rec.evidence.find((e) => /^https?:\/\//.test(e)) ?? null, license: b.license, price: b.price, tests: b.tests.length, runs: runs.length,
+        pass_rate: runs.length ? Math.round((runs.reduce((n, r) => n + r.passed / r.total, 0) / runs.length) * 100) / 100 : null,
+        confirmations: store.referencing(s.rec.id, 'confirmation').length,
+        // Real use, not trials: how often it was used, and by how many different operators.
+        uses: used.length, users: new Set(used.map((r) => r.operatorId)).size, trials: runs.length - used.length,
+      };
+    });
+    const order = SKILL_GROUPS.map((g) => g.id);
+    items.sort((a, b) => order.indexOf(a.group) - order.indexOf(b.group) || Number(b.official) - Number(a.official) || b.tests - a.tests || b.runs - a.runs || b.confirmations - a.confirmations || a.name.localeCompare(b.name));
+    return { groups: SKILL_GROUPS.map((g) => ({ ...g, count: items.filter((k) => k.group === g.id).length })).filter((g) => g.count), skills: items };
   }
 
   /** Trial a skill on its own test cases with your model. Free; publishes a signed proof of the run. */

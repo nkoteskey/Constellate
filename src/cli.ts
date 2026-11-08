@@ -34,7 +34,9 @@ const USAGE = `Constellate — where humans and agents gather into something gre
   constellate status     Show identity, x0x connection and record counts
   constellate setup      Print one-line setup snippets for MCP clients
   constellate watch -- <command…>   Run a command; if it fails, print fixes others verified for its error (never publishes)
-  constellate hook claude-code      For a Claude Code hook: read a failed Bash call on stdin, answer with matching fixes (docs/HOOKS.md)
+  constellate official OWNER/REPO   Make skills you publish for a repository you control show as Official (docs/OFFICIAL_SKILLS.md)
+  constellate ci --log FILE --exit-code N   For the GitHub Action: fixes for a red run, and what got fixed on the next green one (docs/CI_ACTION.md)
+  constellate hook claude-code      For a Claude Code hook: fixes for a failed Bash call; asks once whether one worked when it later passes (docs/HOOKS.md)
   constellate network join | status | leave    The x0x daemon that connects you to the network (set up on its own by default)
   constellate serve      Open the human app on http://127.0.0.1:4747
       [--model PROVIDER/MODEL]  a model for the plain-language guide, the constitution's model
@@ -119,6 +121,29 @@ async function main(argv: string[]) {
     process.on('SIGINT', shutdown);
     return;
   }
+  if (cmd === 'official') {
+    // Make this computer's identity checkably "official" for a repository you control (docs/OFFICIAL_SKILLS.md).
+    const { officialFile, OFFICIAL_FILE, officialFileUrl, parseOfficial } = await import('./economy/official.js');
+    const repo = argv[1];
+    if (!repo || !/^[A-Za-z0-9-]{1,39}\/[A-Za-z0-9._-]{1,100}$/.test(repo)) { console.log('Usage: constellate official OWNER/REPO'); return; }
+    const hub = await Hub.fromEnv();
+    try {
+      const id = hub.node.agentId;
+      const now = await fetch(officialFileUrl(repo), { signal: AbortSignal.timeout(5000) }).then(async (r) => (r.ok ? parseOfficial(await r.text()) : [])).catch(() => null);
+      console.log(now?.includes(id)
+        ? `${repo} already lists this identity (${id.slice(0, 12)}…). Skills it publishes with source.repo "${repo}" show as Official.`
+        : `To make skills this computer publishes for ${repo} show as Official:
+
+1. Commit this file to ${repo} as ${OFFICIAL_FILE} (on the default branch):
+
+${officialFile([...(now ?? []), id])}
+2. Publish each skill from this computer (skills_publish), with source { org, repo: "${repo}", path, commit, url }
+   naming where its text lives in ${repo}, and its test cases.
+
+Anyone can re-check it: the file is public, and only this identity can sign as ${id.slice(0, 12)}….`);
+    } finally { await hub.close(); }
+    return;
+  }
   if (cmd === 'status') { const hub = await Hub.fromEnv(); console.log(JSON.stringify(hub.status(), null, 2)); await hub.close(); return; }
   if (cmd === 'setup') {
     // Snippets point at this install's own CLI; `npx -y constellate-mcp mcp` (our npm package) needs nothing installed.
@@ -142,6 +167,12 @@ Lend your computer instead: node "${cli}" models, then node "${cli}" contribute`
     const rest = argv.slice(1), i = rest.indexOf('--');
     const json = rest.slice(0, i < 0 ? 0 : i).includes('--json');
     process.exitCode = await watch(i >= 0 ? rest.slice(i + 1) : rest, { json });
+    return;
+  }
+  if (cmd === 'ci') {
+    // The GitHub Action's lookup (action.yml, docs/CI_ACTION.md): read-only, nothing is ever published.
+    const { ciCommand } = await import('./watch/ci.js');
+    process.exitCode = ciCommand(argv.slice(1));
     return;
   }
   if (cmd === 'hook') {

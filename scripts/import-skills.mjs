@@ -2,7 +2,7 @@
 //
 //   node scripts/import-skills.mjs <clones dir> <x0x SKILL.md> <ant-sdk skill.md>     (needs `npm run build` first)
 //
-// <clones dir> holds git clones of the source repositories, named as in SOURCES below, checked out at the
+// <clones dir> holds git clones of the source repositories, named as in data/seed/skill-sources.json, checked out at the
 // pinned commits. Only skills whose licence lets us redistribute them (Apache-2.0 or MIT) are taken; each keeps
 // its source, commit, licence and a modification notice, and each must pass the privacy check (or it's left out).
 import { readFileSync, readdirSync, existsSync, writeFileSync, statSync } from 'node:fs';
@@ -14,11 +14,9 @@ const { scrub } = await import(pathToFileURL(join(ROOT, 'dist', 'privacy', 'scru
 const [clones, x0xSkill, antSkill] = process.argv.slice(2);
 if (!clones || !x0xSkill || !antSkill) { console.error('usage: node scripts/import-skills.mjs <clones dir> <x0x SKILL.md> <ant-sdk skill.md>'); process.exit(2); }
 
-const SOURCES = [
-  { dir: 'anthropics_skills', org: 'Anthropic', repo: 'anthropics/skills', commit: '2c5958ecac7cee2b583967a2c4981d0f4a75c579' },
-  { dir: 'huggingface_skills', org: 'Hugging Face', repo: 'huggingface/skills', commit: '25910b3d0ba31a2ba102f901cdc9e008c278a69c' },
-  { dir: 'openai_skills', org: 'OpenAI', repo: 'openai/skills', commit: '49f948faa9258a0c61caceaf225e179651397431' },
-];
+// The pins live in data/seed/skill-sources.json, so the weekly refresh (scripts/refresh-skills.mjs) can move them.
+const PINS = JSON.parse(readFileSync(join(ROOT, 'data', 'seed', 'skill-sources.json'), 'utf8'));
+const SOURCES = PINS.repos;
 // Left out on purpose: one organisation's own brand, internal or course material; installers that change the
 // agent's own setup; empty templates; and duplicates of a skill kept elsewhere in the same repository.
 const SKIP = new Set([
@@ -80,7 +78,8 @@ function add(s) {
 
 for (const src of SOURCES) {
   const root = join(clones, src.dir);
-  const repoLic = (() => { const p = firstFile(root, ['LICENSE', 'LICENSE.txt', 'LICENSE.md']); return p ? licenceOf(read(p)) : null; })();
+  const repoLicFile = firstFile(root, ['LICENSE', 'LICENSE.txt', 'LICENSE.md']);
+  const repoLic = repoLicFile ? licenceOf(read(repoLicFile)) : null;
   for (const d of walk(root).sort()) {
     const path = relative(root, d);
     if (SKIP.has(`${src.repo}:${path}`)) { left.push({ name: `${src.repo}/${path}`, why: 'left out by choice' }); continue; }
@@ -90,11 +89,13 @@ for (const src of SOURCES) {
     const licence = (own && licenceOf(read(own))) || (/apache/i.test(declared) ? 'Apache-2.0' : /\bMIT\b/.test(declared) ? 'MIT' : null) || (own ? null : repoLic);
     if (!licence) { left.push({ name: `${src.repo}/${path}`, why: 'no open licence we can redistribute under' }); continue; }
     const url = `https://github.com/${src.repo}/tree/${src.commit}/${path}`;
-    const copyright = licence === 'MIT' && own ? (/^Copyright.*$/m.exec(read(own))?.[0] ?? '') : '';
+    // MIT asks for its copyright line to travel with the text: from the skill's own licence, or the repository's.
+    const mitFile = licence === 'MIT' ? own ?? (repoLic === 'MIT' ? repoLicFile : null) : null;
+    const copyright = mitFile ? (/^Copyright.*$/m.exec(read(mitFile))?.[0] ?? '') : '';
     const ins = instructions(body, url);
     const name = (fm.name || basename(d)).slice(0, 80);
     add({
-      name, description: (fm.description || name).slice(0, 400), capabilities: caps(name, ['agent-skill']), instructions: ins.text, license: licence,
+      name, description: (fm.description || name).slice(0, 400), capabilities: caps(name, [...(src.tags ?? []), 'agent-skill']), instructions: ins.text, license: licence,
       source: { org: src.org, repo: src.repo, path: `${path}/SKILL.md`, commit: src.commit, url },
       notice: `From ${src.org}'s ${src.repo} (${path}/SKILL.md at ${src.commit.slice(0, 12)}), under ${licence}${copyright ? ` (${copyright}; the licence text travels with Constellate in data/seed/LICENSES)` : ''}. Changed by Constellate: the YAML header was removed${ins.shortened ? ' and the text was shortened' : ''}; any scripts or files the skill uses are not included and are at the source link.`,
     });
@@ -104,14 +105,15 @@ for (const src of SOURCES) {
 // x0x's own skill file (MIT OR Apache-2.0); the author line in its header is dropped with the rest of the header.
 {
   const [fm, raw] = front(read(x0xSkill)); const body = edit(raw, 'x0x');
-  const url = 'https://github.com/saorsa-labs/x0x/blob/v0.48.1/SKILL.md', ins = instructions(body, url);
+  const { tag } = PINS.x0x, version = tag.replace(/^v/, '');
+  const url = `https://github.com/saorsa-labs/x0x/blob/${tag}/SKILL.md`, ins = instructions(body, url);
   add({ name: 'x0x', description: fm.description.slice(0, 400), capabilities: caps('x0x', ['p2p', 'gossip', 'direct-messaging', 'crdt', 'post-quantum', 'agent-skill']), instructions: ins.text, license: 'MIT OR Apache-2.0',
-    source: { org: 'Saorsa Labs', repo: 'saorsa-labs/x0x', path: 'SKILL.md', commit: 'v0.48.1', url },
-    notice: `From Saorsa Labs' saorsa-labs/x0x (SKILL.md, version 0.48.1), under MIT OR Apache-2.0 (Copyright (c) 2025 Saorsa Labs). Changed by Constellate: the YAML header was removed, an example token placeholder was reworded, and the author's name and contact address were taken out (Constellate names people only by handle or organisation)${ins.shortened ? '; the text was shortened' : ''}.` });
+    source: { org: 'Saorsa Labs', repo: 'saorsa-labs/x0x', path: 'SKILL.md', commit: tag, url },
+    notice: `From Saorsa Labs' saorsa-labs/x0x (SKILL.md, version ${version}), under MIT OR Apache-2.0 (Copyright (c) 2025 Saorsa Labs). Changed by Constellate: the YAML header was removed, an example token placeholder was reworded, and the author's name and contact address were taken out (Constellate names people only by handle or organisation)${ins.shortened ? '; the text was shortened' : ''}.` });
 }
 // Autonomi's skill for building apps with ant-sdk (MIT OR Apache-2.0).
 {
-  const commit = '3184f88c34779d6d449f2c4d76bfae77e4d2aa3e';
+  const { commit } = PINS.autonomi;
   const [, raw] = front(read(antSkill)); const body = edit(raw, 'autonomi');
   const url = `https://github.com/WithAutonomi/ant-sdk/blob/${commit}/skill.md`, ins = instructions(body, url);
   add({ name: 'Building apps on the Autonomi network', description: 'Build applications on Autonomi with ant-sdk: the antd daemon, language SDKs, immutable data, pointers, payments and daemon discovery.', capabilities: caps('autonomi', ['ant-sdk', 'antd', 'storage', 'pointers', 'agent-skill']), instructions: ins.text, license: 'MIT OR Apache-2.0',

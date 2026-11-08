@@ -26,8 +26,8 @@ describe('public agent skills', () => {
       expect(k.notice, k.name).toMatch(/Changed by Constellate/);
       expect(scrub(k, { level: 'standard' }).ok, k.name).toBe(true);
     }
-    for (const f of ['Apache-2.0.txt', 'MIT-x0x.txt', 'MIT-ant-sdk.txt', 'MIT-notion-skills.txt', 'MIT-vercel-deploy.txt', 'NOTICE.md']) expect(existsSync(join(SEED, 'LICENSES', f)), f).toBe(true);
-    expect(file.skills.map((k) => k.source.repo)).toEqual(expect.arrayContaining(['saorsa-labs/x0x', 'WithAutonomi/ant-sdk', 'anthropics/skills', 'huggingface/skills', 'openai/skills']));
+    for (const f of ['Apache-2.0.txt', 'MIT-x0x.txt', 'MIT-ant-sdk.txt', 'MIT-notion-skills.txt', 'MIT-vercel-deploy.txt', 'MIT-research-loop.txt', 'NOTICE.md']) expect(existsSync(join(SEED, 'LICENSES', f)), f).toBe(true);
+    expect(file.skills.map((k) => k.source.repo)).toEqual(expect.arrayContaining(['saorsa-labs/x0x', 'WithAutonomi/ant-sdk', 'anthropics/skills', 'huggingface/skills', 'openai/skills', 'wrencanfly/research-loop-skills']));
   });
 
   it('seeds them findable and credited, labels them untested, and never twice', async () => {

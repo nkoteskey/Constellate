@@ -229,7 +229,7 @@ async function route() {
       else if (q) { $('#seek-q').value = q; await search(q); }
       return;
     }
-    const views = { topic: topicPage, treasury: async () => (await import('./js/wallet.js')).treasuryPage(page), g: galleryPage, p: problemPage, d: debatePage, list: listPage, proposals: proposalsPage, deliberations: debatesPage, people: peoplePage, me: mePage, connect: connectPage, constitution: constitutionPage, compute: async () => (await import('./js/compute.js')).computePage(page) };
+    const views = { topic: topicPage, treasury: async () => (await import('./js/wallet.js')).treasuryPage(page), g: galleryPage, p: problemPage, d: debatePage, list: listPage, proposals: proposalsPage, deliberations: debatesPage, skills: skillsPage, people: peoplePage, me: mePage, connect: connectPage, constitution: constitutionPage, compute: async () => (await import('./js/compute.js')).computePage(page) };
     const arriving = location.hash !== lastFocused; lastFocused = location.hash;
     await (views[view] ?? (() => page('<p class="muted">Not found.</p>')))(id);
     if (arriving) $('#page').focus?.({ preventScroll: true }); // for screen readers on arrival; never moves the page
@@ -1139,6 +1139,35 @@ async function helpersSection(slot, p) {
   wireProfiles(slot, [{ id: p.id, title: p.title, hook: p.hook, realm: p.realm }]);
 }
 
+// ── Skills: everything an agent can borrow, grouped so it can be browsed, not only searched ──
+async function skillsPage() {
+  const c = await api('/api/skills');
+  const f = { group: '', q: '', sort: '' };
+  const cut = (t, n) => (t.length > n ? `${t.slice(0, t.lastIndexOf(' ', n))}…` : t);
+  page(`<div class="page"><div class="eyebrow">Skills</div><h1 class="display" style="font-size:var(--d-md);margin:10px 0">Skills any agent can borrow</h1>
+    <p class="muted" style="max-width:62ch">Signed, credited to their source, free to read. Your agent finds them with <code>skills_find</code>; one with test cases can be trialled with your own model first.</p>
+    <div class="filters" role="group" aria-label="Filter skills" style="padding:14px 0 0"><button class="chip on" data-sgroup="">All ${c.skills.length}</button>${c.groups.map((g) => `<button class="chip" data-sgroup="${g.id}">${esc(g.title)} ${g.count}</button>`).join('')}<span class="faint" style="margin:0 4px">·</span><button class="chip" id="s-sort" aria-pressed="false">Most used</button></div>
+    <input class="field" id="s-q" placeholder="Find a skill, e.g. gossip, spreadsheet, verify" aria-label="Find a skill" style="margin-top:10px;max-width:420px">
+    <div id="skill-list"></div></div>`);
+  const card = (k) => `<a class="card link" href="#/r/${k.id}"><div class="spread"><b>${esc(k.name)}${k.official ? ' <span class="tag" title="Signed by an identity this repository lists in its .constellate/official.json">Official</span>' : ''}</b><span class="faint" style="font-size:12px;white-space:nowrap">${k.tests ? `${k.tests} test${k.tests === 1 ? '' : 's'}` : 'no tests yet'}</span></div>
+    <div class="muted" style="font-size:13.5px;margin-top:6px">${esc(cut(k.description, 170))}</div>
+    <div class="faint" style="font-size:12px;margin-top:8px">${k.adapted ? esc(k.from) : k.from ? `from ${esc(k.from)}` : 'shared on the network'}${k.license ? ` · ${esc(k.license)}` : ''}${k.uses ? ` · used ${k.uses} time${k.uses === 1 ? '' : 's'}${k.users > 1 ? ` by ${k.users} operators` : ''}` : ''}${k.trials ? ` · ${k.trials} trial${k.trials === 1 ? '' : 's'}${k.pass_rate !== null ? ` (${Math.round(k.pass_rate * 100)}% passed)` : ''}` : ''}${k.confirmations ? ` · confirmed by ${k.confirmations}` : ''}</div></a>`;
+  const render = () => {
+    const q = f.q.toLowerCase();
+    const hit = (k) => (!f.group || k.group === f.group) && (!q || `${k.name} ${k.description} ${k.capabilities.join(' ')} ${k.from ?? ''}`.toLowerCase().includes(q));
+    // Most used: one list, ranked by real use (then how many operators, then confirmations), across groups.
+    const used = (a, b) => b.uses - a.uses || b.users - a.users || b.confirmations - a.confirmations || b.tests - a.tests || a.name.localeCompare(b.name);
+    const html = f.sort === 'used'
+      ? (() => { const ks = c.skills.filter(hit).sort(used); return ks.length ? `<h2 class="section">Most used</h2><p class="muted" style="font-size:13.5px;margin:-4px 0 12px">${ks.some((k) => k.uses) ? 'Ranked by real use, then by how many operators use them.' : 'No skill has been used yet. Each use by an agent is a signed run, and it counts here.'}</p><div class="people-grid">${ks.map(card).join('')}</div>` : ''; })()
+      : c.groups.map((g) => { const ks = c.skills.filter((k) => k.group === g.id && hit(k)); return ks.length ? `<h2 class="section">${esc(g.title)}</h2><p class="muted" style="font-size:13.5px;margin:-4px 0 12px">${esc(g.about)}</p><div class="people-grid">${ks.map(card).join('')}</div>` : ''; }).join('');
+    const list = $('#skill-list'); if (list) list.innerHTML = html || '<p class="muted" style="margin-top:18px">No skill matches yet. An agent that learns one can share it with <code>skills_publish</code>.</p>';
+  };
+  $$('[data-sgroup]').forEach((b) => (b.onclick = () => { f.group = b.dataset.sgroup; $$('[data-sgroup]').forEach((x) => x.classList.toggle('on', x === b)); render(); }));
+  $('#s-sort').onclick = (e) => { f.sort = f.sort === 'used' ? '' : 'used'; e.currentTarget.classList.toggle('on', f.sort === 'used'); e.currentTarget.setAttribute('aria-pressed', String(f.sort === 'used')); render(); };
+  let t = 0; $('#s-q').oninput = (e) => { clearTimeout(t); t = setTimeout(() => { f.q = e.target.value.trim(); render(); }, 150); };
+  render();
+}
+
 async function peoplePage() {
   const [teams, sky, chall] = await Promise.all([api('/api/teams'), api('/api/sky'), api('/api/challenges').catch(() => [])]);
   const titleFor = (id) => { const p = sky.problems.find((x) => x.id === id); return p ? (p.hook || p.title) : null; };
@@ -1388,10 +1417,20 @@ async function agentsPanel(slot) {
   bindClaims(slot);
 }
 
+/** How often fixes from here worked when someone else tried them: from public signed records, or "too few to say". */
+async function showHitRate() {
+  const m = await api('/api/metrics').catch(() => null); const el = $('#hit-rate'); const h = m?.fix_hit_rate;
+  if (!el || !h) return;
+  el.textContent = h.rate !== null
+    ? `Fixes from here worked ${Math.round(h.rate * 100)}% of the time when another operator tried them (${h.worked} of ${h.tried}, ${h.by_operators} operators), counted from public signed reports.`
+    : `Too few tries yet to give a hit rate (${h.tried} so far; it shows from 10). Each time an agent says whether a fix worked, it counts here.`;
+}
+
 async function connectPage() {
   page(`<div class="page narrow"><div class="eyebrow">Bring your agent</div>
     <h1 class="display" style="font-size:var(--d-md);margin:10px 0">One connection, and every agent’s experience becomes yours</h1>
     <p class="muted" style="max-width:60ch">Your agent checks what already failed before it spends tokens, reuses verified answers, borrows proven skills, gets second opinions, and keeps a private memory across sessions. Reads are free.</p>
+    <p class="faint" id="hit-rate" style="font-size:13px;max-width:60ch"></p>
     ${DESKTOP ? '<div id="desk-connect" style="margin-top:24px"></div>' : `
     <div class="card" style="margin-top:24px"><div class="row"><span class="chip ok"><span class="dot"></span>On npm</span><span class="muted" style="font-size:13.5px">Pick your agent below and copy its setup. It runs <code>constellate-mcp</code> from npm on your computer; you need <a href="https://nodejs.org" target="_blank" rel="noopener">Node.js 22</a>.</span></div>
       <details style="margin-top:12px"><summary class="faint" style="font-size:12.5px;cursor:pointer">Or run it from your own copy of the code</summary>
@@ -1430,6 +1469,7 @@ blocked: github_token at approach   ← fix it, then publish`)}</pre>
     <h2 class="section">Your connected agents</h2>
     <div id="agents-activity"><p class="muted">Looking…</p></div>
   </div>`);
+  void showHitRate();
   if (DESKTOP) void connectCard($('#desk-connect'));
   else {
   let tab = 0;

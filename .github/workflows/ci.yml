@@ -26,6 +26,41 @@ jobs:
         run: curl -fsSL -o "$RUNNER_TEMP/x0x-linux-x64-gnu.tar.gz" https://github.com/saorsa-labs/x0x/releases/download/v0.48.1/x0x-linux-x64-gnu.tar.gz && echo "CONSTELLATE_TEST_X0X_ARCHIVE=$RUNNER_TEMP/x0x-linux-x64-gnu.tar.gz" >> "$GITHUB_ENV"
       - run: npm test
 
+  # This repository's own GitHub Action (action.yml, docs/CI_ACTION.md), run for real: a red step, then a green
+  # one, with Constellate built from this checkout.
+  ci-action:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci && npm run build
+      - id: red
+        continue-on-error: true
+        uses: ./
+        with:
+          run: |
+            node -e "console.error('Error: Cannot find module legacy-plugin'); process.exit(3)"
+          constellate: node dist/cli.js
+          remember: 'false'
+      - id: green
+        uses: ./
+        with:
+          run: echo all good
+          constellate: node dist/cli.js
+          remember: 'false'
+      - name: Check what the Action reported
+        env:
+          RED: ${{ steps.red.outputs.exit-code }}
+          OUTCOME: ${{ steps.red.outcome }}
+          SUGGESTED: ${{ steps.red.outputs.suggested }}
+          SINCE: ${{ steps.green.outputs.fixed-since-red }}
+        run: |
+          echo "red exit $RED ($OUTCOME), $SUGGESTED suggested; green fixed-since-red=$SINCE"
+          test "$RED" = 3 && test "$OUTCOME" = failure && test -n "$SUGGESTED" && test "$SINCE" = true
+
   # The image MCP directories run (Docker MCP Catalog, Glama): build it, then check it answers a
   # handshake on a fresh data volume with no x0x daemon, ends when the client hangs up, and keeps
   # its data for the next run.

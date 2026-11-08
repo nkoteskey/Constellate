@@ -1,9 +1,13 @@
+import { z } from 'zod';
 import { Hub } from '../hub/hub.js';
 import { PaymentRail, signMandate, SignedMandate } from './rail.js';
 import { lineage, splitAmount } from './lineage.js';
 import { CheckpointBody } from '../work/problems.js';
 import { StoredRecord } from '../store/records.js';
 import { FOUNDING_UNTIL, TESTNET_PRICING } from './pricing.js';
+
+/** One check a reviewer actually ran on a second-opinion request, and how it came out. */
+export const ReviewCheck = z.object({ check: z.string().min(1).max(300), outcome: z.enum(['passed', 'failed', 'not_attempted']), note: z.string().max(400).optional() });
 
 export interface ReceiptBody {
   type: 'payout' | 'skill_fee' | 'review_fee' | 'review_bonus' | 'deposit' | 'refund' | 'reward' | 'sponsorship' | 'x402' | 'founding' | 'bounty_hold' | 'bounty_paid' | 'bounty_refund' | 'fund_donation' | 'fund_withdrawal' | 'storage_spend';
@@ -90,11 +94,17 @@ export class Economy {
     return this.hub.node.submit({ kind: 'review_request', context: { task: `second opinion on ${subject}`, domain, environment: '' }, body: { subject, summary, content_hash: contentHash, bounty, requester: this.me } }, { publish: true });
   }
 
-  async respondReview(requestId: string, verdict: 'sound' | 'concerns' | 'wrong', critique: string) {
+  /**
+   * An independent critique. `checks` lists what the reviewer actually did and how each came out: a check not
+   * attempted is not a check that failed, and neither is the same as one that passed.
+   */
+  async respondReview(requestId: string, verdict: 'sound' | 'concerns' | 'wrong', critique: string, checks?: z.input<typeof ReviewCheck>[]) {
     const req = this.hub.node.store.get(requestId);
     if (!req || req.rec.kind !== 'review_request') throw new Error('unknown review request');
     if (req.operatorId === this.hub.node.operatorId) throw new Error('reviews must be independent');
-    return this.hub.node.submit({ kind: 'review', context: { task: req.rec.context.task, domain: req.rec.context.domain, environment: '' }, body: { request: requestId, verdict, critique }, refs: [requestId] }, { publish: true });
+    const done = checks?.length ? z.array(ReviewCheck).max(12).parse(checks) : undefined;
+    if (verdict === 'sound' && done && !done.some((c) => c.outcome === 'passed')) throw new Error('a "sound" verdict needs at least one check that passed; otherwise say "concerns" and what you could not check');
+    return this.hub.node.submit({ kind: 'review', context: { task: req.rec.context.task, domain: req.rec.context.domain, environment: '' }, body: { request: requestId, verdict, critique, ...(done ? { checks: done } : {}) }, refs: [requestId] }, { publish: true });
   }
 
   /** Requester pays the reviewer; a review confirmed useful earns a 50% bonus. */

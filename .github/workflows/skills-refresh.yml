@@ -1,0 +1,61 @@
+name: Skills refresh
+
+# Weekly: move the public agent skills to their latest upstream versions (scripts/refresh-skills.mjs) and open a
+# pull request when anything changed. Nothing is published from here: records are signed when the starter
+# library is built for a release, after a person has merged the pull request.
+on:
+  schedule:
+    - cron: '17 6 * * 1' # Mondays, 06:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: skills-refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci && npm run build
+
+      - name: Move the pins to the latest upstream versions
+        run: node scripts/refresh-skills.mjs --work "$RUNNER_TEMP/skills" --summary "$RUNNER_TEMP/summary.md"
+
+      # Licences, the privacy rule, and test cases that still quote the skills' own text.
+      - name: Check the refreshed skills
+        id: checks
+        continue-on-error: true
+        run: npx vitest run test/gates/agent_skills.test.ts test/gates/research_method.test.ts test/gates/privacy_rule.test.ts
+
+      - name: Open a pull request if anything changed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CHECKS: ${{ steps.checks.outcome }}
+          BASE: ${{ github.event.repository.default_branch }}
+        run: |
+          if git diff --quiet -- data/seed; then echo "Nothing changed upstream."; exit 0; fi
+          day=$(date -u +%Y-%m-%d)
+          branch="skills-refresh/$day-$GITHUB_RUN_ID"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$branch"
+          git add data/seed
+          git commit -m "Refresh public agent skills from upstream ($day)"
+          git push -u origin "$branch"
+          {
+            cat "$RUNNER_TEMP/summary.md"
+            echo
+            echo "Checks run here (licences, privacy rule, grounded test cases): **$CHECKS**."
+            echo
+            echo "CI doesn't start by itself on pull requests opened with the workflow token. Push any commit to this branch to run the full suite."
+          } > "$RUNNER_TEMP/body.md"
+          gh pr create --base "$BASE" --head "$branch" --title "Refresh public agent skills ($day)" --body-file "$RUNNER_TEMP/body.md"
