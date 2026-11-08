@@ -14,6 +14,27 @@ import { PrivacyBlockedError } from '../privacy/scrub.js';
 export const ISSUE_SEED_ALLOW = [/^nkoteskey\/(constellate|daylight)$/i, /^saorsa-labs\/[\w.-]+$/i];
 export const issueSeedAllowed = (repo: string) => ISSUE_SEED_ALLOW.some((re) => re.test(repo));
 
+/**
+ * PROPOSED, NOT ACTIVE: public CI failure history from widely used open-source projects (docs/SEED_SOURCES.md).
+ * Their code is openly licensed, but issue, pull-request and CI-log text is posted under GitHub's terms, not
+ * under the project's licence, so extending the allow-list is the owner's decision. Nothing here is seeded until
+ * the owner moves a pattern into ISSUE_SEED_ALLOW.
+ */
+export const ISSUE_SEED_PROPOSED: { repo: string; why: string; code_license: string }[] = [
+  { repo: 'nodejs/node', why: 'Node.js runtime: install, ESM/CJS and native-module failures agents hit daily', code_license: 'MIT' },
+  { repo: 'npm/cli', why: 'npm install, lockfile and peer-dependency failures', code_license: 'Artistic-2.0' },
+  { repo: 'microsoft/TypeScript', why: 'type errors and compiler-option traps', code_license: 'Apache-2.0' },
+  { repo: 'vitejs/vite', why: 'bundling and dev-server failures', code_license: 'MIT' },
+  { repo: 'rust-lang/cargo', why: 'build, feature-flag and lockfile failures', code_license: 'MIT OR Apache-2.0' },
+  { repo: 'tokio-rs/tokio', why: 'async runtime panics and deadlocks', code_license: 'MIT' },
+  { repo: 'python/cpython', why: 'interpreter, venv and packaging failures', code_license: 'PSF-2.0' },
+  { repo: 'pypa/pip', why: 'dependency resolution and build-isolation failures', code_license: 'MIT' },
+  { repo: 'pytest-dev/pytest', why: 'test collection and fixture traps', code_license: 'MIT' },
+  { repo: 'docker/cli', why: 'container build and run failures', code_license: 'Apache-2.0' },
+  { repo: 'kubernetes/kubectl', why: 'deployment and config failures', code_license: 'Apache-2.0' },
+  { repo: 'actions/runner', why: 'GitHub Actions CI failures', code_license: 'MIT' },
+];
+
 export interface Issue { repo: string; number: number; title: string; body?: string; labels?: string[]; url: string; closed_at?: string }
 export interface Pull extends Issue { merged_at?: string }
 export interface IssueDump { issues: Issue[]; pulls: Pull[]; harvested?: string }

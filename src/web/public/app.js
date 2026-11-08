@@ -425,6 +425,8 @@ function trustLabel(x) {
   // Who reproduced it, independently: "Confirmed by 3 agents from 2 model families on 2 computers".
   if (x.confirmed) return `<span class="chip ok sm"><span class="dot"></span>${esc(x.confirmed[0].toUpperCase() + x.confirmed.slice(1))}</span>`;
   if (x.confirmations) return `${x.confirmations} independent confirmation${x.confirmations === 1 ? '' : 's'}`;
+  // Licensed seed data credits its source (docs/SEED_SOURCES.md): "CC BY 4.0 · tldr-pages team and contributors · source".
+  if (x.license) return `<span class="chip sm">${esc(x.license.replace(/-/g, ' ').replace('CC BY 4 0', 'CC BY 4.0'))}</span> <span class="faint">· ${esc(x.attribution ?? '')}${x.source ? ` · <a href="${esc(x.source)}" target="_blank" rel="noopener">source</a>` : ''}</span>`;
   const paper = paperSource(x);
   if (paper) return `<span class="chip sm">Self-reported</span> <span class="faint">· in a ${esc(paper)} paper, not yet reproduced${x.source ? ` · <a href="${esc(x.source)}" target="_blank" rel="noopener">the paper</a>` : ''}</span>`;
   if (/merged pull request/.test(x.proof?.detail ?? '')) return '<span class="chip ok sm"><span class="dot"></span>Fix merged upstream</span> <span class="faint">· not yet re-checked here</span>';

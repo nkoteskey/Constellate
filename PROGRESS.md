@@ -368,6 +368,17 @@ Real money, **ready and off by default** (docs/MAINNET.md):
 - **Bounty optional;** money moves only with a payment rail attached, which is off by default.
 - See docs/AGENT_STEPS.md "Help requests"; gate `test/gates/help_midtask.test.ts`.
 
+### More open failure data, licensed (Nov 8)
+- **tldr-pages (CC BY 4.0) in the starter library:** command usage for 137 commands agents hit while building and fixing software. That's git, npm, cargo, docker, kubectl, tar, curl, jq and so on.
+  - It's one answer record per command, built by `scripts/import-tldr.mjs` and seeded by `src/seed/tldr.ts`, from a pinned commit.
+  - Every record carries its licence, attribution, source page and a notice of changes. Agents see the licence on `answers_lookup`, and the app credits it.
+  - The licence text and notice are in `data/seed/LICENSES/`.
+  - Five pages were left out and listed because their examples fail the privacy check (an example email, network addresses, a password).
+  - The starter library is now 1,841 records (3.8 MB), and its 120 topic pages are unchanged.
+- **CI failure history from widely used projects:** proposed as `ISSUE_SEED_PROPOSED` (node, npm, TypeScript, vite, cargo, tokio, cpython, pip, pytest, docker, kubectl, actions/runner). It's not active: issue and CI-log text is posted under GitHub's terms, not the projects' licences, so the owner decides.
+- **Negative-results sources and unclear licences** are listed in docs/SEED_SOURCES.md and not imported. That covers ReScience C, JNRBM and PLOS's null-results collection (licence to confirm for each article), and arXiv in general, Stack Overflow (share-alike) and unlicensed CI logs (left out). It also flags that the ScientistTwo papers' licence isn't stated.
+- Gate `test/gates/seed_licensed.test.ts`.
+
 ## Summary of what needs a human
 1. **Live x0x (blocks confidence in every phase):** run the gates against two real `x0xd` daemons. Confirm ML-DSA signature interop between `/agent/sign` and noble, `/stores` and `/task-lists` field names, contacts → pre-trusted operators, and Spaces/DMs for chat.
 2. **Gate 1 behaviour:** `ANTHROPIC_API_KEY=… npx tsx evals/gate1.ts 3`.
@@ -382,6 +393,10 @@ Real money, **ready and off by default** (docs/MAINNET.md):
 11. **npm 0.2.0:** the version is bumped (0.1.1 was never published). Once it's on main, `npm publish` (security-key sign-in), then `mcp-publisher publish` for the MCP Registry entry, and push the tag `v0.2.0` (docs/releases/v0.2.0.md). The ClawHub skill text hasn't changed, so it stays at 0.1.0.
 12. **Listings that need the owner's sign-in** (`distribution/LISTINGS.md`): Glama (then the `punkpeye/awesome-mcp-servers` pull request, which needs Glama's badge), cursor.directory, and the mcpservers.org form (it asks for a contact email). Decide whether to turn on GitHub's private vulnerability reporting; Docker's pull request template asks for a security contact.
 13. **Two-computer check:** run `node scripts/two-computer-check.mjs share` on one computer and `… wait <tag>` on another (docs/NETWORK.md), and note the delay.
+14. **Seed sources** (docs/SEED_SOURCES.md):
+    - approve, or not, the CI-history allow-list extension (`ISSUE_SEED_PROPOSED`);
+    - confirm the licences of the negative-results candidates;
+    - confirm the ScientistTwo summaries are fine without a stated licence.
 
 ## Amendment 1 (Nov 6, 2026)
 Folded into the existing phases; no completed phase was restarted. DESIGN.md (updated Nov 6) is now in the repo and the build was checked against it (see below).

@@ -87,7 +87,9 @@ export class Ledger {
     return this.rank('answer', question, opts.domain, opts.environment, opts.limit ?? 3).map(({ s, t, env, rep }) => {
       const b = s.rec.body as AnswerBody;
       return {
-        id: s.rec.id, question: b.question, answer: b.answer, headline: (b as { headline?: string }).headline, proof: b.proof, source: s.rec.evidence[0] ?? null, environment: s.rec.context.environment, env_match: round(env),
+        id: s.rec.id, question: b.question, answer: b.answer, headline: (b as { headline?: string }).headline, proof: b.proof, source: s.rec.evidence[0] ?? null,
+        // Licensed seed data says so on every result (data/seed/LICENSES).
+        ...((b as { license?: string }).license ? { license: (b as { license?: string }).license, attribution: (b as { attribution?: string }).attribution } : {}), environment: s.rec.context.environment, env_match: round(env),
         weight: round(t.weight), confirmations: t.confirmations, contradictions: t.contradictions, confirmed: rep.label, disputed_on_computers: rep.disputed_by.computers, age_days: Math.floor(ageDays(s)), fixes: s.rec.refs,
         neighbours: this.graph?.neighbours(s.rec.id, 3) ?? [],
       };
