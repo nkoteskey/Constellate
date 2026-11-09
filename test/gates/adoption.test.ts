@@ -199,3 +199,31 @@ describe('fresh skills', () => {
     expect(wf).not.toMatch(/git push[^\n]*(main|--force)/); // its own branch, never main, never forced
   });
 });
+
+describe('Constellate, offered where people connect', () => {
+  it('its own skill is one card in the network group: tested, not pinned, not Official', async () => {
+    const { seedConstellateSkill } = await import('../../src/seed/agent-skills.js');
+    const h = world()();
+    const md = readFileSync(join(import.meta.dirname, '../../distribution/SKILL.md'), 'utf8');
+    const id = await seedConstellateSkill(h, md, '0.2.0');
+    expect(await seedConstellateSkill(h, md, '0.2.0')).toBeNull(); // never twice
+    const k = h.skills.catalog().skills.find((x) => x.id === id)!;
+    expect(k).toMatchObject({ name: 'Constellate', group: 'network', tests: 2, official: false, from: 'Constellate (nkoteskey/Constellate)' });
+    const body = h.node.store.get(id!)!.rec.body as { instructions: string; source: { url: string }; tests: { check: { expected: string } }[] };
+    expect(body.instructions).not.toMatch(/^---/); // the YAML header is not part of the instructions
+    for (const t of body.tests) expect(body.instructions).toContain(t.check.expected); // tests come from its own text
+    expect(body.source.url).toBe('https://github.com/nkoteskey/Constellate/blob/v0.2.0/distribution/SKILL.md');
+  });
+
+  it('the Connect page offers the skill, the hook (both events) and the CI Action, labelled until they ship', () => {
+    const app = readFileSync(join(import.meta.dirname, '../../src/web/public/app.js'), 'utf8');
+    expect(app).toContain('https://raw.githubusercontent.com/nkoteskey/Constellate/main/distribution/SKILL.md');
+    expect(app).toContain("['PostToolUseFailure', 'PostToolUse']");
+    // The snippet is valid settings JSON with both events.
+    const lines = app.split('\n').filter((l) => /^const HOOK_(ENTRY|JSON) = /.test(l)).join('\n');
+    const snippet = new Function(`${lines}\nreturn HOOK_JSON;`)() as string;
+    expect(Object.keys(JSON.parse(snippet).hooks)).toEqual(['PostToolUseFailure', 'PostToolUse']);
+    expect(app).toContain('uses: nkoteskey/Constellate@v0.2.0');
+    expect(app.match(/With the next release/g)?.length).toBe(2);
+  });
+});

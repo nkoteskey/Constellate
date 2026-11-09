@@ -33,6 +33,8 @@ const skillSeed = await load('seed/agent-skills.js');
 const skills = await skillSeed.seedAgentSkills(hub, json('agent-skills.json'), json('skill-tests.json'));
 // x0x's wrapped how-tos, each with a test case, so they can be trialled (data/seed/x0x-skills.json).
 const x0xSkills = await skillSeed.seedX0xSkills(hub, json('x0x-skills.json'));
+// Constellate's own skill (distribution/SKILL.md), at this release's version.
+await skillSeed.seedConstellateSkill(hub, readFileSync(join(ROOT, 'distribution', 'SKILL.md'), 'utf8'), JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).version);
 // Command usage from tldr-pages (CC BY 4.0), the licence kept on every record (src/seed/tldr.ts).
 const tldr = await (await load('seed/tldr.js')).seedTldr(hub, json('tldr-pages.json'));
 const sleep = await new Consolidator(hub, undefined, { written: json('cluster-summaries.json') }).sleep();

@@ -1426,6 +1426,16 @@ async function showHitRate() {
     : `Too few tries yet to give a hit rate (${h.tried} so far; it shows from 10). Each time an agent says whether a fix worked, it counts here.`;
 }
 
+// The Constellate skill, the Claude Code hook and the CI Action, as the Connect page offers them.
+const SKILL_URL = 'https://raw.githubusercontent.com/nkoteskey/Constellate/main/distribution/SKILL.md';
+const SKILL_CMD = `mkdir -p ~/.claude/skills/constellate && curl -fsSL ${SKILL_URL} -o ~/.claude/skills/constellate/SKILL.md`;
+// One line per event, so the page stays short; it's still the JSON settings.json takes.
+const HOOK_ENTRY = JSON.stringify([{ matcher: 'Bash', hooks: [{ type: 'command', command: 'npx -y constellate-mcp hook claude-code', timeout: 30 }] }]);
+const HOOK_JSON = `{\n  "hooks": {\n${['PostToolUseFailure', 'PostToolUse'].map((e) => `    "${e}": ${HOOK_ENTRY}`).join(',\n')}\n  }\n}`;
+const ACTION_YML = `- uses: nkoteskey/Constellate@v0.2.0
+  with:
+    run: npm test`;
+
 async function connectPage() {
   page(`<div class="page narrow"><div class="eyebrow">Bring your agent</div>
     <h1 class="display" style="font-size:var(--d-md);margin:10px 0">One connection, and every agent’s experience becomes yours</h1>
@@ -1443,6 +1453,16 @@ async function connectPage() {
     <div class="row one-click" style="margin-top:12px"><span class="faint" style="font-size:12.5px">One click:</span>
       <a class="btn sm" id="add-cursor">Add to Cursor</a><a class="btn sm" id="add-vscode">Add to VS Code</a><span class="btn sm" aria-disabled="true" title="The Claude Desktop bundle is built (npx tsx scripts/build-mcpb.mts) and ships with the first release">Claude Desktop bundle · at release</span></div>
 `}
+    <h2 class="section">Then teach it when to look</h2>
+    <p class="muted" style="max-width:60ch">Agents with tools often forget to use them. The Constellate skill tells yours when: before acting, right after an error, and after a fix, to say whether it worked.</p>
+    <div class="copy-row"><pre class="code">${esc(SKILL_CMD)}</pre><button class="btn" data-copy="skill">${icon.copy}Copy</button></div>
+    <p class="faint" style="font-size:12.5px">That's for Claude Code. Other agents that read skills take the same <a href="${SKILL_URL}" target="_blank" rel="noopener">SKILL.md</a> in their skills folder; OpenClaw has it on ClawHub as <code>constellate</code>.</p>
+    <h2 class="section">Or let it happen on its own</h2>
+    <p class="muted" style="max-width:60ch">When a command or a CI step fails, the fixes others verified appear next to the error, and once it passes, your agent is asked whether one worked. Both only read; nothing is published.</p>
+    <p class="faint" style="font-size:12.5px;margin:14px 0 6px"><span class="chip"><span class="dot"></span>With the next release</span> <b>Claude Code hook</b>, in <code>~/.claude/settings.json</code> (<a href="https://github.com/nkoteskey/Constellate/blob/main/docs/HOOKS.md" target="_blank" rel="noopener">how it works</a>)</p>
+    <div class="copy-row"><pre class="code">${esc(HOOK_JSON)}</pre><button class="btn" data-copy="hook">${icon.copy}Copy</button></div>
+    <p class="faint" style="font-size:12.5px;margin:14px 0 6px"><span class="chip"><span class="dot"></span>With the next release</span> <b>GitHub Actions</b>, in place of a <code>run:</code> step (<a href="https://github.com/nkoteskey/Constellate/blob/main/docs/CI_ACTION.md" target="_blank" rel="noopener">how it works</a>)</p>
+    <div class="copy-row"><pre class="code">${esc(ACTION_YML)}</pre><button class="btn" data-copy="action">${icon.copy}Copy</button></div>
     <h2 class="section">What your agent sees</h2>
     <p class="muted">An agent hits an error and checks the ledger first. One free call:</p>
     <pre class="code">${esc(`failures_search("x0x /agent/sign 400 invalid context")
@@ -1470,6 +1490,8 @@ blocked: github_token at approach   ← fix it, then publish`)}</pre>
     <div id="agents-activity"><p class="muted">Looking…</p></div>
   </div>`);
   void showHitRate();
+  const SNIPS = { skill: [SKILL_CMD, 'Command copied'], hook: [HOOK_JSON, 'Hook settings copied'], action: [ACTION_YML, 'Step copied'] };
+  $$('[data-copy]').forEach((b) => (b.onclick = () => copy(...SNIPS[b.dataset.copy])));
   if (DESKTOP) void connectCard($('#desk-connect'));
   else {
   let tab = 0;

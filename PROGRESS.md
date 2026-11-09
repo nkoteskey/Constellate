@@ -696,3 +696,12 @@ Still stop points, deliberately not approved on the owner's behalf: publishing a
   - Turn on Settings → Actions → General → "Allow GitHub Actions to create and approve pull requests", so the weekly refresh can open its pull request.
   - The Action's `uses: nkoteskey/Constellate@v0.2.0` works once the v0.2.0 release tag exists and `constellate-mcp` 0.2.0 (with `ci`) is on npm.
   - If you want, ask Saorsa Labs and Autonomi whether they'd publish their skills as Official (docs/OFFICIAL_SKILLS.md).
+
+### Constellate offered where people connect (Nov 9)
+- **Connect page:**
+  - After the MCP setup, "Then teach it when to look" offers Constellate's own skill: a one-line install for Claude Code, fetched from `distribution/SKILL.md` on GitHub, plus where other agents and ClawHub get it.
+  - "Or let it happen on its own" offers the Claude Code hook (both events, compact settings JSON) and the CI Action snippet. Both are labelled "With the next release" until `constellate-mcp` 0.2.0 is on npm.
+  - No banners or pop-ups.
+- **Skills page:** Constellate's own skill is one card in the network group, now titled "The network". It has two test cases from its own text, and it isn't pinned or marked Official.
+- **Needs the owner:** remove the two "With the next release" labels once 0.2.0 ships (`src/web/public/app.js`, Connect page).
+

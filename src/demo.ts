@@ -18,7 +18,7 @@ import { settleFounding } from './economy/economy.js';
 import { Seeder } from './seed/seeder.js';
 import { seedFeatured } from './seed/featured.js';
 import { PaperSeeder, PaperLessons } from './seed/papers.js';
-import { seedAgentSkills, seedX0xSkills, ImportedSkill, SkillTestsFile, WrappedSkillFile } from './seed/agent-skills.js';
+import { seedAgentSkills, seedX0xSkills, seedConstellateSkill, ImportedSkill, SkillTestsFile, WrappedSkillFile } from './seed/agent-skills.js';
 import { GitHubSource } from './seed/github.js';
 import { IssueSeeder, IssueDump } from './seed/issues.js';
 import { RecordStore } from './store/records.js';
@@ -247,6 +247,7 @@ export async function seedDemo(opts: { steps?: number; knowledge?: number | 'all
   try {
     for (const id of await seedX0xSkills(mk(), seedJson('x0x-skills.json') as WrappedSkillFile)) await agents[1].confirm(id, { note: 'followed it against a local daemon' }, { publish: true });
   } catch { /* skill file not shipped with this build */ }
+  try { await seedConstellateSkill(mk(), readFileSync(new URL('../distribution/SKILL.md', import.meta.url), 'utf8'), JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version); } catch { /* not shipped with this build */ }
   // ── Openly licensed public agent skills (Anthropic, Hugging Face, OpenAI, x0x, Autonomi), credited, no tests yet ──
   try { await seedAgentSkills(mk(), seedJson('agent-skills.json') as { skills: ImportedSkill[] }, seedJson('skill-tests.json') as SkillTestsFile); } catch { /* not shipped with this build */ }
 
