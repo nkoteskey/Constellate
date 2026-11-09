@@ -15,6 +15,8 @@ COPY scripts ./scripts
 COPY src ./src
 COPY data ./data
 COPY desktop/scripts ./desktop/scripts
+# Constellate's own skill, which the starter library carries as a skill card.
+COPY distribution/SKILL.md ./distribution/SKILL.md
 # The same build as the npm package (prepack): compile, then sign the starter library.
 RUN npm run build && node desktop/scripts/starter.mjs starter/starter.cbor && npm prune --omit=dev
 

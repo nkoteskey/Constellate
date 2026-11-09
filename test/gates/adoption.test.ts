@@ -227,3 +227,20 @@ describe('Constellate, offered where people connect', () => {
     expect(app.match(/With the next release/g)?.length).toBe(2);
   });
 });
+
+describe('the container image builds the same starter library', () => {
+  it('every repository file the starter builder reads is in the Docker build context', () => {
+    const root = join(import.meta.dirname, '../..');
+    const starter = readFileSync(join(root, 'desktop/scripts/starter.mjs'), 'utf8');
+    const docker = readFileSync(join(root, 'Dockerfile'), 'utf8');
+    const ignore = readFileSync(join(root, '.dockerignore'), 'utf8').split('\n').map((l) => l.trim()).filter(Boolean);
+    // Files read as join(ROOT, 'dir', 'file'), outside data/ (which is copied whole).
+    const reads = [...starter.matchAll(/join\(ROOT, '([^']+)', '([^']+)'\)/g)].map((m) => `${m[1]}/${m[2]}`).filter((p) => !p.startsWith('data/'));
+    expect(reads).toContain('distribution/SKILL.md');
+    for (const p of reads) {
+      expect(docker, p).toMatch(new RegExp(`COPY ${p.replace(/[.]/g, '\\.')}\\b`));
+      const top = p.split('/')[0];
+      if (ignore.includes(top)) expect(ignore, p).toContain(`!${p}`);
+    }
+  });
+});

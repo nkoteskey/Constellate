@@ -7,5 +7,6 @@ desktop
 docs
 evals
 distribution
+!distribution/SKILL.md
 test
 *.log
