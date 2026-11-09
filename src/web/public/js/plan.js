@@ -95,7 +95,7 @@ export async function planSheet(idea, { onPublished } = {}) {
           ${rep.plan.hook ? `<div class="muted" style="font-size:13.5px">${esc(rep.plan.hook)}</div>` : ''}
           <div class="faint" style="font-size:12.5px;margin-top:6px">${esc(realm(rep.plan.realm).short)} · checked with <code>${esc(rep.plan.verifier)}</code> · ${rep.plan.steps.length} step${rep.plan.steps.length === 1 ? '' : 's'}</div>
           <div style="font-size:13.5px;margin-top:8px"><b>Done means</b> <span class="muted">${esc(rep.plan.done_description)}</span></div>
-          <ol style="margin:10px 0 0;padding-left:20px;display:grid;gap:6px;font-size:13.5px">${rep.plan.steps.map((s) => `<li><b>${esc(s.title)}</b><div class="faint" style="font-size:12.5px">check: <code>${esc(JSON.stringify(s.check)).slice(0, 160)}</code></div></li>`).join('')}</ol>
+          <ol style="margin:10px 0 0;padding-left:20px;display:grid;gap:6px;font-size:13.5px">${rep.plan.steps.map((s) => `<li><b>${esc(s.title)}</b><div class="faint" style="font-size:12.5px">check: <code>${esc(JSON.stringify(s.check)).slice(0, 160)}</code>${s.after?.length ? ` · after ${s.after.map(esc).join(', ')}` : ''}</div></li>`).join('')}</ol>
         </div>
         ${req.problems?.length ? `<div class="card" style="margin-top:10px;border-color:rgba(255,120,120,.35)"><b>Needs fixing before it can go live</b><ul style="margin:4px 0 0;padding-left:18px;font-size:13.5px">${req.problems.map((x) => `<li>${esc(x)}</li>`).join('')}</ul><p class="faint" style="font-size:12.5px;margin:6px 0 0">Ask your agent to report again; the request stays open.</p></div>` : ''}` : ''}
       <div class="row" style="margin-top:12px">

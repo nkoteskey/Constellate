@@ -410,6 +410,7 @@ Any model (open-weight, Claude, others) plugs in through the hub and contributes
 4. **Several problems at once.** Compute splits across the top-voted problems in proportion to votes.
 5. **Constitution check at start and at every checkpoint.** A violation pauses work for human review.
 6. **Task-to-model matching.** Small edge models take cheap verification and grunt work; large models take reasoning and planning. A different model checks each result before it is accepted.
+7. **A swarm with no one in charge.** Steps are independent unless a step names the steps it needs (`after`); it opens once those are verified. Computers pick at random among open steps, so a crowd that starts together spreads out. A claim holds for a lease (30 minutes); a claim that goes quiet, or whose answer was rejected, reopens. Coordination lives in the shared signed records and the board, not in an orchestrator. Problems that need machines to run in lockstep (one simulation across many nodes) don't fit edge compute and stay out of the queue.
 
 Firm rule: only problems with checkable progress enter the queue.
 
