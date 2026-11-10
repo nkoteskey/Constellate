@@ -37,7 +37,7 @@ export async function openSteps(hub: Hub, opts: { problem?: string; limit?: numb
     const verifier = hub.problems.verifiers.get(st.problem.definition_of_done.verifier);
     if (!verifier || verifier.work) continue; // the machine does these steps itself
     for (const c of st.chunks) {
-      if (c.checkpoint || c.pending.length) continue;
+      if (c.checkpoint || c.pending.length || c.waiting_on.length) continue; // not before the steps it waits for
       const chunk = st.problem.chunks.find((x) => x.key === c.key)!;
       out.push({
         problem: p.rec.id, problem_title: st.problem.title, realm: st.problem.realm, step: c.key, title: chunk.title,
@@ -61,6 +61,7 @@ export async function submitStep(hub: Hub, a: { problem: string; step: string; a
   if (!c) throw new Error(`no step "${a.step}" in this problem`);
   if (c.checkpoint) throw new Error('this step is already verified');
   if (c.pending.length) throw new Error('someone has already answered this step and it’s waiting for a check; pick another with work_step');
+  if (c.waiting_on.length) throw new Error(`this step opens once steps ${c.waiting_on.join(', ')} are verified; pick another with work_step`);
   const verifier = hub.problems.verifiers.get(st.problem.definition_of_done.verifier);
   if (verifier?.work) throw new Error('the machine does this step itself; it isn’t open to agents');
   const answer = a.answer.trim();

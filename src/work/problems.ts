@@ -9,8 +9,34 @@ export const ChunkSpec = z.object({
   prompt: z.string().max(8000),
   check: z.record(z.unknown()),
   needs: z.object({ size: z.enum(['small', 'large', 'any']).default('any') }).default({ size: 'any' }),
+  /** Steps that must be verified before this one opens (e.g. the lemma a proof uses). Empty: open from the start. */
+  after: z.array(z.string().max(64)).max(20).default([]),
 });
 export type ChunkSpec = z.infer<typeof ChunkSpec>;
+
+/**
+ * Why a problem's step order can't work, or null if it can: every `after` names another step of the same problem,
+ * and there's no cycle (a step that would wait for itself, directly or through others, could never open).
+ */
+export function orderProblem(chunks: { key: string; after?: string[] }[]): string | null {
+  const keys = new Set(chunks.map((c) => c.key));
+  for (const c of chunks) for (const a of c.after ?? []) {
+    if (a === c.key) return `step "${c.key}" waits for itself`;
+    if (!keys.has(a)) return `step "${c.key}" waits for "${a}", which isn't a step of this problem`;
+  }
+  const after = new Map(chunks.map((c) => [c.key, c.after ?? []]));
+  const state = new Map<string, 'visiting' | 'done'>();
+  const visit = (k: string, path: string[]): string | null => {
+    if (state.get(k) === 'done') return null;
+    if (state.get(k) === 'visiting') return `steps wait for each other in a circle: ${[...path.slice(path.indexOf(k)), k].join(' → ')}`;
+    state.set(k, 'visiting');
+    for (const a of after.get(k) ?? []) { const why = visit(a, [...path, k]); if (why) return why; }
+    state.set(k, 'done');
+    return null;
+  };
+  for (const c of chunks) { const why = visit(c.key, []); if (why) return why; }
+  return null;
+}
 
 /** The sky's five realms (Amendment 1 §7). Software and knowledge problems live in mathematics and physics. */
 export const REALMS = ['maths_physics', 'life_sciences', 'planet_energy', 'philosophy_ethics', 'art_creativity'] as const;
@@ -35,6 +61,8 @@ export interface ChunkState {
   checkpoint?: StoredRecord;
   pending: StoredRecord[]; // results awaiting verification
   rejected: string[];
+  /** Steps this one waits for that aren't verified yet. Empty: it's open (or done). */
+  waiting_on: string[];
 }
 
 /**
@@ -49,6 +77,8 @@ export class Problems {
   async propose(body: z.input<typeof ProblemBody>, opts: { publish?: boolean } = {}) {
     const b = ProblemBody.parse(body);
     if (!this.verifiers.get(b.definition_of_done.verifier)) throw new Error(`unknown verifier "${b.definition_of_done.verifier}": only problems with checkable progress enter the queue`);
+    const order = orderProblem(b.chunks);
+    if (order) throw new Error(`the steps can't all open: ${order}`);
     return this.hub.node.submit({ kind: 'problem', context: { task: b.title, domain: [b.realm], environment: '' }, body: b }, opts);
   }
 
@@ -87,8 +117,11 @@ export class Problems {
       for (const cp of cps) if ((cp.rec.body as unknown as CheckpointBody).chunk === c.key && (await this.validCheckpoint(cp, problem))) { checkpoint = cp; break; }
       const rejected = rejections.filter((r) => (r.rec.body as { chunk: string }).chunk === c.key).map((r) => (r.rec.body as { result: string }).result);
       const pending = checkpoint ? [] : results.filter((r) => (r.rec.body as unknown as TaskResultBody).chunk === c.key && !rejected.includes(r.rec.id));
-      chunks.push({ key: c.key, checkpoint, pending, rejected });
+      chunks.push({ key: c.key, checkpoint, pending, rejected, waiting_on: [] });
     }
+    // A step opens once every step it waits for is verified.
+    const verified = new Set(chunks.filter((c) => c.checkpoint).map((c) => c.key));
+    for (const c of chunks) if (!c.checkpoint) c.waiting_on = (problem.chunks.find((x) => x.key === c.key)?.after ?? []).filter((a) => !verified.has(a));
     return { problem, chunks, done: chunks.filter((c) => c.checkpoint).length, total: chunks.length };
   }
 
@@ -102,7 +135,7 @@ export class Problems {
       definition_of_done: s.problem.definition_of_done,
       progress: { done: s.done, total: s.total },
       checkpoints: s.chunks.filter((c) => c.checkpoint).map((c) => ({ chunk: c.key, id: c.checkpoint!.rec.id, at: c.checkpoint!.rec.created })),
-      open_calls: s.chunks.filter((c) => !c.checkpoint).map((c) => ({ chunk: c.key, waiting_for: c.pending.length ? 'verification by a different model family' : 'a worker' })),
+      open_calls: s.chunks.filter((c) => !c.checkpoint).map((c) => ({ chunk: c.key, waiting_for: c.pending.length ? 'verification by a different model family' : c.waiting_on.length ? `steps ${c.waiting_on.join(', ')} first` : 'a worker', ...(c.waiting_on.length ? { after: c.waiting_on } : {}) })),
       contributors: contributors.size,
     };
   }

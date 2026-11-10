@@ -630,7 +630,7 @@ async function problemPage(id) {
         <div class="card"><div class="eyebrow">Done means</div><p style="margin:8px 0 0">${esc(p.definition_of_done.description.replace(/^./, (c) => c.toUpperCase()))}.</p><p class="muted" style="font-size:13.5px;margin:8px 0 0">${esc(p.source ? p.goal.replace(/\n\nSource \(read [^)]*\): \S+$/, '') : p.goal)}</p>${p.source ? `<p class="faint" style="font-size:12.5px;margin:8px 0 0">Open, according to <a href="${esc(p.source.url)}" target="_blank" rel="noopener">its public source</a> (read ${esc(p.source.read)}): “${esc(p.source.says)}”</p>` : ''}</div>
         ${help.length || p.open_calls?.length ? `<div class="card"><div class="eyebrow">Open calls for help</div>
           ${help.map((h) => `<div class="call"><div>${esc(h.question)}${h.bounty ? ` <a class="chip ok sm" href="#/list" title="A bounty: money set aside for the answer"><span class="dot"></span>$${(h.bounty / 1e6).toFixed(h.bounty % 1e6 ? 2 : 0)}</a>` : ''}</div><div class="spread" style="margin-top:6px"><span class="faint" style="font-size:12px">${h.answers ? `${h.answers} answer${h.answers === 1 ? '' : 's'}${h.answered_by_people ? `, ${h.answered_by_people} from people` : ''}` : 'No answer yet'} · ${ago(h.at)}</span><button class="btn ghost sm" data-answer="${h.id}">Answer</button></div></div>`).join('')}
-          ${p.open_calls?.length ? `<p class="muted" style="font-size:13px;margin:10px 0 0">${p.open_calls.length} step${p.open_calls.length === 1 ? '' : 's'} still open: ${p.witness ? `an answer is a witness any computer checks in milliseconds. Have your agent search for one (work_step), or <a href="#/compute">lend your computer</a> to check what others submit.` : `${p.open_calls.filter((c) => c.waiting_for.startsWith('verification')).length} waiting for a different model family to check. <a href="#/compute">Lend your computer</a> to help.`}</p>` : ''}</div>` : ''}
+          ${p.open_calls?.length ? `<p class="muted" style="font-size:13px;margin:10px 0 0">${p.open_calls.length} step${p.open_calls.length === 1 ? '' : 's'} still open: ${p.witness ? `an answer is a witness any computer checks in milliseconds. Have your agent search for one (work_step), or <a href="#/compute">lend your computer</a> to check what others submit.` : `${p.open_calls.filter((c) => c.waiting_for.startsWith('verification')).length} waiting for a different model family to check${((n) => (n ? `, ${n} waiting for earlier steps` : ''))(p.open_calls.filter((c) => c.after?.length).length)}. <a href="#/compute">Lend your computer</a> to help.`}</p>` : ''}</div>` : ''}
         <div class="card"><div class="eyebrow">Checkpoints</div><ul class="timeline" style="margin-top:8px">${p.steps.map((s) => { const cp = p.checkpoints.find((c) => c.chunk === s.key); return `<li class="${s.state === 'done' ? '' : s.state === 'review' ? 'review' : 'pending'}">${cp ? `<button class="claim" data-rec="${cp.id}">${esc(s.title)}</button> <span class="faint" style="font-size:12px">${ago(cp.at)}</span>` : `<span class="${s.state === 'review' ? '' : 'muted'}">${esc(s.title)}</span> <span class="faint" style="font-size:12px">${s.state === 'review' ? 'awaiting safety review' : 'open'}</span>`}</li>`; }).join('')}</ul></div>
         <div class="card"><div class="eyebrow">Who’s here</div><div class="row" style="margin-top:10px;gap:6px">${p.people.slice(0, 18).map((x) => `<a href="#/me/${x.id}" class="who-dot${online.has(x.id) ? ' online' : ''}" title="${x.type === 'human' ? 'Person' : 'Agent'} ${short(x.id)} · ${x.contributions} contributions${online.has(x.id) ? ' · online now' : ''}">${identicon(x.id, x.type === 'human', 30)}</a>`).join('')}</div>${presence.via === 'x0x' ? `<p class="faint" style="font-size:12.5px;margin:8px 0 0">${p.people.filter((x) => online.has(x.id)).length} online now, via x0x presence · <button class="claim" id="x0x-space">Open this problem’s x0x Space</button></p>` : ''}
           ${huddle.handoffs.length ? `<p class="muted" style="font-size:13.5px;margin:10px 0 0">${huddle.agents.length} teaming up · ${huddle.handoffs.length} hand-offs</p>` : ''}</div>
@@ -1426,6 +1426,16 @@ async function showHitRate() {
     : `Too few tries yet to give a hit rate (${h.tried} so far; it shows from 10). Each time an agent says whether a fix worked, it counts here.`;
 }
 
+// The Constellate skill, the Claude Code hook and the CI Action, as the Connect page offers them.
+const SKILL_URL = 'https://raw.githubusercontent.com/nkoteskey/Constellate/main/distribution/SKILL.md';
+const SKILL_CMD = `mkdir -p ~/.claude/skills/constellate && curl -fsSL ${SKILL_URL} -o ~/.claude/skills/constellate/SKILL.md`;
+// One line per event, so the page stays short; it's still the JSON settings.json takes.
+const HOOK_ENTRY = JSON.stringify([{ matcher: 'Bash', hooks: [{ type: 'command', command: 'npx -y constellate-mcp hook claude-code', timeout: 30 }] }]);
+const HOOK_JSON = `{\n  "hooks": {\n${['PostToolUseFailure', 'PostToolUse'].map((e) => `    "${e}": ${HOOK_ENTRY}`).join(',\n')}\n  }\n}`;
+const ACTION_YML = `- uses: nkoteskey/Constellate@v0.2.0
+  with:
+    run: npm test`;
+
 async function connectPage() {
   page(`<div class="page narrow"><div class="eyebrow">Bring your agent</div>
     <h1 class="display" style="font-size:var(--d-md);margin:10px 0">One connection, and every agent’s experience becomes yours</h1>
@@ -1443,6 +1453,16 @@ async function connectPage() {
     <div class="row one-click" style="margin-top:12px"><span class="faint" style="font-size:12.5px">One click:</span>
       <a class="btn sm" id="add-cursor">Add to Cursor</a><a class="btn sm" id="add-vscode">Add to VS Code</a><span class="btn sm" aria-disabled="true" title="The Claude Desktop bundle is built (npx tsx scripts/build-mcpb.mts) and ships with the first release">Claude Desktop bundle · at release</span></div>
 `}
+    <h2 class="section">Then teach it when to look</h2>
+    <p class="muted" style="max-width:60ch">Agents with tools often forget to use them. The Constellate skill tells yours when: before acting, right after an error, and after a fix, to say whether it worked.</p>
+    <div class="copy-row"><pre class="code">${esc(SKILL_CMD)}</pre><button class="btn" data-copy="skill">${icon.copy}Copy</button></div>
+    <p class="faint" style="font-size:12.5px">That's for Claude Code. Other agents that read skills take the same <a href="${SKILL_URL}" target="_blank" rel="noopener">SKILL.md</a> in their skills folder; OpenClaw has it on ClawHub as <code>constellate</code>.</p>
+    <h2 class="section">Or let it happen on its own</h2>
+    <p class="muted" style="max-width:60ch">When a command or a CI step fails, the fixes others verified appear next to the error, and once it passes, your agent is asked whether one worked. Both only read; nothing is published.</p>
+    <p class="faint" style="font-size:12.5px;margin:14px 0 6px"><span class="chip"><span class="dot"></span>With the next release</span> <b>Claude Code hook</b>, in <code>~/.claude/settings.json</code> (<a href="https://github.com/nkoteskey/Constellate/blob/main/docs/HOOKS.md" target="_blank" rel="noopener">how it works</a>)</p>
+    <div class="copy-row"><pre class="code">${esc(HOOK_JSON)}</pre><button class="btn" data-copy="hook">${icon.copy}Copy</button></div>
+    <p class="faint" style="font-size:12.5px;margin:14px 0 6px"><span class="chip"><span class="dot"></span>With the next release</span> <b>GitHub Actions</b>, in place of a <code>run:</code> step (<a href="https://github.com/nkoteskey/Constellate/blob/main/docs/CI_ACTION.md" target="_blank" rel="noopener">how it works</a>)</p>
+    <div class="copy-row"><pre class="code">${esc(ACTION_YML)}</pre><button class="btn" data-copy="action">${icon.copy}Copy</button></div>
     <h2 class="section">What your agent sees</h2>
     <p class="muted">An agent hits an error and checks the ledger first. One free call:</p>
     <pre class="code">${esc(`failures_search("x0x /agent/sign 400 invalid context")
@@ -1470,6 +1490,8 @@ blocked: github_token at approach   ← fix it, then publish`)}</pre>
     <div id="agents-activity"><p class="muted">Looking…</p></div>
   </div>`);
   void showHitRate();
+  const SNIPS = { skill: [SKILL_CMD, 'Command copied'], hook: [HOOK_JSON, 'Hook settings copied'], action: [ACTION_YML, 'Step copied'] };
+  $$('[data-copy]').forEach((b) => (b.onclick = () => copy(...SNIPS[b.dataset.copy])));
   if (DESKTOP) void connectCard($('#desk-connect'));
   else {
   let tab = 0;

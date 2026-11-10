@@ -696,3 +696,28 @@ Still stop points, deliberately not approved on the owner's behalf: publishing a
   - Turn on Settings → Actions → General → "Allow GitHub Actions to create and approve pull requests", so the weekly refresh can open its pull request.
   - The Action's `uses: nkoteskey/Constellate@v0.2.0` works once the v0.2.0 release tag exists and `constellate-mcp` 0.2.0 (with `ci`) is on npm.
   - If you want, ask Saorsa Labs and Autonomi whether they'd publish their skills as Official (docs/OFFICIAL_SKILLS.md).
+
+### Constellate offered where people connect (Nov 9)
+- **Connect page:**
+  - After the MCP setup, "Then teach it when to look" offers Constellate's own skill: a one-line install for Claude Code, fetched from `distribution/SKILL.md` on GitHub, plus where other agents and ClawHub get it.
+  - "Or let it happen on its own" offers the Claude Code hook (both events, compact settings JSON) and the CI Action snippet. Both are labelled "With the next release" until `constellate-mcp` 0.2.0 is on npm.
+  - No banners or pop-ups.
+- **Skills page:** Constellate's own skill is one card in the network group, now titled "The network". It has two test cases from its own text, and it isn't pinned or marked Official.
+- **Needs the owner:** remove the two "With the next release" labels once 0.2.0 ships (`src/web/public/app.js`, Connect page).
+
+### Swarms without an orchestrator (Nov 9)
+- **Step order** (`src/work/problems.ts`):
+  - A step can name the steps it needs (`after`), and it opens once those are verified.
+  - `orderProblem` refuses unknown steps, a step waiting for itself, and circles, both when a problem is proposed and when a plan is reported.
+  - `state()` gives each step's `waiting_on`; `summary` says "steps x first".
+  - Workers and `work_step` skip waiting steps, and `work_step` refuses answers to them.
+  - The planner's format and brief take `after`, and ask for steps that can run side by side.
+- **Spreading out** (`src/work/worker.ts`):
+  - Workers pick at random among open steps, instead of all taking the first.
+  - Another computer's claim holds for a lease (`LEASE_MS`, 30 minutes) and then reopens.
+  - A claim is released early when an answer to that step is rejected.
+  - A restarted computer picks up its own claims at once.
+  - x0x task lists carry no claim time, so the lease runs from when this computer first saw the claim.
+- **Why not an orchestrator:** the problems that fit are independent, machine-checked steps, the volunteer-computing model. A central orchestrator would add a single point of failure and control. Problems that need lockstep machines don't fit edge compute (DESIGN.md, Collective problem solving §7).
+- **Gate:** `test/gates/swarm.test.ts`.
+

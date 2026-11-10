@@ -1,8 +1,8 @@
 import { Hub } from '../hub/hub.js';
 import { ModelRunner, Budget } from '../contributor/models.js';
 import { decide, Policy, Power, Status } from '../contributor/device.js';
-import { Board } from './board.js';
-import { CheckpointBody, Problems, TaskResultBody } from './problems.js';
+import { Board, BoardTask } from './board.js';
+import { CheckpointBody, ChunkSpec, ChunkState, Problems, TaskResultBody } from './problems.js';
 import type { Constitution } from '../collective/constitution.js';
 
 export interface WorkerOptions {
@@ -13,16 +13,19 @@ export interface WorkerOptions {
   ignoreLoad?: boolean;
   /** When set, work only on problems the constitution has cleared, and check every result before it becomes a checkpoint. */
   constitution?: Constitution;
+  /** How long another computer's claim on a step holds before the step reopens, if no result arrived. Default 30 minutes. */
+  leaseMs?: number;
+  /** Picks among open steps (tests pass a fixed one). Default Math.random. */
+  random?: () => number;
+  /** Now, in ms (tests pass a fake clock). */
+  clock?: () => number;
 }
+
+/** A claim with no result after this long is treated as abandoned: laptops sleep, and a step shouldn't wait on one. */
+export const LEASE_MS = 30 * 60_000;
 
 export type StepOutcome = 'verified' | 'rejected' | 'worked' | 'idle' | 'paused';
 
-/**
- * A contributor: one model on one machine, listening to the Board.
- * Each step it prefers verification (cheap, unblocks others) and only then
- * claims new work that fits its model size. Results, verifications and
- * checkpoints are signed records; the Board is only a coordination hint.
- */
 /**
  * What a model from another family is asked when it checks a result. Agreeing with the answer is not a check:
  * it works the task itself, looks for a concrete failure, and says what it checked and what it couldn't.
@@ -36,11 +39,24 @@ Look for a concrete way it fails (a wrong step, a counterexample, a unit or off-
 Reply YES on the first line only if your own check agrees, otherwise NO. Then, in one or two lines, what you checked and anything you couldn't check.`;
 }
 
+/**
+ * A contributor: one model on one machine, listening to the Board.
+ * Each step it prefers verification (cheap, unblocks others) and only then
+ * claims new work that fits its model size. Results, verifications and
+ * checkpoints are signed records; the Board is only a coordination hint.
+ */
 export class Worker {
   status: Status = { state: 'waiting', message: 'Starting.' };
   /** What the last step that did something was, for the lending log (src/contributor/lend.ts). */
   last?: { problem: string; title: string; step: string; did: 'checked' | 'worked'; model: string };
   private stopped = false;
+  /** Board tasks this worker claimed (x0x records claims under its own ids, so they're tracked here). */
+  private readonly mine = new Set<string>();
+  /** When this worker first saw another computer's claim on a task: the lease runs from then. */
+  private readonly seenClaims = new Map<string, { at: number; rejected: number }>();
+  private get leaseMs() { return this.opts.leaseMs ?? LEASE_MS; }
+  private random() { return (this.opts.random ?? Math.random)(); }
+  private clock() { return (this.opts.clock ?? Date.now)(); }
 
   constructor(readonly hub: Hub, readonly runner: ModelRunner, readonly problems: Problems, readonly board: Board, private readonly opts: WorkerOptions = {}) {}
 
@@ -107,18 +123,37 @@ export class Worker {
       }
     }
 
-    // 2. Claim open work that fits this model.
+    // 2. Claim open work that fits this model. Only steps whose prerequisites are verified; not ones another
+    //    computer claimed within the lease (after that, a silent claim reopens); and one at random among the rest,
+    //    so computers that start together spread across the problem instead of all taking the first step.
+    const tasks = new Map((await this.board.list().catch(() => [] as BoardTask[])).filter((t) => t.tags.problem === problemId).map((t) => [t.tags.chunk, t]));
+    const now = this.clock();
+    const open: { c: ChunkState; chunk: ChunkSpec }[] = [];
     for (const c of st.chunks) {
-      if (c.checkpoint || c.pending.length) continue;
+      if (c.checkpoint || c.pending.length || c.waiting_on.length) continue;
       const chunk = st.problem.chunks.find((x) => x.key === c.key)!;
       // Open searches with a witness answer are for agents and people (work_step), not blind model calls.
       if (verifier.witness) continue;
       // Machine work (e.g. rebuilding a Lean proof) runs on computers that can do it, whatever their model size.
       if (verifier.work) { if (verifier.available && !verifier.available()) continue; }
       else if (chunk.needs.size !== 'any' && chunk.needs.size !== this.runner.size) continue;
+      const t = tasks.get(c.key);
+      // Ours if this worker claimed it, or the board records it under this computer's id (a restart forgets `mine`).
+      if (t && t.state === 'claimed' && !this.mine.has(t.id) && t.claimed_by !== this.hub.node.agentId) {
+        const key = `${t.id}:${t.claimed_by ?? ''}`;
+        const seen = this.seenClaims.get(key) ?? { at: now, rejected: c.rejected.length };
+        this.seenClaims.set(key, seen);
+        // The claim holds for the lease, unless an answer was rejected since: the claimant had its try.
+        if (now - seen.at < this.leaseMs && c.rejected.length <= seen.rejected) continue;
+      }
+      open.push({ c, chunk });
+    }
+    if (open.length) {
+      const { c, chunk } = open[Math.floor(this.random() * open.length)];
       const taskId = await this.board.ensure(`[${problemId.slice(0, 12)}] ${chunk.title}`, { problem: problemId, chunk: c.key, size: chunk.needs.size });
       if (!verifier.work && !this.charge()) return 'paused';
-      await this.board.claim(taskId, this.hub.node.agentId);
+      this.mine.add(taskId);
+      await this.board.claim(taskId, this.hub.node.agentId).catch(() => {}); // claims are advisory
       this.last = { problem: problemId, title: st.problem.title, step: chunk.title, did: 'worked', model: verifier.work ? `machine (${verifier.name})` : this.runner.id };
       let output: string, model = this.runner.id, family = this.runner.family;
       if (verifier.work) {

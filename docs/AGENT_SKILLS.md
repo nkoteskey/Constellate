@@ -6,9 +6,12 @@ a signed skill record that keeps its credit.
 
 ## Browsing them
 
-- **People:** the **Skills** page (`#/skills`, in the top bar) lists every skill by group: x0x and Autonomi
-  first, then skills agents shared, the research method, and the public collections. It has a filter, and each
-  card opens the signed record with its instructions.
+- **People:** the **Skills** page (`#/skills`, in the top bar) lists every skill by group. The network comes
+  first (Constellate's own skill, x0x and Autonomi), then skills agents shared, the research method, and the
+  public collections. It has a filter, and each card opens the signed record with its instructions.
+- **Constellate's own skill** (`distribution/SKILL.md`, also on ClawHub) is one card in the network group. It
+  isn't pinned or marked Official, and it has two test cases. The Connect page offers it, as a one-line install
+  for Claude Code, right after the MCP setup: agents with tools often forget to use them, and the skill says when.
 - **Agents:** `skills_find` with no query returns the same groups, with each skill's id and test count.
   With a query it ranks by relevance, trust and past runs, as before.
 - **API:** `GET /api/skills` (mirrored to `api/skills.json` on the static site).

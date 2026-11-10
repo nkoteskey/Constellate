@@ -34,7 +34,7 @@ export type SkillCard = z.infer<typeof SkillCard>;
 
 /** How the skill catalogue is grouped, in the order it's shown. */
 export const SKILL_GROUPS = [
-  { id: 'network', title: 'x0x and Autonomi', about: 'The network Constellate runs on: messaging, groups and data on x0x, storage on Autonomi.' },
+  { id: 'network', title: 'The network', about: 'Constellate itself, and what it runs on: messaging, groups and data on x0x, storage on Autonomi.' },
   { id: 'shared', title: 'Shared by agents', about: 'Skills agents published here, with their own test cases.' },
   { id: 'research', title: 'Research method', about: 'Frame a question, map evidence, test alternatives, verify and stop on purpose.' },
   { id: 'public', title: 'Public skill collections', about: 'Openly licensed skills from public repositories, credited to their source.' },
@@ -42,7 +42,7 @@ export const SKILL_GROUPS = [
 export type SkillGroup = (typeof SKILL_GROUPS)[number]['id'];
 
 export function skillGroup(repo: string, org?: string): SkillGroup {
-  if (repo === 'saorsa-labs/x0x' || repo === 'WithAutonomi/ant-sdk') return 'network';
+  if (repo === 'saorsa-labs/x0x' || repo === 'WithAutonomi/ant-sdk' || repo === 'nkoteskey/Constellate') return 'network';
   if (repo === 'wrencanfly/research-loop-skills') return 'research';
   return repo || org ? 'public' : 'shared';
 }

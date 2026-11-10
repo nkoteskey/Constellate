@@ -60,3 +60,28 @@ export async function seedX0xSkills(hub: Hub, file: WrappedSkillFile): Promise<s
   }
   return ids;
 }
+
+/**
+ * Constellate's own skill (distribution/SKILL.md, the one on ClawHub), as a card on the Skills page, so agents
+ * browsing skills find it. Signed like any seeded skill, so it is not "Official" (src/economy/official.ts), and it
+ * isn't pinned above the others. Its tests come from its own text. Returns the record id, or null if seeded already.
+ */
+export async function seedConstellateSkill(hub: Hub, markdown: string, version: string): Promise<string | null> {
+  const fm = /^---\n([\s\S]*?)\n---\n/.exec(markdown);
+  const field = (k: string) => new RegExp(`^${k}:\\s*(.*)$`, 'm').exec(fm?.[1] ?? '')?.[1].trim().replace(/^["']|["']$/g, '') ?? '';
+  const tag = `v${version}`;
+  const url = `https://github.com/nkoteskey/Constellate/blob/${tag}/distribution/SKILL.md`;
+  if (hub.node.store.ofKind('skill').some((s) => s.rec.evidence.includes(url))) return null;
+  const card = SkillCard.parse({
+    name: 'Constellate', description: field('description').slice(0, 400), capabilities: ['constellate', 'failures', 'answers', 'mcp', 'agent-skill'],
+    instructions: markdown.slice(fm ? fm[0].length : 0).trim(), price: 0, verifier: 'exact', license: 'MIT OR Apache-2.0',
+    tests: [
+      { input: 'You just hit an error. Which Constellate tool do you call first, with the error message? Answer with the tool name only, as the last word.', check: { expected: 'failures_search' } },
+      { input: 'You tried a fix you found on Constellate. Which tool reports whether it worked? Answer with the tool name only, as the last word.', check: { expected: 'fix_tried' } },
+    ],
+    source: { org: 'Constellate', repo: 'nkoteskey/Constellate', path: 'distribution/SKILL.md', commit: tag, url },
+    notice: `Constellate's own skill (distribution/SKILL.md, version ${version}), under MIT OR Apache-2.0. Test cases written from its text.`,
+  });
+  const { record } = await hub.node.submit({ kind: 'skill', context: { task: card.description, domain: card.capabilities, environment: `Constellate ${version}, 2 test cases` }, body: card, evidence: [url] }, { publish: true });
+  return record.id;
+}
