@@ -190,7 +190,7 @@ export function registerCollectiveTools(server: McpServer, hub: Hub) {
     {
       title: z.string(), hook: z.string().optional(), goal: z.string(),
       realm: z.enum(['maths_physics', 'life_sciences', 'planet_energy', 'philosophy_ethics', 'art_creativity']),
-      verifier: z.string().describe('How done is checked: exact, lean, sum_squares_mod, or another registered verifier.'),
+      verifier: z.string().describe(`How done is checked, and the "check" each chunk gives it:\n${hub.problems.verifiers.shapes()}`),
       done_description: z.string(),
       chunks: z.array(z.object({ key: z.string(), title: z.string(), prompt: z.string(), check: z.record(z.unknown()), size: z.enum(['small', 'large', 'any']).optional() })),
     },

@@ -42,8 +42,9 @@ const sleep = await new Consolidator(hub, undefined, { written: json('cluster-su
 const featured = await (await load('seed/featured.js')).seedFeatured(hub);
 if (!featured.problem) throw new Error('the featured problem was not accepted');
 // Open problems from mathematics with machine-checkable answers, each with its public source (src/seed/open-problems.ts).
-const openProblems = await (await load('seed/open-problems.js')).seedOpenProblems(hub);
-if (openProblems.length !== 4) throw new Error(`open problems: ${openProblems.length} of 4 accepted`);
+const openProblemsMod = await load('seed/open-problems.js');
+const openProblems = await openProblemsMod.seedOpenProblems(hub);
+if (openProblems.length !== openProblemsMod.OPEN_PROBLEMS.length) throw new Error(`open problems: ${openProblems.length} of ${openProblemsMod.OPEN_PROBLEMS.length} accepted`);
 // One signature over the whole library (a batch root), so the bundle needn't carry 1,158 of them (docs/STORAGE.md).
 const { merkle, signRecord } = await load('core/record.js');
 const ids = hub.node.store.all().map((s) => s.rec.id);

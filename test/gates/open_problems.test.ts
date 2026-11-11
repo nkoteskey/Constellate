@@ -53,7 +53,8 @@ describe('open problems with machine-checkable answers', () => {
       const b = hub.problems.body(id) as ReturnType<Hub['problems']['body']> & { source?: { url: string; says: string; read: string } };
       expect(b.source?.url).toMatch(/^https:\/\/en\.wikipedia\.org\/wiki\//);
       expect(b.source?.says.length).toBeGreaterThan(40);
-      expect(b.source?.read).toBe('2026-11-08');
+      expect(b.source?.read).toMatch(/^2026-\d\d-\d\d$/); // each problem carries the date its source was read
+      expect(b.source?.read).toBe(OPEN_PROBLEMS.find((p) => p.title === b.title)!.source.read);
       expect(b.goal).toContain(b.source!.url);
       expect(b.goal).toMatch(/A find would be a discovery; most searches will find nothing/);
       expect(hub.problems.verifiers.get(b.definition_of_done.verifier)?.witness).toBe(true);

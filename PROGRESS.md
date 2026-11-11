@@ -721,3 +721,15 @@ Still stop points, deliberately not approved on the owner's behalf: publishing a
 - **Why not an orchestrator:** the problems that fit are independent, machine-checked steps, the volunteer-computing model. A central orchestrator would add a single point of failure and control. Problems that need lockstep machines don't fit edge compute (DESIGN.md, Collective problem solving §7).
 - **Gate:** `test/gates/swarm.test.ts`.
 
+
+## 2026-11-11
+
+### More machine checks (Nov 11)
+- **Five new checks** (`src/work/combinatorics.ts`), each a witness check: hard to find, recomputed exactly.
+  - `ramsey_graph`: a graph6 graph with no s-clique and no t-independent set shows R(s,t) > n. An exact clique search with a fixed step budget; a graph it can't settle is refused, never guessed.
+  - `vdw_coloring`: a colouring of 1..n with no k-term progression in one colour shows W(r,k) > n.
+  - `golomb_ruler`, `cap_set` and `sat_assignment` (DIMACS CNF).
+  - Strict formats, with size caps checked before any work. Lent computers still never guess at witness searches.
+- **Every check describes its format** (`shape`). The planner brief and `proposals_submit` list them all, so proposers can pick a check that fits.
+- **Two more seeded problems** (`src/seed/open-problems.ts`, docs/OPEN_PROBLEMS.md): a graph that would move R(5,5), R(4,6) or R(3,10), and a colouring that would push W(2,7) or W(5,3). Sources quoted with the date read.
+- **Gate:** `test/gates/checkers.test.ts`: known answers (Paley graphs, the 28-mark optimal Golomb ruler, W(2,3) = 9 by exhaustion, the 4-point cap in F_3^2), the clique search against brute force, and timing at the R(5,5) search size.

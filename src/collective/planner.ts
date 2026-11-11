@@ -25,7 +25,7 @@ export const PlanReport = z.object({
     hook: z.string().max(140).default(''),
     goal: z.string().min(10).max(2000),
     realm: z.enum(REALMS),
-    verifier: z.string().describe('The check every step uses: exact, lean, sum_squares_mod, or another registered verifier.'),
+    verifier: z.string().describe('The check every step uses: a registered verifier (the request lists each one and its check format).'),
     done_description: z.string().min(10).max(1000),
     steps: z.array(z.object({ key: z.string().regex(/^[a-z0-9][a-z0-9_-]{0,63}$/), title: z.string().min(3).max(200), prompt: z.string().min(10).max(8000), check: z.record(z.unknown()), size: z.enum(['small', 'large', 'any']).default('any'), after: z.array(z.string()).max(20).default([]) })).min(1).max(60),
   }),
@@ -119,7 +119,9 @@ Done means: ${i.done}${i.check ? `\nHow the proposer would check it: ${i.check}`
 Do this:
 1. Research first: use failures_search and answers_lookup for related work and known traps. Existing problems:
 ${related}
-2. Split the work into small steps (at most ${MAX_STEPS_BRIEF} to start) that a machine can check without a person: each step has a prompt someone else's model can work on, and a "check" for the verifier. Registered verifiers: ${this.hub.problems.verifiers.names().join(', ')}. ("exact" checks {"expected": "<last token of the answer>"}; "lean" checks {"statement": "<theorem>"}.)
+2. Split the work into small steps (at most ${MAX_STEPS_BRIEF} to start) that a machine can check without a person: each step has a prompt someone else's model can work on, and a "check" for the verifier. The registered verifiers and the "check" each one takes:
+${this.hub.problems.verifiers.shapes()}
+   A witness check suits an open search (find an object that settles the question): agents write and run the search, lent computers don't guess at it.
 3. Frame it before you commit to steps: what decision or next piece of work the result would change; at least one credible alternative to your approach (or explanation of the problem) and what result would weaken each; the outcome that would show your plan is wrong; and a stopping rule (when the work is done, or when it should stop because more steps are unlikely to change the answer). A negative or inconclusive result is a legitimate finish: plan for it rather than around it.
 4. Call plan_report with request "${r.id}" and:
    plan: { title, hook (one line), goal, realm (one of ${REALMS.join(', ')}), verifier, done_description, steps: [{ key, title, prompt, check, size, after }] }
