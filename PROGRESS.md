@@ -753,3 +753,31 @@ Still stop points, deliberately not approved on the owner's behalf: publishing a
 - Also finds LM Studio, llama.cpp and vLLM (and honours `OLLAMA_HOST`), so models already running anywhere on the computer are offered.
 - **Honest about what isn't done:** lending limits are read on this computer only (the other pooled computers follow exo's settings); not yet run on real pooled hardware (the gate uses stand-ins that answer like exo); Apple's reported Thunderbolt pooling has no public interface yet, and `CONSTELLATE_CLUSTER_URL` covers it if it serves an OpenAI-compatible one.
 - **Gate:** `test/gates/clusters.test.ts`.
+
+### Announcing progress (Nov 11)
+- **Machine-checked progress becomes a call to lend a computer** (`src/announce/`, docs/ANNOUNCE.md).
+  - It runs on the owner's computer and reads only checkpoints this computer re-checked: the problem's machine check passed again, on an answer confirmed by a different identity and model family.
+  - It never says "solved" or "proved", only "checked by machine, no person has reviewed it yet", and ends with "Lend a computer: LINK".
+  - Warm-up checks say nothing.
+- **Two tiers.**
+  - Waiting for the owner's `announce approve`: possible finds on open searches, problems from public catalogues, problems from identities this computer doesn't vouch for, and "a whole problem is done".
+  - Can go on their own once the owner turns automatic posting on (off by default): the first checked step on a problem this computer or the starter library proposed, and a weekly digest.
+  - Progress from before announcing started always waits for the owner.
+- **Safeguards.**
+  - Approval binds to a hash of the exact words, and changed words need approving again.
+  - Titles with an @, a web address or anything the strict privacy check flags are blocked, not cleaned.
+  - The privacy check runs again at send.
+  - Each destination is marked sent as it goes, so a restart never posts twice.
+- **"Archived on Autonomi"** appears only with this computer's own signed `storage_spend` receipt for the bundle holding the checkpoint (`Keeper.archivedAt`). The address is printed as text, with no gateway. Paid storage is still off, so by default posts don't carry it.
+- **Destinations.**
+  - A local Atom feed (the default; no network).
+  - Bluesky (app password) and Mastodon (access token, with an idempotency key), both off until the owner adds an account with `announce set` and its secret with `keys set`.
+  - X: a compose link only. A person sends it by hand.
+  - Nothing leaves the computer without `constellate announce send --yes`.
+- **CLI:** `constellate announce` (list), `approve`, `skip`, `send [--yes]`, `set auto|feed|bluesky|mastodon|cta`; `keys set bluesky|mastodon`.
+- **Gate:** `test/gates/announce.test.ts`. Bluesky and Mastodon are stand-in servers; the request shapes come from the atproto lexicons and the Mastodon API docs (read 2026-11-11). Three deliberate breaks were each caught: counting another computer's storage receipt, letting possible finds post on their own, and ignoring the hold.
+- **NEEDS HUMAN:**
+  - Choose and create the accounts that post, store their secrets on the owner's computer, and decide whether to turn automatic posting on.
+  - Point `announce set cta` at the page people should land on.
+  - No real post has been made.
+- **Not done yet:** an announcements panel in the app; how X counts links (posts are fitted with links at full length, which can only overcount); Bluesky has no idempotency key, so a post accepted but whose reply was lost could repeat on the next send.

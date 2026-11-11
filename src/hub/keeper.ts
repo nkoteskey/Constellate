@@ -23,7 +23,8 @@ const EARNED = new Set(['failure', 'answer', 'task_result', 'piece']);
 
 export type Reason = 'core' | 'confirmed' | 'bounty' | 'sponsored';
 interface Manifest { v: 1; app: 'constellate-library'; updated: string; bundles: { addr: string; count: number; bytes: number; at: string }[] }
-interface State { archived: string[] }
+/** `bundles`: which uploaded bundle holds each record (kept since Nov 2026; earlier runs recorded only the ids). */
+interface State { archived: string[]; bundles?: Record<string, string> }
 
 export class Keeper {
   private readonly stateFile: string;
@@ -85,9 +86,24 @@ export class Keeper {
     const m: Manifest = { v: 1, app: 'constellate-library', updated: new Date().toISOString(), bundles: [...(prev?.bundles ?? []), { addr, count: p.records.length, bytes: bytes.length, at: new Date().toISOString() }] };
     await this.hub.archive.put(canonicalBytes(m)).then((ma) => this.hub.archive.setPointer(LIBRARY_POINTER, ma));
     const atto = auto ? auto.log.slice(logFrom).reduce((n, e) => n + (/^\d+$/.test(e.atto) ? BigInt(e.atto) : 0n), 0n) : 0n;
-    this.save({ archived: [...this.state().archived, ...p.records.map((r) => r.id)] });
+    const was = this.state();
+    this.save({ archived: [...was.archived, ...p.records.map((r) => r.id)], bundles: { ...was.bundles, ...Object.fromEntries(p.records.map((r) => [r.id, addr])) } });
     const { record } = await this.hub.node.submit({ kind: 'receipt', context: { task: 'payment: storage_spend', domain: ['payments', 'storage'], environment: auto ? 'autonomi' : 'local' }, body: { type: 'storage_spend', payer: FUND, payee: auto ? 'autonomi' : 'local', amount: 0, tx: addr, rail: 'archive', network: auto ? 'autonomi' : 'local', address: addr, bytes: bytes.length, records: p.records.length, atto_ant: atto.toString(), archive: auto ? 'autonomi' : 'local', by: p.by }, refs: [] }, { publish: true });
     return { uploaded: true as const, address: addr, records: p.records.length, bytes: bytes.length, atto_ant: atto.toString(), by: p.by, receipt: record.id };
+  }
+
+  /**
+   * Where a record was archived: the bundle's address and the signed `storage_spend` receipt that says so, or
+   * undefined. Only receipts this computer signed count, so a claim like "archived on Autonomi" (docs/ANNOUNCE.md)
+   * rests on an upload this computer made and paid for.
+   */
+  archivedAt(recordId: string): { address: string; archive: 'autonomi' | 'local'; receipt: string } | undefined {
+    const address = this.state().bundles?.[recordId];
+    if (!address) return undefined;
+    const r = this.hub.node.store.ofKind('receipt').find((s) => s.operatorId === this.hub.node.operatorId
+      && (s.rec.body as { type?: string }).type === 'storage_spend' && (s.rec.body as { address?: string }).address === address);
+    const archive = (r?.rec.body as { archive?: string } | undefined)?.archive;
+    return r && (archive === 'autonomi' || archive === 'local') ? { address, archive, receipt: r.rec.id } : undefined;
   }
 
   private async manifest(): Promise<Manifest | null> {

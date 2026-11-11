@@ -5,12 +5,9 @@ import { runnerFromSpec } from '../contributor/catalog.js';
 import { swr } from './swr.js';
 import { reproduction } from '../services/reproduce.js';
 import { networkSavings, operatorSavings } from '../hub/savings.js';
-import { homedir } from 'node:os';
-import { decodeCanonical } from '../core/canonical.js';
 import { ActivityLog, Presence } from '../hub/activity.js';
 import { X0xError, directSendProblem } from '../x0x/client.js';
 import { agentName, Planner } from '../collective/planner.js';
-import { openBundle, isBundle } from '../store/bundle.js';
 import { Profiles, profileProblem, ProfileBody } from '../collab/profiles.js';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -28,6 +25,7 @@ import { peerIdFromPublicKey, verifyExternal } from '../core/identity.js';
 import { familyOf } from './public/js/models.js';
 import { ModelRunner } from '../contributor/models.js';
 import { Scout, ideaFor, LANES, SCOUT_ID, type Lane, type Realm } from '../scout/scout.js';
+import { starterOperators } from '../seed/starter-operators.js';
 
 /** Kinds a person can sign in the browser. Each one with more than a simple shape gets its own check below. */
 const HUMAN_KINDS: RecordKind[] = ['rating', 'confirmation', 'contradiction', 'vote', 'argument', 'position', 'pledge', 'message', 'use',
@@ -743,24 +741,3 @@ export function x0xAgentLink(rec: SignedRecord): string | null {
   } catch { return null; }
 }
 
-/**
- * The starter library's signing identities (the desktop app imports a signed snapshot of public history
- * once; see CONSTELLATE_STARTER). Read from the snapshot named in the import marker, so the People page
- * can say "Starter library" instead of showing an anonymous agent with a thousand contributions.
- */
-let starterOps: Set<string> | null = null;
-function starterOperators(): Set<string> {
-  if (starterOps) return starterOps;
-  starterOps = new Set();
-  try {
-    const home = process.env.CONSTELLATE_HOME ?? join(homedir(), '.constellate');
-    const marker = JSON.parse(readFileSync(join(home, 'starter-imported'), 'utf8')) as { file?: string };
-    if (marker.file && existsSync(marker.file)) {
-      const bytes = new Uint8Array(readFileSync(marker.file));
-      const recs = isBundle(bytes) ? (({ roots, records }) => [...roots, ...records])(openBundle(bytes)) : decodeCanonical<{ records: SignedRecord[] }>(bytes).records;
-      const roots = new Map(recs.filter((r) => r.kind === 'batch_root').map((r) => [r.id, r]));
-      for (const r of recs.slice(0, 2500)) { const v = verifyRecord(r, { root: (id) => roots.get(id) }); if (v.ok) starterOps.add(v.operatorId); }
-    }
-  } catch { /* no starter library on this install */ }
-  return starterOps;
-}

@@ -56,6 +56,9 @@ const USAGE = `Constellate — where humans and agents gather into something gre
   constellate scout      Open problems worth the network's time, ranked: quick wins, moonshots, Lean-stated
       [--lane quick|moonshot|formal|all] [--realm R] [--q WORDS] [--limit N] [--refresh] [--propose ID]
       --refresh reads the public catalogues (Erdős problems, formal-conjectures); --propose prints the idea to post
+  constellate announce   Progress checked by machine that is worth telling people about, and what each item waits for
+      approve ID | skip ID | send [--yes] | set auto on|off | set feed on|off | set bluesky HANDLE [SERVER] | set mastodon URL | set cta URL
+      Possible finds and whole problems wait for your approval; nothing is posted without send --yes (docs/ANNOUNCE.md)
   constellate models     What this machine can run: model servers running now (pooled ones too), free
                          open-weight models that fit, and every provider
   constellate contribute Donate idle compute: detect hardware, pick a model, work politely
@@ -352,6 +355,7 @@ Lend your computer instead: node "${cli}" models, then node "${cli}" contribute`
   if (cmd === 'contribute') return contribute(argv.slice(1));
   if (cmd === 'models') return models();
   if (cmd === 'scout') return scout(argv.slice(1));
+  if (cmd === 'announce') return announce(argv.slice(1));
   if (cmd === 'seed') {
     const { Seeder, SEED_ALLOW_LIST } = await import('./seed/seeder.js');
     const { GitHubRest } = await import('./seed/github.js');
@@ -401,7 +405,7 @@ async function keys(args: string[]) {
   if (sub === 'list') { console.log(v.names().length ? v.names().map((n) => `  ${n}`).join('\n') : 'No keys stored.'); return; }
   if (sub === 'remove' && name) { v.remove(name); console.log(`Removed ${name}.`); return; }
   if (sub === 'set' && name) {
-    if (!PROVIDERS.some((p) => p.id === name) && !['stripe', 'stripe-webhook', 'evm-wallet', 'cdp'].includes(name)) { console.log(`Unknown name "${name}". Providers: ${PROVIDERS.map((p) => p.id).join(', ')}; payments: stripe, stripe-webhook, evm-wallet, cdp.`); return; }
+    if (!PROVIDERS.some((p) => p.id === name) && !['stripe', 'stripe-webhook', 'evm-wallet', 'cdp', 'bluesky', 'mastodon'].includes(name)) { console.log(`Unknown name "${name}". Providers: ${PROVIDERS.map((p) => p.id).join(', ')}; payments: stripe, stripe-webhook, evm-wallet, cdp; announcing: bluesky (an app password), mastodon (an access token).`); return; }
     const secret = await hiddenPrompt(`Key for ${name} (input hidden): `);
     if (!secret.trim()) { console.log('Nothing stored.'); return; }
     v.set(name, secret.trim());
@@ -429,6 +433,62 @@ function hiddenPrompt(q: string): Promise<string> {
 }
 
 function flag(args: string[], name: string) { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : undefined; }
+
+/** `constellate announce` (docs/ANNOUNCE.md): what to tell people, the owner's approval, and sending. */
+async function announce(args: string[]) {
+  const { Announcer } = await import('./announce/announce.js');
+  const [sub, ...rest] = args;
+  if (sub === 'set') {
+    const a = new Announcer();
+    const [what, v, extra] = rest;
+    const onOff = () => { if (v !== 'on' && v !== 'off') throw new Error(`say on or off: constellate announce set ${what} on|off`); return v === 'on'; };
+    if (!v) throw new Error('Usage: constellate announce set auto on|off | feed on|off | bluesky HANDLE [SERVER] | mastodon URL | cta URL (off removes an account)');
+    const c = what === 'auto' ? a.setConfig({ auto: onOff() })
+      : what === 'feed' ? a.setConfig({ feed: onOff() })
+      : what === 'bluesky' ? a.setConfig({ bluesky: v === 'off' ? undefined : { handle: v.replace(/^@/, ''), ...(extra ? { service: extra } : {}) } })
+      : what === 'mastodon' ? a.setConfig({ mastodon: v === 'off' ? undefined : { instance: v } })
+      : what === 'cta' ? a.setConfig({ cta: v })
+      : null;
+    if (!c) throw new Error(`unknown setting: ${what}`);
+    console.log(JSON.stringify(c, null, 2));
+    if (what === 'bluesky' && c.bluesky) console.log('Store its app password with `constellate keys set bluesky` (Bluesky: Settings > Privacy and security > App passwords).');
+    if (what === 'mastodon' && c.mastodon) console.log('Store an access token with `constellate keys set mastodon` (Preferences > Development > New application, with the write:statuses scope).');
+    return;
+  }
+  if (sub === 'approve' || sub === 'skip') {
+    const a = new Announcer();
+    if (!rest[0]) throw new Error(`Usage: constellate announce ${sub} ID`);
+    const item = sub === 'approve' ? a.approve(rest[0]) : a.skip(rest[0]);
+    console.log(sub === 'approve' ? `Approved these exact words; \`constellate announce send --yes\` sends them:\n\n${item.text}` : `Skipped ${item.id}.`);
+    return;
+  }
+  if (sub === 'send') {
+    const yes = rest.includes('--yes');
+    const r = await new Announcer().send({ yes });
+    if (!r.length) console.log('Nothing is cleared to send. `constellate announce` shows what each item waits for.');
+    for (const x of r) console.log(`${x.ok ? (yes ? 'sent' : 'would send') : 'not sent'}  ${x.id}${x.sink ? ` to ${x.sink}` : ''}: ${x.detail}`);
+    if (!yes && r.some((x) => x.ok)) console.log('\nDry run: nothing was sent. Add --yes to send.');
+    return;
+  }
+  if (sub && sub !== 'list') throw new Error(`unknown announce command: ${sub}`);
+  const hub = await Hub.fromEnv();
+  try {
+    const a = new Announcer(hub);
+    await a.collect();
+    const items = a.list().filter((i) => i.status !== 'skipped');
+    const c = a.config();
+    const where = [c.feed ? `a feed file (${a.feedPath()})` : '', c.bluesky ? `Bluesky as @${c.bluesky.handle}` : '', c.mastodon ? `Mastodon at ${c.mastodon.instance}` : ''].filter(Boolean);
+    console.log(`Sends to: ${where.join(', ') || 'nowhere yet'}. Automatic posting: ${c.auto ? 'on, for the auto tier' : 'off'}. X: by hand, from the link shown.\n`);
+    if (!items.length) { console.log('Nothing to announce yet: progress shows up here once a step is checked by machine.'); return; }
+    for (const i of items) {
+      console.log(`${i.id}  ${i.tier === 'founder' ? 'needs you' : 'auto'} · ${i.kind}${i.backlog ? ' · from before announcing started' : ''} · ${i.status}`);
+      if (i.text) console.log(i.text.split('\n').map((l) => `    ${l}`).join('\n'));
+      if (i.x && !Object.keys(i.sent).length) console.log(`    Post on X yourself: ${i.x}`);
+      console.log();
+    }
+    console.log('`constellate announce approve ID` approves the exact words above; `skip ID` drops one; `send` shows what would go (add --yes to send).');
+  } finally { await hub.close(); }
+}
 
 /** What fits this machine, in plain words, with the exact commands. */
 async function scout(args: string[]) {

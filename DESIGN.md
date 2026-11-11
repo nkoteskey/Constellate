@@ -175,6 +175,7 @@ x0x runs no models itself. Every agent is a model plus a small program connected
 - **Clear status, always visible.** A menu-bar indicator shows what the device is doing: contributing, paused, or waiting. When work needs power, it says so plainly, e.g. "Paused: plug in to keep contributing."
 - **Smart matching.** Small local models take verification, screening and grunt work; harder reasoning goes to larger models or Claude contributors.
 - **Budget controls.** For paid models, the user sets a spending cap; the app stops at the cap.
+- **Pooled computers lend as easily as one.** Computers pooled into one bigger model (exo, over Thunderbolt 5 or the local network, or any OpenAI-compatible pool) are found on their own and lent with the same switch. The pool takes the steps that need a big model. Nothing is downloaded on the person's behalf (docs/CLUSTERS.md).
 
 **Cloud model access.** Alongside local models, contributors can connect hosted models by API key or sign-in: Anthropic (Claude API, Claude Code, Agent SDK), OpenAI, Google Gemini, and any OpenAI-compatible endpoint (e.g. OpenRouter, self-hosted servers). Keys are stored encrypted on the device only, never broadcast. Each connected model shows its spend against the user's cap, and people can mix local and cloud models, with tasks routed to whichever fits.
 
@@ -343,11 +344,12 @@ The goal is mass adoption by agents and viral participation by people. Agents sp
 ### Built-in viral loops (humans)
 
 - **Breakthrough cards.** When a checkpoint lands, contributors get a beautiful shareable card ("my Mac helped prove a lemma tonight") linking back to the live problem.
+- **Progress posts.** The owner's computer announces machine-checked progress with a call to lend a computer. It says only "checked by machine, no person has reviewed it yet". Possible finds, catalogue problems, strangers' problems and "a whole problem is done" wait for the owner's approval. Only first steps on our own problems and the weekly digest can go on their own, and only once the owner turns that on. Posts go to a feed file by default; Bluesky and Mastodon post from the owner's accounts once set up; X gets a compose link a person sends by hand (docs/ANNOUNCE.md).
 - **"My light in the sky."** A personal link showing your amber light and what it helped with.
 - **Invite to a problem.** Share a problem directly with friends or colleagues who'd care, landing them inside it.
 - **Embeds.** Any problem or deliberation map can be embedded on blogs, papers and news sites, live.
 - **Teams and challenges.** Universities, companies and friend groups contribute as teams and see their combined impact.
-- **Weekly digest** of breakthroughs and open calls for help, designed to be forwarded.
+- **Weekly digest** of breakthroughs and open calls for help, designed to be forwarded. The first version is the announcer's weekly post and feed entry.
 
 ### Removing friction
 
@@ -413,6 +415,10 @@ Any model (open-weight, Claude, others) plugs in through the hub and contributes
 7. **A swarm with no one in charge.** Steps are independent unless a step names the steps it needs (`after`); it opens once those are verified. Computers pick at random among open steps, so a crowd that starts together spreads out. A claim holds for a lease (30 minutes); a claim that goes quiet, or whose answer was rejected, reopens. Coordination lives in the shared signed records and the board, not in an orchestrator. Problems that need machines to run in lockstep (one simulation across many nodes) don't fit edge compute and stay out of the queue.
 
 Firm rule: only problems with checkable progress enter the queue.
+
+**Proposing is one press.** The scout reads public catalogues of open problems and ranks them by how close a machine is to checking an answer: quick wins a witness check or a finite search could settle, and moonshots. It fills in the proposal, and a person reviews it and proposes it. It never posts on its own (docs/SCOUT.md).
+
+**Machine checks for open searches.** Witness checks recompute a claimed answer exactly: a graph for a Ramsey bound, a colouring for a van der Waerden bound, a Golomb ruler, a cap set, a satisfying assignment, sums of three cubes. A check passing on an open search is a *possible find* until a person reviews it (docs/OPEN_PROBLEMS.md).
 
 ### Problems that fit
 
