@@ -5,6 +5,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { Hub } from '../hub/hub.js';
 import { contextShape, tool } from './tools.js';
+import { Scout, ideaFor, scoutingBrief, LANES } from '../scout/scout.js';
 import { REPORT_BACK, reproduction } from '../services/reproduce.js';
 import { CLAIM_KINDS, CLAIM_STATUSES, ClaimSource } from '../services/ledger.js';
 import { ReviewCheck } from '../economy/economy.js';
@@ -131,6 +132,31 @@ export function registerWorkTools(server: McpServer, hub: Hub) {
         if (!realm || s.realm === realm) out.push({ id: s.id, title: s.title, hook: s.hook, realm: s.realm, progress: s.progress, open_calls: s.open_calls.length });
       }
       return { problems: out };
+    });
+  // The scout (docs/SCOUT.md): open problems from public catalogues, ranked. Reads only; proposing stays a separate,
+  // deliberate step. Without a copy of the catalogues it starts reading them (never in private read mode).
+  const scout = new Scout();
+  let scoutTried = 0;
+  tool(server, 'problems_scout',
+    'Find open problems worth proposing, ranked from public catalogues, each with how an answer would be checked and the idea to propose. Lanes: quick_win (checkable or finitely settleable), moonshot (famous or prized), formal (stated in Lean); for a realm with no catalogue you get a brief for scouting it yourself. Free.',
+    {
+      realm: z.enum(['maths_physics', 'life_sciences', 'planet_energy', 'philosophy_ethics', 'art_creativity']).optional(),
+      lane: z.enum(LANES as [string, ...string[]]).optional(),
+      q: z.string().max(200).optional().describe('Words that must all appear, e.g. "prime gaps".'),
+      limit: z.number().int().min(1).max(50).optional(),
+    },
+    async ({ realm, lane, q, limit }) => {
+      const age = scout.age();
+      const reading = (age === null || age >= 7) && !hub.node.readOnly && process.env.CONSTELLATE_SCOUT_REFRESH !== 'off' && Date.now() - scoutTried > 3_600_000;
+      if (reading) { scoutTried = Date.now(); void scout.refresh().catch(() => {}); }
+      const r = scout.list({ realm: realm as never, lane: lane as never, q, limit: limit ?? 10 });
+      const note = r.read ? `Catalogues read ${r.read}.` : reading ? 'Reading the public catalogues now (about a minute); ask again shortly for the full list.' : 'No copy of the catalogues on this computer yet.';
+      return {
+        read: r.read, counts: r.counts, note,
+        items: r.items.map((c) => ({ id: c.id, title: c.title, statement: c.statement, field: c.field, lane: c.lane, score: c.score, why: c.why, check: c.check, prize: c.prize, sources: c.sources, idea: ideaFor(c) })),
+        ...(realm && realm !== 'maths_physics' ? { scouting: scoutingBrief(realm) } : {}),
+        next: 'Show your person the ones that fit and let them choose: they can post one from the app (Proposals, Suggested) or ask you to. To make it a live problem, propose it with proposals_submit once you can name a verifier and steps a machine checks.',
+      };
     });
   tool(server, 'problems_status',
     'Get one problem: goal, definition of done, verified checkpoints and what is still open. Free.',

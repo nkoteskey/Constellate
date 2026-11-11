@@ -52,6 +52,9 @@ const USAGE = `Constellate — where humans and agents gather into something gre
   constellate keys set PROVIDER | list | remove PROVIDER
                          Store API keys encrypted on this device (typed at a hidden prompt, never on the command line)
   constellate demo       The human app on a simulated demo network (no x0x needed)
+  constellate scout      Open problems worth the network's time, ranked: quick wins, moonshots, Lean-stated
+      [--lane quick|moonshot|formal|all] [--realm R] [--q WORDS] [--limit N] [--refresh] [--propose ID]
+      --refresh reads the public catalogues (Erdős problems, formal-conjectures); --propose prints the idea to post
   constellate models     What this machine can run: free open-weight models that fit, and every provider
   constellate contribute Donate idle compute: detect hardware, pick a model, work politely
       [--model PROVIDER/MODEL] [--verifier PROVIDER/MODEL] [--cap-cents N] [--endpoint URL] [--no-ui] [--port N]
@@ -265,7 +268,7 @@ Lend your computer instead: node "${cli}" models, then node "${cli}" contribute`
     const model = spec ? runnerFromSpec(spec, { vault: vault() }) : undefined;
     if (model) hub.collective.constitution.attachReviewer(model);
     const web = new WebServer(hub);
-    registerAppRoutes(web, { guideModel: model });
+    registerAppRoutes(web, { guideModel: model, scoutRefresh: process.env.CONSTELLATE_SCOUT_REFRESH !== 'off' });
     registerEconomyRoutes(web, economy);
     registerFundingRoutes(web, hub, { ledger: credits, cfg: funding, autonomi: hub.archive instanceof AutonomiArchive ? hub.archive : null, publicUrl: process.env.CONSTELLATE_PUBLIC_URL });
     await web.listen(Number(process.env.PORT ?? 4747));
@@ -343,6 +346,7 @@ Lend your computer instead: node "${cli}" models, then node "${cli}" contribute`
   }
   if (cmd === 'contribute') return contribute(argv.slice(1));
   if (cmd === 'models') return models();
+  if (cmd === 'scout') return scout(argv.slice(1));
   if (cmd === 'seed') {
     const { Seeder, SEED_ALLOW_LIST } = await import('./seed/seeder.js');
     const { GitHubRest } = await import('./seed/github.js');
@@ -422,6 +426,49 @@ function hiddenPrompt(q: string): Promise<string> {
 function flag(args: string[], name: string) { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : undefined; }
 
 /** What fits this machine, in plain words, with the exact commands. */
+async function scout(args: string[]) {
+  const { Scout, ideaFor, LANES } = await import('./scout/scout.js');
+  const { REALMS } = await import('./work/problems.js');
+  const s = new Scout();
+  if (args.includes('--refresh')) {
+    console.log('Reading the public catalogues (teorth/erdosproblems, google-deepmind/formal-conjectures)…');
+    const r = await s.refresh();
+    console.log(`Read ${r.erdos} Erdős problems and ${r.fc} formal-conjectures files on ${r.read}.\n`);
+  }
+  const id = flag(args, '--propose');
+  if (id) {
+    const c = s.get(id);
+    if (!c) { console.log(`No problem with id ${id}. Run constellate scout to list them.`); process.exitCode = 1; return; }
+    if (c.on_network) { console.log(`"${c.title}" is already on the network: open it in the app (constellate serve) and lend a computer to it.`); return; }
+    const idea = ideaFor(c);
+    console.log(`Title:  ${idea.title}\nRealm:  ${idea.realm}\nGoal:   ${idea.goal.split('\n').filter(Boolean).join('\n        ')}\nDone:   ${idea.done}`);
+    console.log(`\nTo post it, open Proposals in the app (constellate serve), choose Suggested and press "Propose this" on it,\nor ask your agent to propose ${c.id} (the proposals_submit tool). It is checked against the constitution first.`);
+    return;
+  }
+  const laneArg = flag(args, '--lane');
+  const LANE_ARG: Record<string, (typeof LANES)[number]> = { quick: 'quick_win', quick_win: 'quick_win', moonshot: 'moonshot', formal: 'formal', needs_check: 'needs_check' };
+  if (laneArg && laneArg !== 'all' && !LANE_ARG[laneArg]) { console.log('--lane is quick, moonshot, formal or all'); process.exitCode = 1; return; }
+  const realm = flag(args, '--realm') as (typeof REALMS)[number] | undefined;
+  if (realm && !REALMS.includes(realm)) { console.log(`--realm is one of ${REALMS.join(', ')}`); process.exitCode = 1; return; }
+  const limit = Number(flag(args, '--limit')) || (laneArg ? 15 : 5);
+  const all = args.includes('--all') || laneArg === 'all';
+  const LABEL: Record<string, string> = { quick_win: 'Quick wins: a machine checks an answer, or a finite search could settle it', moonshot: 'Moonshots: big prizes and famous problems', formal: 'Stated in Lean: a proof is machine-checkable', needs_check: 'Not yet machine-checkable' };
+  const lanes = laneArg && laneArg !== 'all' ? [LANE_ARG[laneArg]] : LANES.filter((l) => all || l !== 'needs_check');
+  for (const l of lanes) {
+    const r = s.list({ lane: l, realm, q: flag(args, '--q'), limit, all });
+    console.log(`${LABEL[l]} (${r.counts[l]})`);
+    for (const c of r.items) {
+      console.log(`  ${String(c.score).padStart(3)}  ${c.title}${c.prize ? `  [${c.prize}]` : ''}${c.on_network ? '  (on the network)' : ''}`);
+      if (c.statement) console.log(`       ${c.statement.length > 150 ? `${c.statement.slice(0, 147)}…` : c.statement}`);
+      console.log(`       ${c.id} · ${c.field} · ${c.why[0] ?? ''}`);
+    }
+    console.log('');
+  }
+  const age = s.age();
+  if (age === null) console.log('No catalogue on this computer yet: constellate scout --refresh reads the public ones (the app does this on its own).');
+  else console.log(`Catalogues read ${age === 0 ? 'today' : `${age} day${age === 1 ? '' : 's'} ago`}${age >= 7 ? ' (constellate scout --refresh for the latest)' : ''}. Propose one: constellate scout --propose ID`);
+}
+
 function models() {
   const device = detectDevice();
   const s = suggestFor(device);

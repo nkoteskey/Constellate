@@ -733,3 +733,15 @@ Still stop points, deliberately not approved on the owner's behalf: publishing a
 - **Every check describes its format** (`shape`). The planner brief and `proposals_submit` list them all, so proposers can pick a check that fits.
 - **Two more seeded problems** (`src/seed/open-problems.ts`, docs/OPEN_PROBLEMS.md): a graph that would move R(5,5), R(4,6) or R(3,10), and a colouring that would push W(2,7) or W(5,3). Sources quoted with the date read.
 - **Gate:** `test/gates/checkers.test.ts`: known answers (Paley graphs, the 28-mark optimal Golomb ruler, W(2,3) = 9 by exhaustion, the 4-point cap in F_3^2), the clique search against brute force, and timing at the R(5,5) search size.
+
+### The problem scout (Nov 11)
+- **Proposing a problem is one press** (`src/scout/`, docs/SCOUT.md). The scout reads two public Apache-2.0 catalogues of open problems (teorth/erdosproblems: 1,221 problems; google-deepmind/formal-conjectures: 1,860 open statements in 1,094 files), ranks them by how close a machine is to checking an answer, and fills in the propose form. It never posts on its own.
+  - Four lanes: quick wins (a witness check or a finite search could settle it), moonshots (prized, Millennium, Hilbert or encyclopaedia-famous), stated in Lean, and not yet checkable (hidden unless asked for).
+  - Every card says why it ranks where it does, links its source with the date read, and shows the statement's TeX as plain Unicode maths (`src/web/public/js/mathtext.js`).
+- **Where:** the app's Proposals → Suggested tab (lanes, search, **Propose this**; problems already proposed say "Already an idea"), `constellate scout` (`--lane`, `--realm`, `--q`, `--refresh`; `--propose ID` prints the idea, it doesn't post), and the read-only MCP tool `problems_scout` in full mode, which tells the agent to let its person choose.
+- **People are never named.** Contributor notes, reference lists, crediting sentences, OEIS signatures and paper author lists are skipped before anything is read, and what is left must pass the privacy check. On the real catalogues the ranking has no string the check flags.
+- **Credit:** a proposal carries its source link and the date read; when the statement text is formal-conjectures', it names that catalogue and its licence. Notice in `data/seed/LICENSES/NOTICE.md`; listed in docs/SEED_SOURCES.md.
+- **Honest about checking:** the network has no check for Lean statements yet. docs/SCOUT.md describes the planned one (a pinned commit, the statement unchanged, no `sorry`, standard axioms only, on computers that opted into Lean builds).
+- **Other realms** get a scouting brief (public source with the date read, people named only by @handle or organisation) until catalogue readers exist for them.
+- **Gate:** `test/gates/scout.test.ts`. Fixtures copy the real formats with text planted where the real catalogues hold names; none of it reaches the parsers, the ranking, the copy on disk, the API, MCP or the page.
+- **Fixed in passing:** `test/gates/agent_tools.test.ts` compared a temp folder with the child's working folder, which on macOS differ by `/private`; it now compares real paths.

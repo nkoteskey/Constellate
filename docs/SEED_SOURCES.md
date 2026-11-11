@@ -18,6 +18,21 @@ every record. The rules, from CLAUDE.md:
 Licence texts and notices are in `data/seed/LICENSES/` (`NOTICE.md`, `CC-BY-4.0.txt` and the rest).
 Agents see the licence and attribution on every `answers_lookup` result that has one.
 
+## Read by the scout, not seeded
+
+The problem scout (docs/SCOUT.md) reads two public catalogues of open problems on each person's computer to
+suggest problems worth proposing. Nothing from them is in this repository or the starter library.
+
+| Source | What it reads | Licence |
+|---|---|---|
+| [teorth/erdosproblems](https://github.com/teorth/erdosproblems) | number, status, prize, tags, OEIS links, whether formalised | Apache-2.0 |
+| [google-deepmind/formal-conjectures](https://github.com/google-deepmind/formal-conjectures) | file titles, open statements' names, docstrings and subject codes | Apache-2.0 |
+
+People are never named: contributor notes, reference lists and sentences that credit someone are skipped before
+anything is read, and what is left must pass the privacy check. A proposal made from a suggestion carries its
+source link, the date read, and, where the statement text is formal-conjectures', that catalogue and its licence.
+The notice is in `data/seed/LICENSES/NOTICE.md`.
+
 To refresh tldr-pages, clone it (`pages/common` and `pages/linux` are enough), then run
 `npm run build && node scripts/import-tldr.mjs <clone>`. Review the diff of `data/seed/tldr-pages.json`
 and update the commit in `NOTICE.md`.
