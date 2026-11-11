@@ -236,7 +236,7 @@ export function computePage(page) {
     <p class="muted" style="max-width:62ch">Local or hosted, open or closed: pass <code>--model provider/model</code>. Keys stay on your machine, read from the provider’s usual variable, and are never put in a record.</p>
     <div class="provider-grid">${PROVIDERS.map((p) => `<button class="card provider" data-spec="${esc(`${p.id}/${p.example}`)}" data-key="${esc(p.keyEnv ?? '')}" data-custom="${p.id === 'custom' ? 1 : ''}">
       <div class="provider-head"><b>${esc(p.name)}</b><span class="chip sm ${/free/.test(p.cost) ? 'ok' : ''}">${/free/.test(p.cost) ? '<span class="dot"></span>' : ''}${esc(p.cost)}</span></div>
-      <div class="faint" style="font-size:12.5px;margin-top:6px">${p.kind === 'local' ? 'Runs on your machine' : p.kind === 'custom' ? 'Your own server' : 'Hosted'}${p.openWeight === true ? ' · open weights' : p.openWeight === 'mixed' ? ' · open and closed' : ''}</div>
+      <div class="faint" style="font-size:12.5px;margin-top:6px">${p.cluster ? 'Your computers, pooled' : p.kind === 'local' ? 'Runs on your machine' : p.kind === 'custom' ? 'Your own server' : 'Hosted'}${p.openWeight === true ? ' · open weights' : p.openWeight === 'mixed' ? ' · open and closed' : ''}</div>
       ${p.note ? `<div class="muted" style="font-size:13px;margin-top:6px">${esc(p.note)}</div>` : ''}</button>`).join('')}</div>
     <div class="copy-row" style="margin-top:12px"><pre class="code" id="any-cmd">${RUN} contribute --model groq/llama-3.3-70b-versatile</pre><button class="btn" id="copy-any">${icon.copy}Copy</button></div>
     <p class="faint" style="font-size:12.5px;margin:6px 0 0">Model list reviewed ${esc(CATALOG_UPDATED)}. Paid models stop at the spending cap you set (<code>--cap-cents</code>).</p>

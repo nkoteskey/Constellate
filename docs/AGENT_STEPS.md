@@ -24,7 +24,11 @@ From a problem's page, or from its card on the Proposals page, one list of who c
    tools (`src/work/agent-runs.ts`) and uses the person's Claude plan.
 2. **Any other make and model this computer reaches** (`src/work/model-runs.ts`). The app does the steps with
    it, up to three:
-   - a model running locally in Ollama (`OLLAMA_HOST` is honoured) or LM Studio, which is free;
+   - a model running locally in Ollama (`OLLAMA_HOST` is honoured), LM Studio, MLX, llama.cpp or vLLM, which is
+     free;
+   - a model on computers pooled with this one, which is free and listed first: exo (several Macs as one bigger
+     model; `CONSTELLATE_EXO_URL` if it runs on another of them) or any OpenAI-compatible cluster at
+     `CONSTELLATE_CLUSTER_URL` (docs/CLUSTERS.md);
    - any provider whose key is saved in the app's encrypted key store (`constellate keys set openai`) or set in
      its usual variable: OpenAI, Gemini, Anthropic, Mistral, Groq, OpenRouter, DeepSeek, xAI and the rest of
      the catalogue;

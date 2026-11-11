@@ -88,7 +88,9 @@ cd desktop && npx electron-builder --config builder.config.cjs
 The Compute page in the desktop app has one card with a switch, its limits and a log. **Lending is off by
 default:** nothing runs until the person presses **Start lending**. The switch starts
 `constellate contribute --lend` in the background, and it keeps going when the window is closed (the tray icon
-says so).
+says so). When several computers are pooled into one bigger model (exo, or a cluster URL) and no model is chosen
+in the app, the card says the pool is ready and the switch uses it, with nothing to install first
+(docs/CLUSTERS.md).
 
 - **Limits,** set once on the card and kept in `~/.constellate/lend.json`. The lending process rereads them, so
   a change takes effect without a restart.

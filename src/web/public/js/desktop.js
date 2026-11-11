@@ -17,16 +17,17 @@ export async function lendCard(slot) {
   const draw = async () => {
     const s = await desk.status();
     const sg = s.suggestion;
-    const local = [sg?.primary, sg?.verifier].filter((m) => m && m.run?.provider === 'ollama');
+    const pool = s.pool; // computers pooled with this one, with a model ready: nothing to install first (docs/CLUSTERS.md)
+    const local = pool ? [] : [sg?.primary, sg?.verifier].filter((m) => m && m.run?.provider === 'ollama');
     const missing = s.ollama.running ? local.filter((m) => !s.ollama.models.some((x) => x === m.run.model || x === `${m.run.model}:latest`)) : [];
     const on = s.settings.contribute;
     let body;
-    if (!sg?.primary && !s.settings.model) body = `<p class="muted" style="margin:0">${esc(sg?.notes?.[0] ?? 'No free open model fits this computer.')} You can still lend it with a hosted model: choose one below.</p>`;
+    if (!sg?.primary && !s.settings.model && !pool) body = `<p class="muted" style="margin:0">${esc(sg?.notes?.[0] ?? 'No free open model fits this computer.')} You can still lend it with a hosted model: choose one below.</p>`;
     else if (local.length && !s.ollama.running) body = `<p class="muted" style="margin:0">The free models run in <b>Ollama</b>, a small free app. Install it, open it, then come back here.</p>
       <div class="row" style="margin-top:12px"><button class="btn primary" id="dk-ollama">Get Ollama</button><button class="btn ghost" id="dk-recheck">I’ve installed it</button></div>`;
     else if (missing.length) body = `<p class="muted" style="margin:0">One download and you’re ready: ${missing.map((m) => `<b>${esc(m.name)}</b> (~${m.needGB} GB)`).join(' and ')}. Free, open weights, and it stays on this computer.</p>
       <div class="row" style="margin-top:12px"><button class="btn primary" id="dk-pull">Download ${missing.length > 1 ? 'both' : 'it'}</button></div><div id="dk-progress" class="faint" style="font-size:13px;margin-top:8px"></div>`;
-    else body = `<p class="muted" style="margin:0">${on ? 'Lending this computer within the limits below. It stops when you need it.' : `Ready: ${esc(sg?.primary?.name ?? s.settings.model)}${sg?.verifier ? ` with ${esc(sg.verifier.name)} as the checker` : ''}. It helps only within the limits below, and only while this computer is idle. Off until you start it.`}</p>
+    else body = `<p class="muted" style="margin:0">${on ? 'Lending this computer within the limits below. It stops when you need it.' : `Ready: ${pool ? `${esc(pool.model)} on ${esc(pool.what)}` : `${esc(sg?.primary?.name ?? s.settings.model)}${sg?.verifier ? ` with ${esc(sg.verifier.name)} as the checker` : ''}`}. It helps only within the limits below, and only while this computer is idle. Off until you start it.`}</p>
       <div class="row" style="margin-top:12px"><button class="btn ${on ? '' : 'primary'}" id="dk-toggle" aria-pressed="${on}">${on ? 'Stop lending' : 'Start lending'}</button>
       <label class="row faint" style="gap:6px;font-size:13px"><input type="checkbox" id="dk-login" ${s.settings.openAtLogin ? 'checked' : ''}> Open at login</label></div>
       ${s.contribute?.state === 'failed' ? `<p class="faint" style="font-size:13px;color:var(--warn);margin:8px 0 0">${esc(s.contribute.error)}</p>` : ''}`;

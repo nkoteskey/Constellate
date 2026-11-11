@@ -3,7 +3,8 @@ import { join } from 'node:path';
 import { homedir } from 'node:os';
 import type { Hub } from '../hub/hub.js';
 import type { ModelRunner } from '../contributor/models.js';
-import { PROVIDERS, runnerFromSpec, ollamaUrl } from '../contributor/catalog.js';
+import { PROVIDERS, runnerFromSpec } from '../contributor/catalog.js';
+import { describeServer, findLocalServers, pools, specFor, type ServerPlaces } from '../contributor/local-servers.js';
 import { KeyVault } from '../contributor/keyvault.js';
 import { openSteps, submitStep } from './agent-step.js';
 import type { AgentRun } from './agent-runs.js';
@@ -11,7 +12,8 @@ import type { AgentRun } from './agent-runs.js';
 /**
  * "Have your agent work on it" with any make and model (docs/AGENT_STEPS.md). When Claude Code isn't installed,
  * the app does the steps itself with a model this computer can reach:
- *  - a model running locally (Ollama, LM Studio), free;
+ *  - a model running locally (Ollama, LM Studio, MLX, llama.cpp, vLLM), free;
+ *  - a model on computers pooled with this one (exo, or CONSTELLATE_CLUSTER_URL), free; listed first, as the biggest;
  *  - any provider whose key is saved in the app's encrypted key store (`constellate keys set PROVIDER`) or in its
  *    usual environment variable: OpenAI, Gemini, Anthropic, Mistral, Groq, OpenRouter, DeepSeek, xAI…;
  *  - the model the app was started with (`constellate serve --model`).
@@ -24,23 +26,13 @@ const vaultFile = () => join(process.env.CONSTELLATE_HOME ?? join(homedir(), '.c
 let vault: KeyVault | undefined;
 export const appVault = () => (vault ??= new KeyVault(vaultFile()));
 
-async function getJson(url: string, ms = 800): Promise<unknown> {
-  try { const r = await fetch(url, { signal: AbortSignal.timeout(ms) }); return r.ok ? await r.json() : null; } catch { return null; }
-}
-
 /** Every model this computer can use right now, local and free first. */
-export async function reachableModels(opts: { appModel?: ModelRunner; env?: NodeJS.ProcessEnv; vault?: { names(): string[] } } = {}): Promise<ReachableModel[]> {
+export async function reachableModels(opts: { appModel?: ModelRunner; env?: NodeJS.ProcessEnv; vault?: { names(): string[] }; places?: ServerPlaces } = {}): Promise<ReachableModel[]> {
   const env = opts.env ?? process.env;
   const out: ReachableModel[] = [];
   if (opts.appModel) out.push({ spec: opts.appModel.id.replace(':', '/'), name: opts.appModel.id.split(':').slice(1).join(':'), where: 'app', note: 'the model this app was started with' });
-  const [ollama, lmstudio] = await Promise.all([getJson(`${ollamaUrl(env)}/api/tags`), getJson('http://127.0.0.1:1234/v1/models')]);
-  for (const m of ((ollama as { models?: { name: string }[] } | null)?.models ?? []).slice(0, 8)) {
-    if (/embed/i.test(m.name)) continue;
-    out.push({ spec: `ollama/${m.name}`, name: m.name, where: 'local', note: 'Ollama on this computer, free' });
-  }
-  for (const m of ((lmstudio as { data?: { id: string }[] } | null)?.data ?? []).slice(0, 8)) {
-    if (/embed/i.test(m.id)) continue;
-    out.push({ spec: `lmstudio/${m.id}`, name: m.id, where: 'local', note: 'LM Studio on this computer, free' });
+  for (const s of await findLocalServers({ env, places: opts.places })) {
+    for (const m of s.models.slice(0, 8)) out.push({ spec: specFor(s, m), name: m, where: 'local', note: `${describeServer(s)}, free${pools(s) ? ': room for big models' : ''}` });
   }
   let saved: string[] = [];
   try { saved = (opts.vault ?? appVault()).names(); } catch { /* no key store yet */ }

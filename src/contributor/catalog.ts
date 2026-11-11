@@ -19,14 +19,20 @@ export function runnerFromSpec(spec: string, opts: { endpoint?: string; key?: st
   let baseUrl = provider.baseUrl;
   // Ollama's own setting for where it listens (another port, or another computer).
   if (provider.id === 'ollama' && env.OLLAMA_HOST) baseUrl = `${ollamaUrl(env)}/v1`;
+  // exo answers for every computer in its cluster, so it can be reached on another one.
+  if (provider.id === 'exo' && env.CONSTELLATE_EXO_URL?.trim()) baseUrl = `${env.CONSTELLATE_EXO_URL.trim().replace(/\/+$/, '')}/v1`;
   const port = provider.kind === 'local' ? model.match(/@(\d{2,5})$/) : null;
   if (port) { model = model.slice(0, port.index); baseUrl = baseUrl!.replace(/:\d+\//, `:${port[1]}/`); }
   if (provider.id === 'custom') {
     if (!opts.endpoint) throw new Error('a custom model needs --endpoint <OpenAI-compatible URL>');
     baseUrl = opts.endpoint;
   }
+  if (provider.id === 'cluster') {
+    baseUrl = (opts.endpoint ?? env.CONSTELLATE_CLUSTER_URL ?? '').trim();
+    if (!baseUrl) throw new Error('a cluster model needs CONSTELLATE_CLUSTER_URL (its OpenAI-compatible URL) or --endpoint');
+  }
   // Keys: the encrypted on-device vault first (`constellate keys set`), then the provider's usual variable.
-  const key = opts.key ?? opts.vault?.get(provider.id) ?? (provider.keyEnv ? env[provider.keyEnv] : provider.id === 'custom' ? env.MODEL_API_KEY : undefined);
+  const key = opts.key ?? opts.vault?.get(provider.id) ?? (provider.keyEnv ? env[provider.keyEnv] : provider.kind === 'custom' ? env.MODEL_API_KEY : undefined);
   if (provider.kind === 'hosted' && !key) throw new Error(`${provider.name} needs an API key: run \`constellate keys set ${provider.id}\` (stored encrypted on this device) or set ${provider.keyEnv}`);
   const family = opts.family ?? familyOf(model);
   const size: ModelSize = opts.size ?? (/(\d+)b/i.test(model) && Number(model.match(/(\d+)b/i)![1]) < 20 ? 'small' : 'large');
@@ -46,5 +52,5 @@ export function ollamaUrl(env: NodeJS.ProcessEnv = process.env) {
 
 /** For `constellate models`: every way to bring a model, in one list. */
 export function providerTable() {
-  return PROVIDERS.map((p) => ({ id: p.id, name: p.name, where: p.kind, cost: p.cost, open_weights: p.openWeight, key: p.keyEnv ?? '', example: `${p.id}/${p.example}` }));
+  return PROVIDERS.map((p) => ({ id: p.id, name: p.name, where: p.kind, cost: p.cost, open_weights: p.openWeight, key: p.keyEnv ?? '', url: p.urlEnv ?? '', example: `${p.id}/${p.example}` }));
 }

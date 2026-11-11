@@ -745,3 +745,11 @@ Still stop points, deliberately not approved on the owner's behalf: publishing a
 - **Other realms** get a scouting brief (public source with the date read, people named only by @handle or organisation) until catalogue readers exist for them.
 - **Gate:** `test/gates/scout.test.ts`. Fixtures copy the real formats with text planted where the real catalogues hold names; none of it reaches the parsers, the ranking, the copy on disk, the API, MCP or the page.
 - **Fixed in passing:** `test/gates/agent_tools.test.ts` compared a temp folder with the child's working folder, which on macOS differ by `/private`; it now compares real paths.
+
+### Pooled computers (Nov 11)
+- **Several computers lend as easily as one** (`src/contributor/local-servers.ts`, docs/CLUSTERS.md). Constellate finds computers pooled into one bigger model on its own: [exo](https://github.com/exo-explore/exo) (Macs over Thunderbolt 5 or the network; its placed models and each computer's memory), or any OpenAI-compatible pool at `CONSTELLATE_CLUSTER_URL`. `CONSTELLATE_EXO_URL` reaches exo on another of its computers.
+- **Where:** `constellate models` shows what's running now, pools first, with how many computers and how much memory. `contribute` with no model named gives the pool the steps that need a big model, and a suggested small model already running here the rest. The desktop app's **Lend this computer** card says when a pool is ready and its switch uses it. The app's model lists offer pooled models first. `--model exo/…` and `--model cluster/…` name one directly.
+- **Nothing downloaded on the person's behalf:** exo with no model placed says to choose one in its dashboard; a missing small model is named with the command to get it.
+- Also finds LM Studio, llama.cpp and vLLM (and honours `OLLAMA_HOST`), so models already running anywhere on the computer are offered.
+- **Honest about what isn't done:** lending limits are read on this computer only (the other pooled computers follow exo's settings); not yet run on real pooled hardware (the gate uses stand-ins that answer like exo); Apple's reported Thunderbolt pooling has no public interface yet, and `CONSTELLATE_CLUSTER_URL` covers it if it serves an OpenAI-compatible one.
+- **Gate:** `test/gates/clusters.test.ts`.

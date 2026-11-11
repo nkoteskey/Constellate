@@ -16,6 +16,7 @@ import { detectDevice, suggestFor, readConditions, POLITE } from './contributor/
 import { Lend, policyFor, restAfter } from './contributor/lend.js';
 import { registerContributorRoutes } from './contributor/dashboard.js';
 import { runnerFromSpec, providerTable, commands, CATALOG_UPDATED, PROVIDERS } from './contributor/catalog.js';
+import { bestCluster, clusterPlan, describeServer, findLocalServers, specFor } from './contributor/local-servers.js';
 import { KeyVault } from './contributor/keyvault.js';
 import { fundingConfig } from './economy/funding.js';
 import { CreditLedger } from './economy/credits.js';
@@ -55,7 +56,8 @@ const USAGE = `Constellate — where humans and agents gather into something gre
   constellate scout      Open problems worth the network's time, ranked: quick wins, moonshots, Lean-stated
       [--lane quick|moonshot|formal|all] [--realm R] [--q WORDS] [--limit N] [--refresh] [--propose ID]
       --refresh reads the public catalogues (Erdős problems, formal-conjectures); --propose prints the idea to post
-  constellate models     What this machine can run: free open-weight models that fit, and every provider
+  constellate models     What this machine can run: model servers running now (pooled ones too), free
+                         open-weight models that fit, and every provider
   constellate contribute Donate idle compute: detect hardware, pick a model, work politely
       [--model PROVIDER/MODEL] [--verifier PROVIDER/MODEL] [--cap-cents N] [--endpoint URL] [--no-ui] [--port N]
       [--lend]  follow the limits set in the app (hours per night, never on battery, CPU cap), keep a log, pledge the hours
@@ -63,9 +65,12 @@ const USAGE = `Constellate — where humans and agents gather into something gre
       Any model works: ollama/qwen3:14b, lmstudio/…, groq/llama-3.3-70b-versatile,
       openrouter/<any>, huggingface/…, gemini/…, openai/…, anthropic/claude-opus-5-5,
       custom/NAME --endpoint URL. Keys come from the provider's variable (e.g. GROQ_API_KEY).
+      With no --model, computers pooled with this one come first: exo (several Macs as one bigger model)
+      or any OpenAI-compatible cluster at CONSTELLATE_CLUSTER_URL; then the suggested local model.
 
 Environment: X0X_API (default http://127.0.0.1:12700), CONSTELLATE_HOME (~/.constellate),
-CONSTELLATE_PREVIEW=off, CONSTELLATE_PRIVACY=standard|strict, CONSTELLATE_DENY_TERMS=a,b`;
+CONSTELLATE_PREVIEW=off, CONSTELLATE_PRIVACY=standard|strict, CONSTELLATE_DENY_TERMS=a,b,
+OLLAMA_HOST, CONSTELLATE_EXO_URL (default http://127.0.0.1:52415), CONSTELLATE_CLUSTER_URL`;
 
 /** A topic's page is written on its own once it has this many verified records (docs/MEMORY.md). */
 const AUTO_PAGE_MIN_VERIFIED = Number(process.env.CONSTELLATE_PAGE_MIN_VERIFIED ?? 3);
@@ -469,11 +474,22 @@ async function scout(args: string[]) {
   else console.log(`Catalogues read ${age === 0 ? 'today' : `${age} day${age === 1 ? '' : 's'} ago`}${age >= 7 ? ' (constellate scout --refresh for the latest)' : ''}. Propose one: constellate scout --propose ID`);
 }
 
-function models() {
+async function models() {
   const device = detectDevice();
   const s = suggestFor(device);
   const gb = (m: { needGB: number }) => `~${m.needGB} GB`;
   console.log(`This machine: ${device.cpu}, ${device.cores} cores, ${device.memGB} GB memory${device.gpu ? `, ${device.gpu} (${device.gpuGB} GB)` : ''}.`);
+  const servers = await findLocalServers();
+  if (servers.length) {
+    console.log('\nRunning now:');
+    for (const sv of servers) {
+      console.log(`  ${describeServer(sv)}: ${sv.models.length ? sv.models.slice(0, 6).map((m) => specFor(sv, m)).join(', ') : 'no model ready'}`);
+      if (sv.note) console.log(`    ${sv.note}`);
+    }
+  }
+  const best = bestCluster(servers);
+  if (best) console.log(`\n${describeServer(best)} is ready. \`constellate contribute\` uses it on its own, for steps that need a big model.`);
+  else if (!servers.some((sv) => sv.provider === 'exo')) console.log('\nMore than one computer? exo (github.com/exo-explore/exo) pools Macs into one bigger model, over Thunderbolt 5 or your network. Constellate finds it on its own.');
   if (s.primary) {
     console.log(`\nSuggested (free, open weights, runs on this machine; ${s.where}, ${s.budgetGB} GB left for a model):`);
     console.log(`  Main model:  ${s.primary.name} (${s.primary.family}, ${gb(s.primary)}) for ${s.primary.good}`);
@@ -484,8 +500,23 @@ function models() {
   if (!s.primary) { console.log('\nFree hosted options:'); for (const h of s.hosted) console.log(`  ${h.provider}/${h.model}  (${h.why})`); }
   console.log(`\nTo start:\n${commands(s).map((c) => `  ${c}`).join('\n')}`);
   console.log(`\nOr bring any model (--model PROVIDER/MODEL):`);
-  for (const p of providerTable()) console.log(`  ${p.id.padEnd(12)} ${p.name.padEnd(28)} ${p.cost.padEnd(18)} ${p.key ? `key: ${p.key}` : ''}`);
+  for (const p of providerTable()) console.log(`  ${p.id.padEnd(12)} ${p.name.padEnd(28)} ${p.cost.padEnd(18)} ${p.key ? `key: ${p.key}` : p.url ? `url: ${p.url}` : ''}`);
   console.log(`\nModel list reviewed ${CATALOG_UPDATED}.`);
+}
+
+/**
+ * `contribute` with no model named, when a pooled server is running: its model takes the big steps. A model this
+ * computer already has running takes the small ones and checks other computers' work, if it is a different family.
+ * Nothing is downloaded on the person's behalf; what's missing is said, with the command.
+ */
+async function clusterRunners(s: ReturnType<typeof suggestFor>, verifier?: string): Promise<{ runners: ModelRunner[]; notes: string[] } | undefined> {
+  const plan = clusterPlan(await findLocalServers(), s);
+  if (!plan) return undefined;
+  const runners = plan.specs.map((spec) => runnerFromSpec(spec, { vault: vault() }));
+  if (verifier) runners.push(runnerFromSpec(verifier, { vault: vault() }));
+  const notes = [`Found ${describeServer(plan.server)}: ${plan.server.models[0]} takes ${plan.big ? 'the steps that need a big model' : 'the steps'}.`];
+  if (runners.length === 1 && s.primary) notes.push(`For small steps and checking others' work too: ${commands(s)[0]}, then run this again.`);
+  return { runners, notes };
 }
 
 async function contribute(args: string[]) {
@@ -496,13 +527,16 @@ async function contribute(args: string[]) {
   let spec = flag(args, '--model');
   if (args.includes('--claude')) spec = 'anthropic/claude-opus-5-5';
   if (endpoint && spec && !spec.includes('/')) spec = `custom/${spec}`;
-  if (!spec) {
+  // No model named: computers pooled with this one (exo, CONSTELLATE_CLUSTER_URL) come first, as the biggest.
+  const pooled = spec ? undefined : await clusterRunners(s, flag(args, '--verifier'));
+  if (!spec && !pooled) {
     if (!s.primary) { console.log(`${s.notes[0]}\nTry a free hosted model: ${commands(s)[0]}`); return; }
     spec = `${s.primary.run.provider}/${s.primary.run.model}`;
   }
-  const runners: ModelRunner[] = [runnerFromSpec(spec, { endpoint, family: flag(args, '--family'), vault: vault() })];
-  const verifierSpec = flag(args, '--verifier') ?? (flag(args, '--model') ? undefined : s.verifier ? `${s.verifier.run.provider}/${s.verifier.run.model}` : undefined);
+  const runners: ModelRunner[] = pooled?.runners ?? [runnerFromSpec(spec!, { endpoint, family: flag(args, '--family'), vault: vault() })];
+  const verifierSpec = pooled ? undefined : flag(args, '--verifier') ?? (flag(args, '--model') ? undefined : s.verifier ? `${s.verifier.run.provider}/${s.verifier.run.model}` : undefined);
   if (verifierSpec) runners.push(runnerFromSpec(verifierSpec, { endpoint, vault: vault() }));
+  for (const line of pooled?.notes ?? []) console.log(line);
   console.log(`Device: ${device.cpu}, ${device.memGB} GB${device.gpu ? `, ${device.gpu}` : ''}. Models: ${runners.map((r) => `${r.id} (${r.family})`).join(', ')}.`);
   const board = hub.x0x ? new X0xBoard(hub.x0x, 'constellate/v1/board') : new MemoryBoard();
   const budget = new Budget(Number(flag(args, '--cap-cents') ?? 0) || (runners.some((r) => r.costPerCall) ? 100 : Infinity));

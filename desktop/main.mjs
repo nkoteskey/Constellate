@@ -52,21 +52,34 @@ async function suggestion() {
   return { device: d, ...device.suggestFor(d) };
 }
 const spec = (m) => (m ? `${m.run.provider}/${m.run.model}` : null);
+/** Computers pooled with this one (exo, or a cluster at CONSTELLATE_CLUSTER_URL) with a model ready, if any (docs/CLUSTERS.md). */
+async function pool() {
+  const ls = await import(pathToFileURL(join(ROOT, 'dist', 'contributor', 'local-servers.js')).href);
+  const best = ls.bestCluster(await ls.findLocalServers());
+  return best ? { what: ls.describeServer(best), model: best.models[0] } : null;
+}
 
 async function startContributor() {
-  const s = await suggestion();
-  const model = settings.model ?? spec(s.primary);
-  if (!model) throw new Error(s.notes?.[0] ?? 'No open model fits this computer. Add a hosted model from the Compute page.');
-  const verifier = settings.verifier ?? (settings.model ? null : spec(s.verifier));
-  const local = [model, verifier].filter((m) => m?.startsWith('ollama/')).map((m) => m.slice(7));
-  if (local.length) {
-    const o = await ollamaStatus();
-    if (!o.running) throw Object.assign(new Error('Ollama runs the free models. Install it, open it, then try again.'), { code: 'ollama-missing' });
-    const missing = local.filter((m) => !hasModel(o.models, m));
-    if (missing.length) throw Object.assign(new Error(`Download ${missing.join(' and ')} first.`), { code: 'model-missing', missing });
+  // No model chosen and a pool is ready: `contribute` gives it the big steps on its own (and a small model already
+  // running here the rest), so there is nothing to install or download first.
+  const pooled = settings.model ? null : await pool().catch(() => null);
+  let models = [];
+  if (!pooled) {
+    const s = await suggestion();
+    const model = settings.model ?? spec(s.primary);
+    if (!model) throw new Error(s.notes?.[0] ?? 'No open model fits this computer. Add a hosted model from the Compute page.');
+    const verifier = settings.verifier ?? (settings.model ? null : spec(s.verifier));
+    const local = [model, verifier].filter((m) => m?.startsWith('ollama/')).map((m) => m.slice(7));
+    if (local.length) {
+      const o = await ollamaStatus();
+      if (!o.running) throw Object.assign(new Error('Ollama runs the free models. Install it, open it, then try again.'), { code: 'ollama-missing' });
+      const missing = local.filter((m) => !hasModel(o.models, m));
+      if (missing.length) throw Object.assign(new Error(`Download ${missing.join(' and ')} first.`), { code: 'model-missing', missing });
+    }
+    models = ['--model', model, ...(verifier ? ['--verifier', verifier] : [])];
   }
   await contributor?.stop();
-  contributor = new Service({ ...common, name: 'contributor', args: ['contribute', '--lend', '--model', model, ...(verifier ? ['--verifier', verifier] : [])], env: x0x.env(), ready: () => isListening(DASH_URL) });
+  contributor = new Service({ ...common, name: 'contributor', args: ['contribute', '--lend', ...models], env: x0x.env(), ready: () => isListening(DASH_URL) });
   return contributor.start();
 }
 
@@ -145,7 +158,7 @@ function status() {
 const fromApp = (e) => { try { return new URL(e.senderFrame.url).origin === new URL(APP_URL).origin; } catch { return false; } };
 function handle(channel, fn) { ipcMain.handle(channel, async (e, ...a) => { if (!fromApp(e)) throw new Error('Not allowed'); return fn(e, ...a); }); }
 
-handle('desktop:status', async () => ({ ...status(), ollama: await ollamaStatus(), suggestion: await suggestion().catch(() => null) }));
+handle('desktop:status', async () => ({ ...status(), ollama: await ollamaStatus(), suggestion: await suggestion().catch(() => null), pool: settings.model ? null : await pool().catch(() => null) }));
 handle('desktop:contribute', (_e, on) => setContribute(Boolean(on)));
 handle('desktop:setModel', (_e, model, verifier) => { save({ model: model || null, verifier: verifier || null }); return status().settings; });
 // Lending limits and the log of what ran (src/contributor/lend.ts): files the lending process rereads as they change.
