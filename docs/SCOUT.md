@@ -103,4 +103,4 @@ your agent), and it goes live once the constitution check clears it.
 The catalogues are mathematics. For the other realms (life sciences, planet and energy, philosophy and
 ethics, art and creativity) `problems_scout` returns a scouting brief instead: where open problems in that
 realm are listed publicly, and the rules for proposing one (a public source URL with the date read; people
-named only by a public @handle or an organisation). Catalogue readers for those realms are tracked as an issue.
+named only by a public @handle or an organisation). Catalogue readers for those realms are tracked in issue #36.

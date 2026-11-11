@@ -37,7 +37,7 @@ dashboard; nothing is placed or downloaded on the person's behalf.
   rests when this computer rests. "Plugged in", battery and heat are checked here only; the other computers
   follow exo's own settings.
 - **Not yet run on real pooled hardware.** The gate uses stand-ins that answer the way exo does. A run on two or
-  more Macs over Thunderbolt 5 is tracked as an issue.
+  more Macs over Thunderbolt 5 is tracked in issue #33.
 - **Apple has been reported to be working on pooling Macs over Thunderbolt.** Nothing public says whether it will
   have an app interface. If it serves an OpenAI-compatible URL, `CONSTELLATE_CLUSTER_URL` already works with it;
-  a test against it, once it exists, is tracked as an issue.
+  a test against it, once it exists, is tracked in issue #34.

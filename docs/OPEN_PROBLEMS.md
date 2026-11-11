@@ -56,7 +56,7 @@ planner brief and `proposals_submit` list every check with its format, so a prop
 - The Ramsey check is an exact clique search with a fixed step budget. A graph it can't settle within the budget
   is refused, never guessed, so every computer gives the same verdict.
 - Golomb rulers and cap sets have no seeded problem yet. The public sources read so far give their exact values
-  only where they're already settled, not a bound to beat.
+  only where they're already settled, not a bound to beat (issue #35).
 - Each check's proof of failure is concrete: the clique, the progression, the repeated difference, the three
   points on a line or the unsatisfied clause.
 
@@ -64,9 +64,9 @@ planner brief and `proposals_submit` list every check with its format, so a prop
 
 - **Lean statements of open conjectures** (for example Google DeepMind's formal-conjectures). The problem scout
   reads them as candidates, but checking a proof needs Mathlib on the verifying computer. That's the
-  Lean-project route (docs/LEAN_PROJECTS.md), not a quick check, so none is seeded as an open problem here.
+  Lean-project route (docs/LEAN_PROJECTS.md), not a quick check, so none is seeded as an open problem here (issue #30).
 - **Proofs that nothing exists** (an unsatisfiable formula, a Ramsey number pinned exactly). Checking them needs
-  a proof format such as DRAT and a checker for it.
+  a proof format such as DRAT and a checker for it (issue #31).
 - **OEIS sequences whose next term can only be checked by recomputing it in full.** Witness sequences like
   A001220 fit; others would make every check as expensive as the search.
 

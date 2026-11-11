@@ -110,10 +110,10 @@ Read 2026-11-11.
 ## Honest about what isn't done
 
 - **No account is set up.** Going live needs the owner's own Bluesky and Mastodon accounts and credentials, and a
-  decision about which account posts. Nothing in this repository creates an account or posts.
+  decision about which account posts (issue #28). Nothing in this repository creates an account or posts.
 - **How X counts a link wasn't confirmed.** Posts are fitted with every link at full length, which can only
   overcount.
 - **Bluesky has no idempotency key.** The outbox is saved after every post, so a restart never repeats one. If
   Bluesky accepts a post but the reply is lost, the next `send --yes` could post it again.
-- **Only in the terminal for now.** An announcements panel in the app (approve, skip, the X link) is a follow-up.
+- **Only in the terminal for now.** An announcements panel in the app (approve, skip, the X link) is issue #29.
 - **The gate uses stand-ins** for the Bluesky and Mastodon servers. No real post has been made.
