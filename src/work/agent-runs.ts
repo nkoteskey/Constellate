@@ -3,7 +3,7 @@ import { createInterface } from 'node:readline';
 import { dirname, delimiter } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import type { Hub } from '../hub/hub.js';
-import { claudeBinary, EXTRA_BIN_DIRS, pick, textOf, toolLine } from '../collective/planner.js';
+import { claudeBinary, claudeCodeReady, claudeKeyEnv, CLAUDE_NEEDS_KEY, EXTRA_BIN_DIRS, pick, textOf, toolLine } from '../collective/planner.js';
 import { claudeRun, deniedLine } from './claude-tools.js';
 
 /**
@@ -22,7 +22,8 @@ export class AgentRuns {
 
   get(id: string) { return this.runs.get(id) ?? null; }
   forProblem(problem: string) { return [...this.runs.values()].filter((r) => r.problem === problem).sort((a, b) => b.at.localeCompare(a.at)); }
-  available() { return !!claudeBinary(); }
+  /** Installed, with a Claude API key to run it on (never a Claude plan: claudeKeyEnv). */
+  available() { return claudeCodeReady(); }
 
   /** The line to give any connected agent. */
   prompt(problem: string, steps = MAX_STEPS) {
@@ -38,13 +39,15 @@ export class AgentRuns {
     if (running) return running; // one at a time per problem
     const bin = claudeBinary();
     if (!bin) throw new Error('Claude Code isn’t installed on this computer');
+    const keyed = claudeKeyEnv();
+    if (!keyed) throw new Error(CLAUDE_NEEDS_KEY);
     const r: AgentRun = { id: randomBytes(6).toString('hex'), problem, status: 'running', at: new Date().toISOString(), log: [], steps: 0 };
     this.runs.set(r.id, r);
     this.note(r, 'Starting Claude Code on this computer…');
     const cli = process.argv[1];
     const mcp = { mcpServers: { constellate: { command: process.execPath, args: [cli, 'mcp'], env: { ...pick(process.env, ['CONSTELLATE_HOME', 'X0X_DATA_DIR', 'X0X_API', 'ELECTRON_RUN_AS_NODE']), CONSTELLATE_APP_URL: process.env.CONSTELLATE_APP_URL ?? `http://127.0.0.1:${process.env.PORT ?? 4747}` } } } };
     const PATH = [dirname(bin), ...EXTRA_BIN_DIRS, process.env.PATH ?? ''].filter(Boolean).join(delimiter);
-    const env = { ...process.env, PATH };
+    const env = { ...keyed, PATH };
     // Only what it may use, decided up front: nobody is there to approve a tool while it runs (src/work/claude-tools.ts).
     const run = claudeRun(bin, { prompt: this.prompt(problem), mcp, mcpTools: ['work_step', 'failures_search', 'answers_lookup', 'skills_find'], env });
     this.note(r, `It may use Constellate's tools${run.tools.web ? ', web search and web fetch' : ''}${run.tools.code ? ', and run code in a scratch folder' : ''}.`);
@@ -68,7 +71,7 @@ export class AgentRuns {
         if (typeof ev.result === 'string' && ev.result.trim()) last = ev.result;
         const denied = (ev.permission_denials ?? []).map((d) => d.tool_name).filter((x): x is string => !!x);
         if (denied.length) this.note(r, deniedLine(denied));
-        this.note(r, `Claude Code finished in ${Math.round((ev.duration_ms ?? 0) / 1000)} s${ev.total_cost_usd ? ` (about $${ev.total_cost_usd.toFixed(2)} of your Claude usage)` : ''}.`);
+        this.note(r, `Claude Code finished in ${Math.round((ev.duration_ms ?? 0) / 1000)} s${ev.total_cost_usd ? ` (about $${ev.total_cost_usd.toFixed(2)}, billed to your Claude API key)` : ''}.`);
       }
     });
     const timer = setTimeout(() => child.kill(), 30 * 60_000);

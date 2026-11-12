@@ -29,7 +29,7 @@ system's app-data folder (`Constellate/`).
 
 - **Free models:** [Ollama](https://ollama.com/download). The app links to it and downloads
   the model you pick, with progress, only when you click. Hosted models (any provider) work
-  without Ollama; add a key on the Compute page.
+  without Ollama on your own API key, never a subscription; add the key on the Compute page.
 - **Nothing else.** Node, git and the terminal aren't needed.
 
 ## Building and releasing

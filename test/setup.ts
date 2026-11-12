@@ -28,3 +28,6 @@ process.env.CONSTELLATE_X0X ??= 'off';
 // Tests never start the real Claude Code installed on the machine running them (the app starts it on its own);
 // tests that need it point CONSTELLATE_CLAUDE at a stand-in.
 process.env.CONSTELLATE_CLAUDE ??= 'off';
+// Nor do they spend the API keys or the Claude plan of whoever runs them: tests that need a key set a fake one.
+for (const k of Object.keys(process.env)) if (/_API_KEY$/.test(k)) delete process.env[k];
+delete process.env.CLAUDE_CODE_OAUTH_TOKEN;

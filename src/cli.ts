@@ -617,7 +617,9 @@ async function contribute(args: string[]) {
     const stop = () => { void hub.collective.pledge(0).catch(() => {}).finally(() => process.exit(0)); setTimeout(() => process.exit(0), 3000).unref(); };
     process.once('SIGTERM', stop); process.once('SIGINT', stop);
   }
-  const workers = runners.map((r) => new Worker(hub, r, hub.problems, board, { policy, power: readConditions, budget }));
+  // Lent computers work only on problems the constitution has cleared, and check each result before it becomes a
+  // checkpoint. Without this a lent computer (and a hosted model's API key) would take steps of blocked problems too.
+  const workers = runners.map((r) => new Worker(hub, r, hub.problems, board, { policy, power: readConditions, budget, constitution: hub.collective.constitution }));
   // The contributor app: status and controls in the browser, on this machine only. --no-ui to skip.
   if (!args.includes('--no-ui')) {
     const web = new WebServer(hub);

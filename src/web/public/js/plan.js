@@ -53,7 +53,7 @@ export async function planSheet(idea, { onPublished } = {}) {
       // person has to start themselves. The first that runs on its own is chosen; one Start button.
       const o = d.options;
       const choices = [
-        ...(o.claude_code ? [{ id: 'claude_code', name: 'Claude Code', note: 'Runs on this computer with only Constellate’s search and report tools. Usually a few minutes; it uses your Claude plan.' }] : []),
+        ...(o.claude_code ? [{ id: 'claude_code', name: 'Claude Code', note: 'Runs on this computer with only Constellate’s search and report tools. Usually a few minutes, billed to your Claude API key (never a Claude plan).' }] : []),
         ...(o.models ?? []).map((m) => ({ id: `model:${m.spec}`, name: m.name, note: `${m.note[0].toUpperCase()}${m.note.slice(1)}. Writes the plan from what this computer knows.` })),
         ...(o.model && !(o.models ?? []).some((m) => m.where === 'app') ? [{ id: 'model', name: o.model, note: 'The model this app was started with.' }] : []),
         { id: 'any_agent', name: 'Claude Desktop, Cursor or another connected agent', note: 'You have to start it yourself: these apps can’t be started by another app. After Start, open it and say “check Constellate for planning requests”.' },

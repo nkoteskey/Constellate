@@ -8,6 +8,7 @@ import { spawn } from 'node:child_process';
 import { z } from 'zod';
 import type { Hub } from '../hub/hub.js';
 import type { ModelRunner } from '../contributor/models.js';
+import { KeyVault } from '../contributor/keyvault.js';
 import { ProblemBody, REALMS, orderProblem } from '../work/problems.js';
 
 /**
@@ -95,7 +96,7 @@ export class Planner {
 
   /** Which agents can plan on this computer right now. */
   options(): { claude_code: boolean; model: string | null } {
-    return { claude_code: !!claudeBinary(), model: this.model?.id ?? null };
+    return { claude_code: claudeCodeReady(), model: this.model?.id ?? null };
   }
 
   private idea(id: string) {
@@ -207,11 +208,13 @@ If plan_report isn't available or keeps failing, end your reply with the same { 
   private runClaudeCode(id: string) {
     const bin = claudeBinary();
     if (!bin) return this.fail(id, 'Claude Code isn’t installed on this computer');
+    const keyed = claudeKeyEnv();
+    if (!keyed) return this.fail(id, CLAUDE_NEEDS_KEY);
     const cli = process.argv[1];
     const mcp = { mcpServers: { constellate: { command: process.execPath, args: [cli, 'mcp'], env: { ...pick(process.env, ['CONSTELLATE_HOME', 'X0X_DATA_DIR', 'X0X_API', 'ELECTRON_RUN_AS_NODE']), CONSTELLATE_APP_URL: process.env.CONSTELLATE_APP_URL ?? `http://127.0.0.1:${process.env.PORT ?? 4747}` } } } };
     // Apps opened from the Dock get a bare PATH, and `claude` is a Node script: give it the usual places Node lives.
     const PATH = [dirname(bin), ...EXTRA_BIN_DIRS, process.env.PATH ?? ''].filter(Boolean).join(delimiter);
-    const env = { ...process.env, PATH };
+    const env = { ...keyed, PATH };
     // Only what it may use, decided up front: nobody is there to approve a tool while it runs (src/work/claude-tools.ts).
     const run = claudeRun(bin, { prompt: this.brief(id), mcp, mcpTools: ['plan_report', 'failures_search', 'answers_lookup', 'skills_find'], env });
     this.note(id, `It may use Constellate's tools${run.tools.web ? ', web search and web fetch' : ''}${run.tools.code ? ', and run code in a scratch folder' : ''}.`);
@@ -236,7 +239,7 @@ If plan_report isn't available or keeps failing, end your reply with the same { 
       } else if (ev.type === 'result') {
         { const denied = (ev.permission_denials ?? []).map((d) => d.tool_name).filter((x): x is string => !!x); if (denied.length) this.note(id, deniedLine(denied)); }
         if (typeof ev.result === 'string' && ev.result.trim()) lastText = ev.result;
-        this.note(id, `Claude Code finished in ${Math.round((ev.duration_ms ?? 0) / 1000)} s${ev.total_cost_usd ? ` (about $${ev.total_cost_usd.toFixed(2)} of your Claude usage)` : ''}${ev.is_error ? `, with an error: ${String(ev.result ?? '').slice(0, 200)}` : ''}.`);
+        this.note(id, `Claude Code finished in ${Math.round((ev.duration_ms ?? 0) / 1000)} s${ev.total_cost_usd ? ` (about $${ev.total_cost_usd.toFixed(2)}, billed to your Claude API key)` : ''}${ev.is_error ? `, with an error: ${String(ev.result ?? '').slice(0, 200)}` : ''}.`);
       }
     });
     let lastText = '';
@@ -283,6 +286,35 @@ export const EXTRA_BIN_DIRS = process.platform === 'win32'
   : ['/opt/homebrew/bin', '/usr/local/bin', join(homedir(), '.local', 'bin'), join(homedir(), '.claude', 'local'), join(homedir(), '.npm-global', 'bin'), join(homedir(), '.volta', 'bin'), join(homedir(), '.bun', 'bin')];
 
 export const pick = (env: NodeJS.ProcessEnv, keys: string[]) => Object.fromEntries(keys.filter((k) => env[k]).map((k) => [k, env[k]!]));
+
+/**
+ * The environment Claude Code runs in when this app starts it: on a Claude API key, never on a Claude plan.
+ * Anthropic doesn't allow apps to route requests through Free, Pro, Max or Ultra plan credentials, so a plan
+ * could be suspended for it. The key is the one saved for Anthropic in the encrypted key store
+ * (`constellate keys set anthropic`), or ANTHROPIC_API_KEY. A headless Claude Code run always uses ANTHROPIC_API_KEY
+ * when it's set, ahead of a plan login (code.claude.com/docs/en/authentication, read 2026-11-11), and a plan token passed down in CLAUDE_CODE_OAUTH_TOKEN is removed. Null without a key:
+ * the app then doesn't offer Claude Code.
+ */
+export function claudeKeyEnv(base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv | null {
+  const key = base.ANTHROPIC_API_KEY || savedKey('anthropic');
+  if (!key) return null;
+  const env: NodeJS.ProcessEnv = { ...base, ANTHROPIC_API_KEY: key };
+  delete env.CLAUDE_CODE_OAUTH_TOKEN;
+  return env;
+}
+
+/** A key from the encrypted store, without creating the store when there isn't one. */
+function savedKey(name: string): string | undefined {
+  const file = join(process.env.CONSTELLATE_HOME ?? join(homedir(), '.constellate'), 'keys.json');
+  if (!existsSync(file)) return undefined;
+  try { return new KeyVault(file).get(name); } catch { return undefined; }
+}
+
+/** Claude Code can be started here: it's installed, and there's a Claude API key to run it on. */
+export function claudeCodeReady(): boolean { return !!claudeBinary() && !!claudeKeyEnv(); }
+
+/** What the app says when Claude Code is installed but there's no key to run it on. */
+export const CLAUDE_NEEDS_KEY = 'Claude Code runs here only on a Claude API key, never on a Claude plan. Save one with `constellate keys set anthropic`.';
 
 /** The `claude` command, if Claude Code is installed (CONSTELLATE_CLAUDE overrides; "off" disables). */
 export function claudeBinary(): string | null {
