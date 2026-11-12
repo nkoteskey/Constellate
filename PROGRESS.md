@@ -721,3 +721,63 @@ Still stop points, deliberately not approved on the owner's behalf: publishing a
 - **Why not an orchestrator:** the problems that fit are independent, machine-checked steps, the volunteer-computing model. A central orchestrator would add a single point of failure and control. Problems that need lockstep machines don't fit edge compute (DESIGN.md, Collective problem solving §7).
 - **Gate:** `test/gates/swarm.test.ts`.
 
+
+## 2026-11-11
+
+### More machine checks (Nov 11)
+- **Five new checks** (`src/work/combinatorics.ts`), each a witness check: hard to find, recomputed exactly.
+  - `ramsey_graph`: a graph6 graph with no s-clique and no t-independent set shows R(s,t) > n. An exact clique search with a fixed step budget; a graph it can't settle is refused, never guessed.
+  - `vdw_coloring`: a colouring of 1..n with no k-term progression in one colour shows W(r,k) > n.
+  - `golomb_ruler`, `cap_set` and `sat_assignment` (DIMACS CNF).
+  - Strict formats, with size caps checked before any work. Lent computers still never guess at witness searches.
+- **Every check describes its format** (`shape`). The planner brief and `proposals_submit` list them all, so proposers can pick a check that fits.
+- **Two more seeded problems** (`src/seed/open-problems.ts`, docs/OPEN_PROBLEMS.md): a graph that would move R(5,5), R(4,6) or R(3,10), and a colouring that would push W(2,7) or W(5,3). Sources quoted with the date read.
+- **Gate:** `test/gates/checkers.test.ts`: known answers (Paley graphs, the 28-mark optimal Golomb ruler, W(2,3) = 9 by exhaustion, the 4-point cap in F_3^2), the clique search against brute force, and timing at the R(5,5) search size.
+
+### The problem scout (Nov 11)
+- **Proposing a problem is one press** (`src/scout/`, docs/SCOUT.md). The scout reads two public Apache-2.0 catalogues of open problems (teorth/erdosproblems: 1,221 problems; google-deepmind/formal-conjectures: 1,860 open statements in 1,094 files), ranks them by how close a machine is to checking an answer, and fills in the propose form. It never posts on its own.
+  - Four lanes: quick wins (a witness check or a finite search could settle it), moonshots (prized, Millennium, Hilbert or encyclopaedia-famous), stated in Lean, and not yet checkable (hidden unless asked for).
+  - Every card says why it ranks where it does, links its source with the date read, and shows the statement's TeX as plain Unicode maths (`src/web/public/js/mathtext.js`).
+- **Where:** the app's Proposals → Suggested tab (lanes, search, **Propose this**; problems already proposed say "Already an idea"), `constellate scout` (`--lane`, `--realm`, `--q`, `--refresh`; `--propose ID` prints the idea, it doesn't post), and the read-only MCP tool `problems_scout` in full mode, which tells the agent to let its person choose.
+- **People are never named.** Contributor notes, reference lists, crediting sentences, OEIS signatures and paper author lists are skipped before anything is read, and what is left must pass the privacy check. On the real catalogues the ranking has no string the check flags.
+- **Credit:** a proposal carries its source link and the date read; when the statement text is formal-conjectures', it names that catalogue and its licence. Notice in `data/seed/LICENSES/NOTICE.md`; listed in docs/SEED_SOURCES.md.
+- **Honest about checking:** the network has no check for Lean statements yet. docs/SCOUT.md describes the planned one (a pinned commit, the statement unchanged, no `sorry`, standard axioms only, on computers that opted into Lean builds).
+- **Other realms** get a scouting brief (public source with the date read, people named only by @handle or organisation) until catalogue readers exist for them.
+- **Gate:** `test/gates/scout.test.ts`. Fixtures copy the real formats with text planted where the real catalogues hold names; none of it reaches the parsers, the ranking, the copy on disk, the API, MCP or the page.
+- **Fixed in passing:** `test/gates/agent_tools.test.ts` compared a temp folder with the child's working folder, which on macOS differ by `/private`; it now compares real paths.
+
+### Pooled computers (Nov 11)
+- **Several computers lend as easily as one** (`src/contributor/local-servers.ts`, docs/CLUSTERS.md). Constellate finds computers pooled into one bigger model on its own: [exo](https://github.com/exo-explore/exo) (Macs over Thunderbolt 5 or the network; its placed models and each computer's memory), or any OpenAI-compatible pool at `CONSTELLATE_CLUSTER_URL`. `CONSTELLATE_EXO_URL` reaches exo on another of its computers.
+- **Where:** `constellate models` shows what's running now, pools first, with how many computers and how much memory. `contribute` with no model named gives the pool the steps that need a big model, and a suggested small model already running here the rest. The desktop app's **Lend this computer** card says when a pool is ready and its switch uses it. The app's model lists offer pooled models first. `--model exo/…` and `--model cluster/…` name one directly.
+- **Nothing downloaded on the person's behalf:** exo with no model placed says to choose one in its dashboard; a missing small model is named with the command to get it.
+- Also finds LM Studio, llama.cpp and vLLM (and honours `OLLAMA_HOST`), so models already running anywhere on the computer are offered.
+- **Honest about what isn't done:** lending limits are read on this computer only (the other pooled computers follow exo's settings); not yet run on real pooled hardware (the gate uses stand-ins that answer like exo); Apple's reported Thunderbolt pooling has no public interface yet, and `CONSTELLATE_CLUSTER_URL` covers it if it serves an OpenAI-compatible one.
+- **Gate:** `test/gates/clusters.test.ts`.
+
+### Announcing progress (Nov 11)
+- **Machine-checked progress becomes a call to lend a computer** (`src/announce/`, docs/ANNOUNCE.md).
+  - It runs on the owner's computer and reads only checkpoints this computer re-checked: the problem's machine check passed again, on an answer confirmed by a different identity and model family.
+  - It never says "solved" or "proved", only "checked by machine, no person has reviewed it yet", and ends with "Lend a computer: LINK".
+  - Warm-up checks say nothing.
+- **Two tiers.**
+  - Waiting for the owner's `announce approve`: possible finds on open searches, problems from public catalogues, problems from identities this computer doesn't vouch for, and "a whole problem is done".
+  - Can go on their own once the owner turns automatic posting on (off by default): the first checked step on a problem this computer or the starter library proposed, and a weekly digest.
+  - Progress from before announcing started always waits for the owner.
+- **Safeguards.**
+  - Approval binds to a hash of the exact words, and changed words need approving again.
+  - Titles with an @, a web address or anything the strict privacy check flags are blocked, not cleaned.
+  - The privacy check runs again at send.
+  - Each destination is marked sent as it goes, so a restart never posts twice.
+- **"Archived on Autonomi"** appears only with this computer's own signed `storage_spend` receipt for the bundle holding the checkpoint (`Keeper.archivedAt`). The address is printed as text, with no gateway. Paid storage is still off, so by default posts don't carry it.
+- **Destinations.**
+  - A local Atom feed (the default; no network).
+  - Bluesky (app password) and Mastodon (access token, with an idempotency key), both off until the owner adds an account with `announce set` and its secret with `keys set`.
+  - X: a compose link only. A person sends it by hand.
+  - Nothing leaves the computer without `constellate announce send --yes`.
+- **CLI:** `constellate announce` (list), `approve`, `skip`, `send [--yes]`, `set auto|feed|bluesky|mastodon|cta`; `keys set bluesky|mastodon`.
+- **Gate:** `test/gates/announce.test.ts`. Bluesky and Mastodon are stand-in servers; the request shapes come from the atproto lexicons and the Mastodon API docs (read 2026-11-11). Three deliberate breaks were each caught: counting another computer's storage receipt, letting possible finds post on their own, and ignoring the hold.
+- **NEEDS HUMAN:**
+  - Choose and create the accounts that post, store their secrets on the owner's computer, and decide whether to turn automatic posting on.
+  - Point `announce set cta` at the page people should land on.
+  - No real post has been made.
+- **Not done yet:** an announcements panel in the app; how X counts links (posts are fitted with links at full length, which can only overcount); Bluesky has no idempotency key, so a post accepted but whose reply was lost could repeat on the next send.

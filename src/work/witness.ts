@@ -64,6 +64,7 @@ const no = (detail: string) => ({ ok: false, detail });
 /** x³ + y³ + z³ = n, for the n in the step's check. Output: three integers x y z (the last three in the text). */
 export const threeCubesVerifier: WitnessVerifier = {
   name: 'three_cubes', machineOnly: true, witness: true,
+  shape: 'check {"n": <integer>}; answer: three integers x y z with x³ + y³ + z³ = n',
   async check(spec, output) {
     const n = BigInt(String(spec.n));
     const v = integers(output).slice(-3);
@@ -77,6 +78,7 @@ export const threeCubesVerifier: WitnessVerifier = {
 /** A perfect cuboid: positive integer edges a b c with all three face diagonals and the space diagonal integers. */
 export const perfectCuboidVerifier: WitnessVerifier = {
   name: 'perfect_cuboid', machineOnly: true, witness: true,
+  shape: 'check {}; answer: three positive integers a b c whose face diagonals and space diagonal are all integers',
   async check(_spec, output) {
     const v = integers(output).slice(-3);
     if (v.length < 3 || v.some((x) => x <= 0n)) return no('give three positive integer edges a b c');
@@ -90,6 +92,7 @@ export const perfectCuboidVerifier: WitnessVerifier = {
 /** A Wieferich prime above `above`: p prime and 2^(p−1) ≡ 1 (mod p²). Output: p (the last integer). */
 export const wieferichVerifier: WitnessVerifier = {
   name: 'wieferich', machineOnly: true, witness: true,
+  shape: 'check {"above": "<integer>"}; answer: a prime p above it with 2^(p−1) ≡ 1 (mod p²)',
   async check(spec, output) {
     const p = integers(output).at(-1);
     if (p === undefined) return no('give the prime p');
@@ -104,6 +107,7 @@ export const wieferichVerifier: WitnessVerifier = {
 /** A Wall–Sun–Sun prime above `above`: p prime, p ≠ 2, 5, and p² divides F(p − (p/5)). Output: p. */
 export const wallSunSunVerifier: WitnessVerifier = {
   name: 'wall_sun_sun', machineOnly: true, witness: true,
+  shape: 'check {"above": "<integer>"}; answer: a prime p above it with p² dividing F(p − (p/5))',
   async check(spec, output) {
     const p = integers(output).at(-1);
     if (p === undefined) return no('give the prime p');

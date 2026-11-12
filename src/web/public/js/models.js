@@ -19,6 +19,7 @@ export const PROVIDERS = [
   { id: 'lmstudio', name: 'LM Studio', kind: 'local', baseUrl: 'http://127.0.0.1:1234/v1', cost: 'free', openWeight: true, note: 'A desktop app with a model browser; start its local server.', example: 'qwen3-14b' },
   { id: 'llamacpp', name: 'llama.cpp server', kind: 'local', baseUrl: 'http://127.0.0.1:8080/v1', cost: 'free', openWeight: true, note: 'Any GGUF model, CPU or GPU.', example: 'local' },
   { id: 'vllm', name: 'vLLM', kind: 'local', baseUrl: 'http://127.0.0.1:8000/v1', cost: 'free', openWeight: true, note: 'For a server with a big GPU.', example: 'Qwen/Qwen3-32B' },
+  { id: 'exo', name: 'exo (pooled computers)', kind: 'local', cluster: true, baseUrl: 'http://127.0.0.1:52415/v1', cost: 'free', openWeight: true, note: 'Pools several Macs (or other computers) into one bigger model, over Thunderbolt 5 or your network. Constellate finds it on its own.', example: 'mlx-community/Llama-3.3-70B-Instruct-4bit', setup: 'Install exo on each Mac (github.com/exo-explore/exo), then choose a model in its dashboard at localhost:52415' },
   { id: 'groq', name: 'Groq', kind: 'hosted', baseUrl: 'https://api.groq.com/openai/v1', keyEnv: 'GROQ_API_KEY', cost: 'free tier', openWeight: true, note: 'Hosted open-weight models, very fast, with a free tier.', example: 'llama-3.3-70b-versatile' },
   { id: 'openrouter', name: 'OpenRouter', kind: 'hosted', baseUrl: 'https://openrouter.ai/api/v1', keyEnv: 'OPENROUTER_API_KEY', cost: 'free models + paid', openWeight: 'mixed', note: 'Hundreds of models behind one key, including free ones (names ending in :free).', example: 'meta-llama/llama-3.3-70b-instruct:free' },
   { id: 'huggingface', name: 'Hugging Face', kind: 'hosted', baseUrl: 'https://router.huggingface.co/v1', keyEnv: 'HF_TOKEN', cost: 'free tier', openWeight: true, note: 'Open models from the Hub, with free monthly credits.', example: 'Qwen/Qwen3-32B' },
@@ -29,6 +30,7 @@ export const PROVIDERS = [
   { id: 'openai', name: 'OpenAI', kind: 'hosted', baseUrl: 'https://api.openai.com/v1', keyEnv: 'OPENAI_API_KEY', cost: 'paid', openWeight: false, example: 'gpt-5' },
   { id: 'xai', name: 'xAI', kind: 'hosted', baseUrl: 'https://api.x.ai/v1', keyEnv: 'XAI_API_KEY', cost: 'paid', openWeight: false, example: 'grok-4' },
   { id: 'anthropic', name: 'Anthropic (Claude)', kind: 'hosted', native: 'anthropic', keyEnv: 'ANTHROPIC_API_KEY', cost: 'paid', openWeight: false, example: 'claude-opus-5-5' },
+  { id: 'cluster', name: 'Your own cluster', kind: 'custom', cluster: true, urlEnv: 'CONSTELLATE_CLUSTER_URL', cost: 'free', openWeight: 'mixed', note: 'Any server that pools computers behind an OpenAI-compatible URL: set CONSTELLATE_CLUSTER_URL and Constellate finds it on its own.', example: 'my-model' },
   { id: 'custom', name: 'Any OpenAI-compatible URL', kind: 'custom', cost: 'yours', openWeight: 'mixed', note: 'Pass --endpoint with the URL; add MODEL_API_KEY if it needs one.', example: 'my-model' },
 ];
 

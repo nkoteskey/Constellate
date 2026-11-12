@@ -123,6 +123,7 @@ export function judge(s: LeanProjectSpec, mine: string, theirs: string) {
 export const leanProjectVerifier: Verifier = {
   name: 'lean_project',
   machineOnly: true,
+  shape: 'check {"repo", "commit", "module", "theorems": [..]} for a reviewed project (LEAN_PROJECTS); the work is a full Lean build, done by computers with Lean installed',
   available: () => !!lakeBinary(),
   work: async (spec) => checkLeanProject(spec as unknown as LeanProjectSpec),
   async check(spec, output) {

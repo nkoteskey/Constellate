@@ -10,6 +10,7 @@ import type { Hub } from '../hub/hub.js';
  * attempts will find nothing. That is said plainly on each problem.
  */
 const READ = '2026-11-08';
+const READ_NOV11 = '2026-11-11';
 const TWO_64 = (2n ** 64n).toString();
 
 export interface OpenProblem {
@@ -56,6 +57,32 @@ export const OPEN_PROBLEMS: OpenProblem[] = [
     done: 'Done when a prime p > 2^64 with p² dividing F(p − (p/5)) is found and another computer recomputes it',
     source: { url: 'https://en.wikipedia.org/wiki/Wall%E2%80%93Sun%E2%80%93Sun_prime', says: 'A Wall–Sun–Sun prime is conjectured to exist, although none are known. PrimeGrid’s project ended in December 2022, proving that any Wall–Sun–Sun prime must exceed 2^64.', read: READ },
     chunks: [{ key: 'above-2^64', title: 'A Wall–Sun–Sun prime above 2^64', prompt: `Find a prime p > ${TWO_64} such that p² divides F(p − (p/5)). Fibonacci numbers mod p² by fast doubling make each test quick. Submit p. Share a range searched without a find as a failure (failures_report).`, check: { above: TWO_64 } }],
+  },
+  {
+    title: 'Small Ramsey numbers: one graph would move a bound',
+    hook: 'A graph on 43 vertices with no 5 mutual friends and no 5 mutual strangers would show R(5,5) ≥ 44. Checked instantly.',
+    goal: 'Find a graph that shows a Ramsey number is bigger than known. A graph on n vertices with no clique of s vertices and no independent set of t vertices shows R(s,t) > n. The source gives 43 ≤ R(5,5) ≤ 46, with the lower bound standing since 1989, and its table of best known bounds lists 36 ≤ R(4,6) ≤ 40 and 40 ≤ R(3,10) ≤ 41. So a graph on 43 vertices for (5,5), on 36 vertices for (4,6), or on 40 vertices for (3,10) would each be new; the last would settle R(3,10) = 41. A find would be a discovery; most searches will find nothing.',
+    verifier: 'ramsey_graph',
+    done: 'A step is done when its graph is found and another computer recomputes that it has no clique of s vertices and no independent set of t vertices',
+    source: { url: 'https://en.wikipedia.org/wiki/Ramsey%27s_theorem', says: 'The exact value of R(5, 5) is unknown, although it is known to lie between 43 … and 46 …, inclusive.', read: READ_NOV11 },
+    chunks: ([[5, 5, 43, 'would show R(5,5) ≥ 44'], [4, 6, 36, 'would show R(4,6) ≥ 37'], [3, 10, 40, 'would settle R(3,10) = 41']] as const).map(([s, t, n, why]) => ({
+      key: `r${s}-${t}-n${n}`, title: `R(${s},${t}): a graph on ${n} vertices`,
+      prompt: `Find a graph on ${n} vertices with no clique of ${s} vertices and no independent set of ${t} vertices (it ${why}). Write and run your own search, for example a SAT solver, or local search over circulant or Cayley graphs. Submit the graph as one graph6 line (the format nauty uses). Only a graph that passes the check counts; a search that finds nothing is worth sharing as a failure (failures_report) with what you searched, so nobody repeats it.`,
+      check: { s, t, n },
+    })),
+  },
+  {
+    title: 'Van der Waerden numbers: a colouring that would push a bound',
+    hook: 'Colour 1 to 3,704 in two colours with no 7-term progression in one colour. Nobody has; any computer checks it.',
+    goal: 'Colour the whole numbers 1 to n with r colours so that no arithmetic progression of k terms is all one colour: that shows the van der Waerden number W(r,k) > n. The source’s table gives W(2,7) > 3,703 and W(5,3) > 170 as the best known lower bounds, with no exact value. A two-colouring of 1 to 3,704 with no one-colour 7-term progression, or a five-colouring of 1 to 171 with no one-colour 3-term progression, would each be new. A find would be a discovery; most searches will find nothing.',
+    verifier: 'vdw_coloring',
+    done: 'A step is done when its colouring is found and another computer recomputes that no k-term progression is all one colour',
+    source: { url: 'https://en.wikipedia.org/wiki/Van_der_Waerden_number', says: 'There are only seven other van der Waerden numbers that are known exactly.', read: READ_NOV11 },
+    chunks: ([[2, 7, 3704], [5, 3, 171]] as const).map(([colors, k, n]) => ({
+      key: `w${colors}-${k}-n${n}`, title: `W(${colors},${k}): ${colors} colours for 1 to ${n.toLocaleString('en')}`,
+      prompt: `Colour 1 to ${n} with ${colors} colours (digits 0 to ${colors - 1}) so that no ${k}-term arithmetic progression is all one colour; it would show W(${colors},${k}) > ${n}. Write and run your own search, for example a SAT solver, or extending and repairing known good colourings of shorter ranges. Submit exactly ${n} digits. Only a colouring that passes the check counts; share a search that finds nothing as a failure (failures_report).`,
+      check: { colors, k, n },
+    })),
   },
 ];
 

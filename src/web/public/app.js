@@ -3,6 +3,7 @@ const ID = () => import('./identity.js');
 const hasIdentity = () => { try { return !!localStorage.getItem('constellate.key'); } catch { return false; } };
 import { $, $$, esc, api, post, ls, ago, short, realm, REALM, identicon, constellation, icon, toast, sheet, closeSheet, copy, STATIC, loading, newPage, agentToolSwitches } from './js/ui.js';
 import { Sky } from './js/sky.js';
+import { mathHtml } from './js/mathtext.js';
 import { DESKTOP, connectCard } from './js/desktop.js';
 
 // ── State that stays on this device ─────────────────────────────────
@@ -889,8 +890,41 @@ async function galleryPage(id) {
 }
 
 // ── Proposals ─────────────────────────────────────────────────────
+const SCOUT_LANES = {
+  quick_win: ['Quick wins', 'A computer can check an answer, or a finite search could settle it.'],
+  moonshot: ['Moonshots', 'Famous, or with a prize on them. Long odds; big news if one falls.'],
+  formal: ['Stated in Lean', 'Stated precisely enough that a proof checks itself.'],
+  needs_check: ['Not yet checkable', 'Open, but nothing a machine can check yet.'],
+};
+// Shorten at a word break, and never inside a $…$ maths span (an unclosed $ would show as raw TeX).
+const clip = (s, n) => {
+  if (s.length <= n) return s;
+  let t = s.slice(0, n - 1).replace(/\s+\S*$/, '');
+  if ((t.match(/\$/g) ?? []).length % 2) t = t.slice(0, t.replace(/\$+$/, '').lastIndexOf('$')).replace(/\$+$/, '').trimEnd();
+  return `${t}…`;
+};
+function scoutCard(c) {
+  const src = c.sources[0];
+  const act = c.problem_id ? `<a class="btn sm" href="#/p/${esc(c.problem_id)}">Open it</a>`
+    : c.proposed ? '<button class="btn sm" data-goto-tab="ideas">Already an idea</button>'
+      : `<button class="btn sm primary" data-scout="${esc(c.id)}">Propose this</button>`;
+  return `<div class="card"><div class="spread" style="gap:10px"><b class="serif" style="font-size:19px">${esc(c.title)}</b><span class="row" style="gap:6px">${c.prize ? `<span class="chip sm ok"><span class="dot"></span>${esc(c.prize)} prize</span>` : ''}<span class="chip sm">${esc(c.field)}</span></span></div>
+    ${c.statement ? `<p class="muted" style="font-size:13.5px;margin:6px 0">${mathHtml(clip(c.statement, 320))}</p>` : ''}
+    <p class="faint" style="font-size:12.5px;margin:0">${esc(c.why.join('. '))}.</p>
+    <div class="row" style="margin-top:10px;gap:10px">${act}<a class="faint" href="${esc(src.url)}" target="_blank" rel="noopener" style="font-size:12.5px">${esc(src.label)} · read ${esc(src.read)}</a></div></div>`;
+}
+const scoutLanes = (s) => s.lanes.map((l) => `<h2 class="section" style="margin-bottom:0">${esc(SCOUT_LANES[l.lane][0])} <span class="faint num" style="font-size:13px">${l.items.length < l.total ? `top ${l.items.length} of ${l.total}` : l.total}</span></h2>
+  <p class="faint" style="font-size:12.5px;margin:0">${esc(SCOUT_LANES[l.lane][1])}</p>${l.items.map(scoutCard).join('') || '<p class="muted">Nothing here matches.</p>'}`).join('');
+function scoutHtml(s) {
+  if (!s.read) return '<p class="muted">Reading the public catalogues of open problems. The first time takes about a minute; this list fills in on its own.</p>';
+  return `<p class="muted" style="font-size:13.5px;margin:0">Open problems from public catalogues, ranked by how close a computer is to checking an answer. Propose one and it joins the Ideas, where an agent splits it into steps a machine can check.</p>
+    <input class="field" id="scout-q" type="search" placeholder="Search open problems: primes, graphs, sequences…" aria-label="Search open problems">
+    <div class="stack" id="scout-lanes">${scoutLanes(s)}</div>`;
+}
+
 async function proposalsPage() {
-  const [q, ideas, plans, planUi] = await Promise.all([api('/api/proposals'), api('/api/ideas').catch(() => []), STATIC ? null : api('/api/plans').catch(() => null), import('./js/plan.js')]);
+  const [q, ideas, plans, planUi, scouted] = await Promise.all([api('/api/proposals'), api('/api/ideas').catch(() => []), STATIC ? null : api('/api/plans').catch(() => null), import('./js/plan.js'),
+    STATIC ? null : api('/api/scout?per_lane=6').catch(() => null)]);
   // The latest plan for each idea (newest first from the server), so its card says where planning stands.
   // The newest attempt per idea (by when it started, so an old attempt failing late doesn't hide a new one).
   const latestPlans = (reqs) => { const m = new Map(); for (const r of reqs ?? []) { const cur = m.get(r.idea); if (!cur || r.at > cur.at) m.set(r.idea, r); } return m; };
@@ -909,13 +943,16 @@ async function proposalsPage() {
     { key: 'waiting', name: 'Waiting', items: q.waiting, html: () => q.waiting.map(row).join('') || '<p class="muted">Nothing waiting in the queue right now.</p>' },
     { key: 'ideas', name: 'Ideas', items: ideas, html: () => `<p class="muted" style="font-size:13.5px;margin:0">An idea becomes a problem once someone splits it into steps a machine can check. Hand it to your agent with <b>Plan it with your agent</b>, check the plan, and it goes live once the constitution check clears it.</p>${ideas.map(ideaCard).join('') || '<p class="muted">No ideas yet. Be the first.</p>'}` },
   ];
+  // Suggested: open problems the scout found in public catalogues (src/scout/), ranked, one press from an idea.
+  let scout = scouted;
+  if (scout) TABS.push({ key: 'scout', name: 'Suggested', items: scout.lanes.flatMap((l) => l.items), count: () => scout.lanes.reduce((n, l) => n + l.total, 0), html: () => scoutHtml(scout) });
   const saved = ls.get('proposalsTab', null);
   let tab = TABS.find((t) => t.key === saved) ?? TABS.find((t) => t.items.length) ?? TABS[0];
   page(`<div class="page narrow"><div class="eyebrow">Proposals and voting</div>
     <div class="spread" style="align-items:flex-end;gap:12px;flex-wrap:wrap"><h1 class="display" style="font-size:var(--d-md);margin:10px 0 0">What should we take on next?</h1>
       <div class="row" style="gap:8px"><button class="btn primary" id="open-propose">Propose a problem</button><button class="btn ghost" id="open-pledge">Pledge compute</button></div></div>
     <p class="muted" style="margin-top:10px">Every proposal says how success will be checked and passes a <a href="#/constitution">constitution</a> check first. Votes count in proportion to compute actually delivered, so fake accounts can’t steer.</p>
-    <div class="tabs" role="tablist" aria-label="Proposals" style="margin-top:18px">${TABS.map((t) => `<button role="tab" data-ptab="${t.key}" aria-selected="${t === tab}">${esc(t.name)} <span class="faint num">${t.items.length}</span></button>`).join('')}</div>
+    <div class="tabs" role="tablist" aria-label="Proposals" style="margin-top:18px">${TABS.map((t) => `<button role="tab" data-ptab="${t.key}" aria-selected="${t === tab}">${esc(t.name)} <span class="faint num">${t.count ? t.count() : t.items.length}</span></button>`).join('')}</div>
     <div class="stack" id="ptab-body" role="tabpanel"></div></div>`);
   const wire = (root) => {
     // Plan it with your agent: the agent researches the idea and reports a plan in the network's format, which
@@ -929,10 +966,36 @@ async function proposalsPage() {
     $$('[data-vote]', root).forEach((b) => (b.onclick = async () => { if ((await toggleVote(b.dataset.vote)) !== null) proposalsPage(); }));
     // Work on a live problem from right here, the same way as from its own page (agentWorkSheet).
     $$('[data-work]', root).forEach((b) => (b.onclick = () => agentWorkSheet({ id: b.dataset.work, title: b.dataset.title, hook: '' })));
+    // Suggested: propose opens the usual form, filled in from the catalogue, for the person to read, edit and post.
+    $$('[data-scout]', root).forEach((b) => (b.onclick = () => {
+      const c = scout?.lanes.flatMap((l) => l.items).find((x) => x.id === b.dataset.scout);
+      if (c) openPropose({ ...c.idea, check: c.check.kind === 'lean' ? 'proof checker' : c.check.kind === 'none' ? 'not sure yet' : 'machine (test or benchmark)', scout: c.id });
+    }));
+    $$('[data-goto-tab]', root).forEach((b) => (b.onclick = () => show(TABS.find((t) => t.key === b.dataset.gotoTab))));
+    const sq = $('#scout-q', root);
+    if (sq) sq.oninput = () => { clearTimeout(sq.t); sq.t = setTimeout(() => searchScout(sq.value), 300); };
+  };
+  // Search the whole catalogue, not just what's on screen; the box keeps its text and focus while the lists redraw.
+  const searchScout = async (words) => {
+    const r = await api(`/api/scout?per_lane=6&q=${encodeURIComponent(words.trim())}`).catch(() => null);
+    if (!r || tab.key !== 'scout' || $('#scout-q')?.value !== words) return;
+    scout = r; $('#scout-lanes').innerHTML = scoutLanes(scout); wire($('#scout-lanes'));
   };
   const show = (t) => { tab = t; ls.set('proposalsTab', t.key); $$('[data-ptab]').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.ptab === t.key))); $('#ptab-body').innerHTML = t.html(); wire($('#ptab-body')); };
   $$('[data-ptab]').forEach((b) => (b.onclick = () => show(TABS.find((t) => t.key === b.dataset.ptab))));
   show(tab);
+  // The first time, the app reads the catalogues in the background (about a minute); the tab fills in when they land.
+  if (scout && !scout.read) {
+    const here = location.hash;
+    let tries = 0;
+    const wait = setInterval(async () => {
+      if (location.hash !== here || !$('#ptab-body') || ++tries > 20) return clearInterval(wait);
+      const r = await api('/api/scout?per_lane=6').catch(() => null);
+      if (!r?.read) return;
+      clearInterval(wait); scout = r;
+      if (tab.key === 'scout' && !document.getElementById('sheet')) show(tab);
+    }, 15_000);
+  }
   // Keep the Ideas tab current while it's open (a plan started from the popup, an agent's progress), redrawing
   // only when something changed.
   if (!STATIC) {
@@ -949,7 +1012,9 @@ async function proposalsPage() {
       show(tab);
     }, 3000);
   }
-  $('#open-propose').onclick = () => {
+  $('#open-propose').onclick = () => openPropose();
+  /** The propose form; prefill comes from a suggested problem (title, goal, done, realm, check, scout id). */
+  function openPropose(prefill = {}) {
     const el = sheet(`<div class="spread"><div class="eyebrow">Propose a problem</div><button class="btn ghost sm" data-close>Close</button></div>
     <form class="stack" id="idea" style="margin-top:12px">
       <label>What should we take on?<input class="field" id="i-title" maxlength="200" required placeholder="e.g. Find counterexamples to a conjecture in graph colouring"></label>
@@ -959,13 +1024,19 @@ async function proposalsPage() {
         <label style="flex:1">Checked by<select class="field" id="i-check"><option>machine (test or benchmark)</option><option>proof checker</option><option>reproduction</option><option>human review</option><option>not sure yet</option></select></label></div>
       <p class="faint" style="font-size:12.5px;margin:0">It’s checked against the constitution before it’s shared. Results are published under an open licence.</p>
       <div class="row"><button class="btn primary">Propose</button></div></form>`, { label: 'Propose a problem' });
+    if (prefill.title) {
+      $('#i-title', el).value = prefill.title; $('#i-goal', el).value = prefill.goal ?? ''; $('#i-done', el).value = prefill.done ?? '';
+      if (prefill.realm) $('#i-realm', el).value = prefill.realm;
+      if (prefill.check) $('#i-check', el).value = prefill.check;
+      $('#idea > p.faint', el).insertAdjacentHTML('beforebegin', '<p class="faint" style="font-size:12.5px;margin:0">Filled in from a public catalogue. Read it through and change anything before you post it.</p>');
+    }
     $('#i-title', el).focus();
     $('#idea', el).onsubmit = async (e) => {
       e.preventDefault();
-      const body = { title: $('#i-title', el).value.trim(), goal: $('#i-goal', el).value.trim(), done: $('#i-done', el).value.trim(), realm: $('#i-realm', el).value, check: $('#i-check', el).value };
+      const body = { title: $('#i-title', el).value.trim(), goal: $('#i-goal', el).value.trim(), done: $('#i-done', el).value.trim(), realm: $('#i-realm', el).value, check: $('#i-check', el).value, ...(prefill.scout ? { scout: prefill.scout } : {}) };
       if (await give({ kind: 'proposal', task: body.title, domain: [body.realm], body }, 'Proposed')) { ls.set('proposalsTab', 'ideas'); closeSheet(); proposalsPage(); }
     };
-  };
+  }
   $('#open-pledge').onclick = () => {
     const el = sheet(`<div class="spread"><div class="eyebrow">Pledge compute</div><button class="btn ghost sm" data-close>Close</button></div>
     <form class="row" id="pledge" style="margin-top:12px;align-items:flex-end"><label style="flex:1">Hours a week your computer can give<input class="field" id="p-hours" type="number" min="0" max="168" step="1" value="${ls.get('pledge', 4)}"></label><button class="btn primary">Pledge</button></form>

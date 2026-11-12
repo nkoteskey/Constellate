@@ -2,6 +2,8 @@
 export interface Provider {
   id: string; name: string; kind: 'local' | 'hosted' | 'custom'; baseUrl?: string; keyEnv?: string;
   native?: 'anthropic'; cost: string; openWeight: boolean | 'mixed'; note?: string; example: string; setup?: string;
+  /** Pools several computers into one bigger model (exo, or a cluster at urlEnv). */
+  cluster?: boolean; urlEnv?: string;
 }
 export interface OpenModel {
   id: string; name: string; family: string; params: number; active?: number; needGB: number; licence: string; good: string; ollama: string; mlx?: string;

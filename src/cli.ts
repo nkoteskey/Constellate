@@ -16,6 +16,7 @@ import { detectDevice, suggestFor, readConditions, POLITE } from './contributor/
 import { Lend, policyFor, restAfter } from './contributor/lend.js';
 import { registerContributorRoutes } from './contributor/dashboard.js';
 import { runnerFromSpec, providerTable, commands, CATALOG_UPDATED, PROVIDERS } from './contributor/catalog.js';
+import { bestCluster, clusterPlan, describeServer, findLocalServers, specFor } from './contributor/local-servers.js';
 import { KeyVault } from './contributor/keyvault.js';
 import { fundingConfig } from './economy/funding.js';
 import { CreditLedger } from './economy/credits.js';
@@ -52,7 +53,14 @@ const USAGE = `Constellate — where humans and agents gather into something gre
   constellate keys set PROVIDER | list | remove PROVIDER
                          Store API keys encrypted on this device (typed at a hidden prompt, never on the command line)
   constellate demo       The human app on a simulated demo network (no x0x needed)
-  constellate models     What this machine can run: free open-weight models that fit, and every provider
+  constellate scout      Open problems worth the network's time, ranked: quick wins, moonshots, Lean-stated
+      [--lane quick|moonshot|formal|all] [--realm R] [--q WORDS] [--limit N] [--refresh] [--propose ID]
+      --refresh reads the public catalogues (Erdős problems, formal-conjectures); --propose prints the idea to post
+  constellate announce   Progress checked by machine that is worth telling people about, and what each item waits for
+      approve ID | skip ID | send [--yes] | set auto on|off | set feed on|off | set bluesky HANDLE [SERVER] | set mastodon URL | set cta URL
+      Possible finds and whole problems wait for your approval; nothing is posted without send --yes (docs/ANNOUNCE.md)
+  constellate models     What this machine can run: model servers running now (pooled ones too), free
+                         open-weight models that fit, and every provider
   constellate contribute Donate idle compute: detect hardware, pick a model, work politely
       [--model PROVIDER/MODEL] [--verifier PROVIDER/MODEL] [--cap-cents N] [--endpoint URL] [--no-ui] [--port N]
       [--lend]  follow the limits set in the app (hours per night, never on battery, CPU cap), keep a log, pledge the hours
@@ -60,9 +68,12 @@ const USAGE = `Constellate — where humans and agents gather into something gre
       Any model works: ollama/qwen3:14b, lmstudio/…, groq/llama-3.3-70b-versatile,
       openrouter/<any>, huggingface/…, gemini/…, openai/…, anthropic/claude-opus-5-5,
       custom/NAME --endpoint URL. Keys come from the provider's variable (e.g. GROQ_API_KEY).
+      With no --model, computers pooled with this one come first: exo (several Macs as one bigger model)
+      or any OpenAI-compatible cluster at CONSTELLATE_CLUSTER_URL; then the suggested local model.
 
 Environment: X0X_API (default http://127.0.0.1:12700), CONSTELLATE_HOME (~/.constellate),
-CONSTELLATE_PREVIEW=off, CONSTELLATE_PRIVACY=standard|strict, CONSTELLATE_DENY_TERMS=a,b`;
+CONSTELLATE_PREVIEW=off, CONSTELLATE_PRIVACY=standard|strict, CONSTELLATE_DENY_TERMS=a,b,
+OLLAMA_HOST, CONSTELLATE_EXO_URL (default http://127.0.0.1:52415), CONSTELLATE_CLUSTER_URL`;
 
 /** A topic's page is written on its own once it has this many verified records (docs/MEMORY.md). */
 const AUTO_PAGE_MIN_VERIFIED = Number(process.env.CONSTELLATE_PAGE_MIN_VERIFIED ?? 3);
@@ -265,7 +276,7 @@ Lend your computer instead: node "${cli}" models, then node "${cli}" contribute`
     const model = spec ? runnerFromSpec(spec, { vault: vault() }) : undefined;
     if (model) hub.collective.constitution.attachReviewer(model);
     const web = new WebServer(hub);
-    registerAppRoutes(web, { guideModel: model });
+    registerAppRoutes(web, { guideModel: model, scoutRefresh: process.env.CONSTELLATE_SCOUT_REFRESH !== 'off' });
     registerEconomyRoutes(web, economy);
     registerFundingRoutes(web, hub, { ledger: credits, cfg: funding, autonomi: hub.archive instanceof AutonomiArchive ? hub.archive : null, publicUrl: process.env.CONSTELLATE_PUBLIC_URL });
     await web.listen(Number(process.env.PORT ?? 4747));
@@ -343,6 +354,8 @@ Lend your computer instead: node "${cli}" models, then node "${cli}" contribute`
   }
   if (cmd === 'contribute') return contribute(argv.slice(1));
   if (cmd === 'models') return models();
+  if (cmd === 'scout') return scout(argv.slice(1));
+  if (cmd === 'announce') return announce(argv.slice(1));
   if (cmd === 'seed') {
     const { Seeder, SEED_ALLOW_LIST } = await import('./seed/seeder.js');
     const { GitHubRest } = await import('./seed/github.js');
@@ -392,7 +405,7 @@ async function keys(args: string[]) {
   if (sub === 'list') { console.log(v.names().length ? v.names().map((n) => `  ${n}`).join('\n') : 'No keys stored.'); return; }
   if (sub === 'remove' && name) { v.remove(name); console.log(`Removed ${name}.`); return; }
   if (sub === 'set' && name) {
-    if (!PROVIDERS.some((p) => p.id === name) && !['stripe', 'stripe-webhook', 'evm-wallet', 'cdp'].includes(name)) { console.log(`Unknown name "${name}". Providers: ${PROVIDERS.map((p) => p.id).join(', ')}; payments: stripe, stripe-webhook, evm-wallet, cdp.`); return; }
+    if (!PROVIDERS.some((p) => p.id === name) && !['stripe', 'stripe-webhook', 'evm-wallet', 'cdp', 'bluesky', 'mastodon'].includes(name)) { console.log(`Unknown name "${name}". Providers: ${PROVIDERS.map((p) => p.id).join(', ')}; payments: stripe, stripe-webhook, evm-wallet, cdp; announcing: bluesky (an app password), mastodon (an access token).`); return; }
     const secret = await hiddenPrompt(`Key for ${name} (input hidden): `);
     if (!secret.trim()) { console.log('Nothing stored.'); return; }
     v.set(name, secret.trim());
@@ -421,12 +434,122 @@ function hiddenPrompt(q: string): Promise<string> {
 
 function flag(args: string[], name: string) { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : undefined; }
 
+/** `constellate announce` (docs/ANNOUNCE.md): what to tell people, the owner's approval, and sending. */
+async function announce(args: string[]) {
+  const { Announcer } = await import('./announce/announce.js');
+  const [sub, ...rest] = args;
+  if (sub === 'set') {
+    const a = new Announcer();
+    const [what, v, extra] = rest;
+    const onOff = () => { if (v !== 'on' && v !== 'off') throw new Error(`say on or off: constellate announce set ${what} on|off`); return v === 'on'; };
+    if (!v) throw new Error('Usage: constellate announce set auto on|off | feed on|off | bluesky HANDLE [SERVER] | mastodon URL | cta URL (off removes an account)');
+    const c = what === 'auto' ? a.setConfig({ auto: onOff() })
+      : what === 'feed' ? a.setConfig({ feed: onOff() })
+      : what === 'bluesky' ? a.setConfig({ bluesky: v === 'off' ? undefined : { handle: v.replace(/^@/, ''), ...(extra ? { service: extra } : {}) } })
+      : what === 'mastodon' ? a.setConfig({ mastodon: v === 'off' ? undefined : { instance: v } })
+      : what === 'cta' ? a.setConfig({ cta: v })
+      : null;
+    if (!c) throw new Error(`unknown setting: ${what}`);
+    console.log(JSON.stringify(c, null, 2));
+    if (what === 'bluesky' && c.bluesky) console.log('Store its app password with `constellate keys set bluesky` (Bluesky: Settings > Privacy and security > App passwords).');
+    if (what === 'mastodon' && c.mastodon) console.log('Store an access token with `constellate keys set mastodon` (Preferences > Development > New application, with the write:statuses scope).');
+    return;
+  }
+  if (sub === 'approve' || sub === 'skip') {
+    const a = new Announcer();
+    if (!rest[0]) throw new Error(`Usage: constellate announce ${sub} ID`);
+    const item = sub === 'approve' ? a.approve(rest[0]) : a.skip(rest[0]);
+    console.log(sub === 'approve' ? `Approved these exact words; \`constellate announce send --yes\` sends them:\n\n${item.text}` : `Skipped ${item.id}.`);
+    return;
+  }
+  if (sub === 'send') {
+    const yes = rest.includes('--yes');
+    const r = await new Announcer().send({ yes });
+    if (!r.length) console.log('Nothing is cleared to send. `constellate announce` shows what each item waits for.');
+    for (const x of r) console.log(`${x.ok ? (yes ? 'sent' : 'would send') : 'not sent'}  ${x.id}${x.sink ? ` to ${x.sink}` : ''}: ${x.detail}`);
+    if (!yes && r.some((x) => x.ok)) console.log('\nDry run: nothing was sent. Add --yes to send.');
+    return;
+  }
+  if (sub && sub !== 'list') throw new Error(`unknown announce command: ${sub}`);
+  const hub = await Hub.fromEnv();
+  try {
+    const a = new Announcer(hub);
+    await a.collect();
+    const items = a.list().filter((i) => i.status !== 'skipped');
+    const c = a.config();
+    const where = [c.feed ? `a feed file (${a.feedPath()})` : '', c.bluesky ? `Bluesky as @${c.bluesky.handle}` : '', c.mastodon ? `Mastodon at ${c.mastodon.instance}` : ''].filter(Boolean);
+    console.log(`Sends to: ${where.join(', ') || 'nowhere yet'}. Automatic posting: ${c.auto ? 'on, for the auto tier' : 'off'}. X: by hand, from the link shown.\n`);
+    if (!items.length) { console.log('Nothing to announce yet: progress shows up here once a step is checked by machine.'); return; }
+    for (const i of items) {
+      console.log(`${i.id}  ${i.tier === 'founder' ? 'needs you' : 'auto'} · ${i.kind}${i.backlog ? ' · from before announcing started' : ''} · ${i.status}`);
+      if (i.text) console.log(i.text.split('\n').map((l) => `    ${l}`).join('\n'));
+      if (i.x && !Object.keys(i.sent).length) console.log(`    Post on X yourself: ${i.x}`);
+      console.log();
+    }
+    console.log('`constellate announce approve ID` approves the exact words above; `skip ID` drops one; `send` shows what would go (add --yes to send).');
+  } finally { await hub.close(); }
+}
+
 /** What fits this machine, in plain words, with the exact commands. */
-function models() {
+async function scout(args: string[]) {
+  const { Scout, ideaFor, LANES } = await import('./scout/scout.js');
+  const { REALMS } = await import('./work/problems.js');
+  const s = new Scout();
+  if (args.includes('--refresh')) {
+    console.log('Reading the public catalogues (teorth/erdosproblems, google-deepmind/formal-conjectures)…');
+    const r = await s.refresh();
+    console.log(`Read ${r.erdos} Erdős problems and ${r.fc} formal-conjectures files on ${r.read}.\n`);
+  }
+  const id = flag(args, '--propose');
+  if (id) {
+    const c = s.get(id);
+    if (!c) { console.log(`No problem with id ${id}. Run constellate scout to list them.`); process.exitCode = 1; return; }
+    if (c.on_network) { console.log(`"${c.title}" is already on the network: open it in the app (constellate serve) and lend a computer to it.`); return; }
+    const idea = ideaFor(c);
+    console.log(`Title:  ${idea.title}\nRealm:  ${idea.realm}\nGoal:   ${idea.goal.split('\n').filter(Boolean).join('\n        ')}\nDone:   ${idea.done}`);
+    console.log(`\nTo post it, open Proposals in the app (constellate serve), choose Suggested and press "Propose this" on it,\nor ask your agent to propose ${c.id} (the proposals_submit tool). It is checked against the constitution first.`);
+    return;
+  }
+  const laneArg = flag(args, '--lane');
+  const LANE_ARG: Record<string, (typeof LANES)[number]> = { quick: 'quick_win', quick_win: 'quick_win', moonshot: 'moonshot', formal: 'formal', needs_check: 'needs_check' };
+  if (laneArg && laneArg !== 'all' && !LANE_ARG[laneArg]) { console.log('--lane is quick, moonshot, formal or all'); process.exitCode = 1; return; }
+  const realm = flag(args, '--realm') as (typeof REALMS)[number] | undefined;
+  if (realm && !REALMS.includes(realm)) { console.log(`--realm is one of ${REALMS.join(', ')}`); process.exitCode = 1; return; }
+  const limit = Number(flag(args, '--limit')) || (laneArg ? 15 : 5);
+  const all = args.includes('--all') || laneArg === 'all';
+  const LABEL: Record<string, string> = { quick_win: 'Quick wins: a machine checks an answer, or a finite search could settle it', moonshot: 'Moonshots: big prizes and famous problems', formal: 'Stated in Lean: a proof is machine-checkable', needs_check: 'Not yet machine-checkable' };
+  const lanes = laneArg && laneArg !== 'all' ? [LANE_ARG[laneArg]] : LANES.filter((l) => all || l !== 'needs_check');
+  for (const l of lanes) {
+    const r = s.list({ lane: l, realm, q: flag(args, '--q'), limit, all });
+    console.log(`${LABEL[l]} (${r.counts[l]})`);
+    for (const c of r.items) {
+      console.log(`  ${String(c.score).padStart(3)}  ${c.title}${c.prize ? `  [${c.prize}]` : ''}${c.on_network ? '  (on the network)' : ''}`);
+      if (c.statement) console.log(`       ${c.statement.length > 150 ? `${c.statement.slice(0, 147)}…` : c.statement}`);
+      console.log(`       ${c.id} · ${c.field} · ${c.why[0] ?? ''}`);
+    }
+    console.log('');
+  }
+  const age = s.age();
+  if (age === null) console.log('No catalogue on this computer yet: constellate scout --refresh reads the public ones (the app does this on its own).');
+  else console.log(`Catalogues read ${age === 0 ? 'today' : `${age} day${age === 1 ? '' : 's'} ago`}${age >= 7 ? ' (constellate scout --refresh for the latest)' : ''}. Propose one: constellate scout --propose ID`);
+}
+
+async function models() {
   const device = detectDevice();
   const s = suggestFor(device);
   const gb = (m: { needGB: number }) => `~${m.needGB} GB`;
   console.log(`This machine: ${device.cpu}, ${device.cores} cores, ${device.memGB} GB memory${device.gpu ? `, ${device.gpu} (${device.gpuGB} GB)` : ''}.`);
+  const servers = await findLocalServers();
+  if (servers.length) {
+    console.log('\nRunning now:');
+    for (const sv of servers) {
+      console.log(`  ${describeServer(sv)}: ${sv.models.length ? sv.models.slice(0, 6).map((m) => specFor(sv, m)).join(', ') : 'no model ready'}`);
+      if (sv.note) console.log(`    ${sv.note}`);
+    }
+  }
+  const best = bestCluster(servers);
+  if (best) console.log(`\n${describeServer(best)} is ready. \`constellate contribute\` uses it on its own, for steps that need a big model.`);
+  else if (!servers.some((sv) => sv.provider === 'exo')) console.log('\nMore than one computer? exo (github.com/exo-explore/exo) pools Macs into one bigger model, over Thunderbolt 5 or your network. Constellate finds it on its own.');
   if (s.primary) {
     console.log(`\nSuggested (free, open weights, runs on this machine; ${s.where}, ${s.budgetGB} GB left for a model):`);
     console.log(`  Main model:  ${s.primary.name} (${s.primary.family}, ${gb(s.primary)}) for ${s.primary.good}`);
@@ -437,8 +560,23 @@ function models() {
   if (!s.primary) { console.log('\nFree hosted options:'); for (const h of s.hosted) console.log(`  ${h.provider}/${h.model}  (${h.why})`); }
   console.log(`\nTo start:\n${commands(s).map((c) => `  ${c}`).join('\n')}`);
   console.log(`\nOr bring any model (--model PROVIDER/MODEL):`);
-  for (const p of providerTable()) console.log(`  ${p.id.padEnd(12)} ${p.name.padEnd(28)} ${p.cost.padEnd(18)} ${p.key ? `key: ${p.key}` : ''}`);
+  for (const p of providerTable()) console.log(`  ${p.id.padEnd(12)} ${p.name.padEnd(28)} ${p.cost.padEnd(18)} ${p.key ? `key: ${p.key}` : p.url ? `url: ${p.url}` : ''}`);
   console.log(`\nModel list reviewed ${CATALOG_UPDATED}.`);
+}
+
+/**
+ * `contribute` with no model named, when a pooled server is running: its model takes the big steps. A model this
+ * computer already has running takes the small ones and checks other computers' work, if it is a different family.
+ * Nothing is downloaded on the person's behalf; what's missing is said, with the command.
+ */
+async function clusterRunners(s: ReturnType<typeof suggestFor>, verifier?: string): Promise<{ runners: ModelRunner[]; notes: string[] } | undefined> {
+  const plan = clusterPlan(await findLocalServers(), s);
+  if (!plan) return undefined;
+  const runners = plan.specs.map((spec) => runnerFromSpec(spec, { vault: vault() }));
+  if (verifier) runners.push(runnerFromSpec(verifier, { vault: vault() }));
+  const notes = [`Found ${describeServer(plan.server)}: ${plan.server.models[0]} takes ${plan.big ? 'the steps that need a big model' : 'the steps'}.`];
+  if (runners.length === 1 && s.primary) notes.push(`For small steps and checking others' work too: ${commands(s)[0]}, then run this again.`);
+  return { runners, notes };
 }
 
 async function contribute(args: string[]) {
@@ -449,13 +587,16 @@ async function contribute(args: string[]) {
   let spec = flag(args, '--model');
   if (args.includes('--claude')) spec = 'anthropic/claude-opus-5-5';
   if (endpoint && spec && !spec.includes('/')) spec = `custom/${spec}`;
-  if (!spec) {
+  // No model named: computers pooled with this one (exo, CONSTELLATE_CLUSTER_URL) come first, as the biggest.
+  const pooled = spec ? undefined : await clusterRunners(s, flag(args, '--verifier'));
+  if (!spec && !pooled) {
     if (!s.primary) { console.log(`${s.notes[0]}\nTry a free hosted model: ${commands(s)[0]}`); return; }
     spec = `${s.primary.run.provider}/${s.primary.run.model}`;
   }
-  const runners: ModelRunner[] = [runnerFromSpec(spec, { endpoint, family: flag(args, '--family'), vault: vault() })];
-  const verifierSpec = flag(args, '--verifier') ?? (flag(args, '--model') ? undefined : s.verifier ? `${s.verifier.run.provider}/${s.verifier.run.model}` : undefined);
+  const runners: ModelRunner[] = pooled?.runners ?? [runnerFromSpec(spec!, { endpoint, family: flag(args, '--family'), vault: vault() })];
+  const verifierSpec = pooled ? undefined : flag(args, '--verifier') ?? (flag(args, '--model') ? undefined : s.verifier ? `${s.verifier.run.provider}/${s.verifier.run.model}` : undefined);
   if (verifierSpec) runners.push(runnerFromSpec(verifierSpec, { endpoint, vault: vault() }));
+  for (const line of pooled?.notes ?? []) console.log(line);
   console.log(`Device: ${device.cpu}, ${device.memGB} GB${device.gpu ? `, ${device.gpu}` : ''}. Models: ${runners.map((r) => `${r.id} (${r.family})`).join(', ')}.`);
   const board = hub.x0x ? new X0xBoard(hub.x0x, 'constellate/v1/board') : new MemoryBoard();
   const budget = new Budget(Number(flag(args, '--cap-cents') ?? 0) || (runners.some((r) => r.costPerCall) ? 100 : Infinity));

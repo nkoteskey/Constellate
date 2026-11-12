@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { leanProjectVerifier } from './lean-project.js';
 import { WITNESS_VERIFIERS } from './witness.js';
+import { COMBINATORICS_VERIFIERS } from './combinatorics.js';
 
 /**
  * Machine checks for "definition of done". Only problems with checkable
@@ -21,6 +22,8 @@ export interface Verifier {
   readonly witness?: boolean;
   /** Whether this computer can run it (e.g. has Lean installed). Steps it can't run are left for others. */
   available?(): boolean;
+  /** The step's "check" and the answer format, in one line: shown to agents that plan or propose problems. */
+  readonly shape?: string;
 }
 
 const lastToken = (s: string) => s.trim().split(/\s+/).pop() ?? '';
@@ -28,6 +31,7 @@ const lastToken = (s: string) => s.trim().split(/\s+/).pop() ?? '';
 /** Exact answers with a known expected value. */
 export const exactVerifier: Verifier = {
   name: 'exact',
+  shape: 'check {"expected": "<value>"}; answer: ends with exactly that value as its last word',
   async check(spec, output) {
     const want = String(spec.expected ?? '');
     const got = lastToken(output);
@@ -38,6 +42,7 @@ export const exactVerifier: Verifier = {
 /** Recomputes a deterministic quantity (the toy problem used by the Phase 3 gate). */
 export const sumSquaresModVerifier: Verifier = {
   name: 'sum_squares_mod',
+  shape: 'check {"from", "to", "mod"}; answer: ends with (from² + … + to²) mod "mod" (a toy problem for tests)',
   async check(spec, output) {
     const { from, to, mod } = spec as { from: number; to: number; mod: number };
     let s = 0n;
@@ -54,6 +59,7 @@ export const sumSquaresModVerifier: Verifier = {
  */
 export const leanVerifier: Verifier = {
   name: 'lean',
+  shape: 'check {"statement": "<the theorem, as Lean source>"}; answer: a Lean 4 file that states it and proves it with no sorry or admit (needs Lean on the checking computer)',
   async check(spec, output) {
     if (/\bsorry\b|\badmit\b/.test(output)) return { ok: false, detail: 'proof contains sorry/admit' };
     const statement = String(spec.statement ?? '');
@@ -76,8 +82,10 @@ export const leanVerifier: Verifier = {
 
 export class VerifierRegistry {
   private m = new Map<string, Verifier>();
-  constructor(vs: Verifier[] = [exactVerifier, sumSquaresModVerifier, leanVerifier, leanProjectVerifier, ...WITNESS_VERIFIERS]) { for (const v of vs) this.m.set(v.name, v); }
+  constructor(vs: Verifier[] = [exactVerifier, sumSquaresModVerifier, leanVerifier, leanProjectVerifier, ...WITNESS_VERIFIERS, ...COMBINATORICS_VERIFIERS]) { for (const v of vs) this.m.set(v.name, v); }
   register(v: Verifier) { this.m.set(v.name, v); }
   get(name: string) { return this.m.get(name); }
   names() { return [...this.m.keys()]; }
+  /** One line per check: its name, whether it is a witness search, and its check/answer format. */
+  shapes() { return [...this.m.values()].map((v) => `- ${v.name}${v.witness ? ' (witness: hard to find, instant to check)' : ''}: ${v.shape ?? 'see its source'}`).join('\n'); }
 }

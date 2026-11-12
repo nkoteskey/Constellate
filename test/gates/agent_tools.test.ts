@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createRequire } from 'node:module';
@@ -65,7 +65,7 @@ describe('what Claude Code may use when it runs on its own', () => {
       expect(args).toContain('--restricted'); // the person's own Claude Code settings don't apply
       expect(arg('--permission-mode')).toBe('dontAsk'); // refused at once, never waiting for an approval
       expect(args[1]).toMatch(/You are running unattended.*web search and web fetch.*You can't run code here/s);
-      expect(cwd.startsWith(join(home, 'agent-work'))).toBe(true);
+      expect(cwd.startsWith(join(realpathSync(home), 'agent-work'))).toBe(true); // realpath: on macOS tmpdir() is /var, the child's cwd /private/var
       expect(r.log.map((l) => l.text)).toContain('It may use Constellate\'s tools, web search and web fetch.');
       expect(r.log.map((l) => l.text)).toContain('Claude Code wanted Bash, which this run doesn\'t allow. To let it run code, turn on “Run code in a scratch folder”.');
       expect(r).toMatchObject({ status: 'done', steps: 1 }); // a refused tool doesn't sink the run

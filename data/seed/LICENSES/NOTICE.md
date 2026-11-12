@@ -51,3 +51,23 @@ commit, and a notice of what was changed.
 **Left out:** five pages whose examples didn't pass Constellate's privacy check as written. `git-config`
 (an example email address), `ssh` and `ss` (private network addresses), `dig` (a public address) and
 `redis-cli` (an example password). `data/seed/tldr-pages.json` lists them under `left_out`.
+
+# Open-problem catalogues read by the scout (Apache-2.0)
+
+The scout (`src/scout/`, docs/SCOUT.md) reads two public catalogues of open problems to suggest problems worth
+proposing. Nothing from them is in this repository or the starter library; each computer reads its own copy
+from the source and keeps only the fields listed in docs/SCOUT.md.
+
+- [teorth/erdosproblems](https://github.com/teorth/erdosproblems) (Apache-2.0): each Erdős problem's number,
+  status, prize, tags, OEIS links and short common name, from `data/problems.yaml`.
+- [google-deepmind/formal-conjectures](https://github.com/google-deepmind/formal-conjectures), Copyright 2025
+  The Formal Conjectures Authors (Apache-2.0): each file's title and each open statement's name and docstring.
+
+The licence text is `Apache-2.0.txt`. Neither repository has a NOTICE file.
+
+**What is changed:** only the fields above are read. Contributor notes, reference lists and any sentence that
+credits someone are left out, so people are never named. Docstrings are collapsed to one line. On a card, TeX
+is shown as plain maths.
+
+**When a person proposes one,** the proposal carries the statement text with its source link, the date read,
+and which catalogue (and licence) the text came from.

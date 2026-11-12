@@ -18,8 +18,13 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run typecheck
+      # --with-deps adds system packages from Ubuntu's servers. When the runner can't reach them (2026-11-11: it
+      # couldn't resolve them at all), install the browser alone: the runner image already has its libraries, only
+      # fonts were missing, and no gate compares screenshots.
       - name: Install Chromium for the Phase 6 browser gate
-        run: npm install --no-save playwright@1.63.0 && npx playwright install --with-deps chromium
+        run: |
+          npm install --no-save playwright@1.63.0
+          npx playwright install --with-deps chromium || { echo "::warning::Ubuntu's package servers were unreachable; installing Chromium without its system packages"; npx playwright install chromium; }
       # The real x0x daemon for the network gate (test/gates/network_setup.test.ts): the pinned release, which
       # Constellate checks against its committed SHA-256 before running it.
       - name: Fetch the pinned x0x release for the network gate

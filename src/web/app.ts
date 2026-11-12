@@ -5,12 +5,9 @@ import { runnerFromSpec } from '../contributor/catalog.js';
 import { swr } from './swr.js';
 import { reproduction } from '../services/reproduce.js';
 import { networkSavings, operatorSavings } from '../hub/savings.js';
-import { homedir } from 'node:os';
-import { decodeCanonical } from '../core/canonical.js';
 import { ActivityLog, Presence } from '../hub/activity.js';
 import { X0xError, directSendProblem } from '../x0x/client.js';
 import { agentName, Planner } from '../collective/planner.js';
-import { openBundle, isBundle } from '../store/bundle.js';
 import { Profiles, profileProblem, ProfileBody } from '../collab/profiles.js';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -27,6 +24,8 @@ import { fromB64, utf8 } from '../util/bytes.js';
 import { peerIdFromPublicKey, verifyExternal } from '../core/identity.js';
 import { familyOf } from './public/js/models.js';
 import { ModelRunner } from '../contributor/models.js';
+import { Scout, ideaFor, LANES, SCOUT_ID, type Lane, type Realm } from '../scout/scout.js';
+import { starterOperators } from '../seed/starter-operators.js';
 
 /** Kinds a person can sign in the browser. Each one with more than a simple shape gets its own check below. */
 const HUMAN_KINDS: RecordKind[] = ['rating', 'confirmation', 'contradiction', 'vote', 'argument', 'position', 'pledge', 'message', 'use',
@@ -60,7 +59,7 @@ const VENDOR: Record<string, string> = {
 };
 
 /** The human app API: the living sky, problem pages, deliberations, Me, and signed contributions from the browser. */
-export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunner } = {}) {
+export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunner; scout?: Scout; scoutRefresh?: boolean } = {}) {
   const hub = web.hub;
   const guide = new Guide(hub, opts.guideModel);
   const guide_ = guide;
@@ -260,6 +259,8 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
     switch (rec.kind) {
       case 'proposal': {
         if (!b.title || !b.goal || !b.done || !REALMS.includes(b.realm)) return { error: 'a proposal needs a title, a goal, how success is checked, and a realm' };
+        // Proposed from the scout's suggestions: which one, so it isn't suggested again (docs/SCOUT.md).
+        if (b.scout !== undefined && (typeof b.scout !== 'string' || !SCOUT_ID.test(b.scout))) return { error: 'scout must be the id of a suggested problem' };
         const check = await hub.collective.constitution.checkText(`${b.title}\n${b.goal}\n${b.done}`, b.realm);
         if (!check.ok) return { error: 'the constitution check stopped this proposal', findings: check.findings };
         return null;
@@ -540,6 +541,36 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
     return { items: out };
   });
 
+  // The problem scout (docs/SCOUT.md): open problems from public catalogues, ranked, one click from an idea. The
+  // running app keeps its copy of the catalogues current on its own (weekly), so there's nothing to press.
+  const scout = opts.scout ?? new Scout();
+  let scoutTried = 0;
+  const freshenScout = () => {
+    const age = scout.age();
+    if (!opts.scoutRefresh || (age !== null && age < 7) || Date.now() - scoutTried < 3_600_000) return;
+    scoutTried = Date.now();
+    void scout.refresh().catch(() => { /* offline or a source is down: keep what we have, try again in an hour */ });
+  };
+  web.route('GET', /^\/api\/scout$/, (_r, _m, url) => {
+    freshenScout();
+    const realm = url.searchParams.get('realm') as Realm | null;
+    const lane = url.searchParams.get('lane') as Lane | null;
+    const perLane = Math.min(Number(url.searchParams.get('per_lane')) || 0, 20);
+    const q = { realm: realm && REALMS.includes(realm) ? realm : undefined, q: url.searchParams.get('q') ?? undefined, all: url.searchParams.get('all') === '1' };
+    // Problems already on the network open their page instead of being proposed again.
+    const live = new Map(hub.problems.list().map((p) => [(p.rec.body as { title?: string }).title, p.rec.id]));
+    // And ones someone has already proposed say so, rather than inviting the same idea twice.
+    const proposed = new Map<string, string>();
+    for (const s of hub.node.store.ofKind('proposal')) { const id = (s.rec.body as { scout?: unknown }).scout; if (typeof id === 'string' && !proposed.has(id)) proposed.set(id, s.rec.id); }
+    const view = (c: ReturnType<Scout['list']>['items'][number]) => ({ ...c, problem_id: c.on_network ? live.get(c.title) : undefined, proposed: proposed.get(c.id), idea: ideaFor(c) });
+    if (perLane) {
+      const lanes = LANES.filter((l) => l !== 'needs_check' || q.all).map((l) => { const r = scout.list({ ...q, lane: l, limit: perLane }); return { lane: l, total: r.counts[l], items: r.items.map(view) }; });
+      return { read: scout.catalogue()?.read ?? null, lanes };
+    }
+    const r = scout.list({ ...q, lane: lane && LANES.includes(lane) ? lane : undefined, limit: Number(url.searchParams.get('limit')) || 20 });
+    return { read: r.read, counts: r.counts, items: r.items.map(view) };
+  });
+
   web.route('GET', /^\/api\/ideas$/, () => hub.node.store.ofKind('proposal').filter((s) => { const b = s.rec.body as { title?: string; done?: string }; return !!(b.title && b.done); }).map((s) => {
     const b = s.rec.body as { title: string; goal: string; done: string; check: string; realm: string };
     const voters = hub.collective.supporters(s.rec.id);
@@ -710,24 +741,3 @@ export function x0xAgentLink(rec: SignedRecord): string | null {
   } catch { return null; }
 }
 
-/**
- * The starter library's signing identities (the desktop app imports a signed snapshot of public history
- * once; see CONSTELLATE_STARTER). Read from the snapshot named in the import marker, so the People page
- * can say "Starter library" instead of showing an anonymous agent with a thousand contributions.
- */
-let starterOps: Set<string> | null = null;
-function starterOperators(): Set<string> {
-  if (starterOps) return starterOps;
-  starterOps = new Set();
-  try {
-    const home = process.env.CONSTELLATE_HOME ?? join(homedir(), '.constellate');
-    const marker = JSON.parse(readFileSync(join(home, 'starter-imported'), 'utf8')) as { file?: string };
-    if (marker.file && existsSync(marker.file)) {
-      const bytes = new Uint8Array(readFileSync(marker.file));
-      const recs = isBundle(bytes) ? (({ roots, records }) => [...roots, ...records])(openBundle(bytes)) : decodeCanonical<{ records: SignedRecord[] }>(bytes).records;
-      const roots = new Map(recs.filter((r) => r.kind === 'batch_root').map((r) => [r.id, r]));
-      for (const r of recs.slice(0, 2500)) { const v = verifyRecord(r, { root: (id) => roots.get(id) }); if (v.ok) starterOps.add(v.operatorId); }
-    }
-  } catch { /* no starter library on this install */ }
-  return starterOps;
-}
