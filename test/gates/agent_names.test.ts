@@ -65,6 +65,7 @@ describe('names, and which agent made what', () => {
     writeFileSync(fake, `#!/usr/bin/env node\nfor (const l of ${JSON.stringify(lines.map((x) => JSON.stringify(x)))}) console.log(l);\n`);
     chmodSync(fake, 0o755);
     process.env.CONSTELLATE_CLAUDE = fake;
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-test'; // it runs only on a Claude API key
     try {
       const hub = new Hub({ signer: LocalSigner.generate(), preview: false });
       const out = await hub.collective.propose(ProblemBody.parse({ title: 'Small facts', hook: 'Tiny', goal: 'Answer a small question exactly, checked by machine.', realm: 'maths_physics', definition_of_done: { verifier: 'exact', description: 'Matches exactly.' }, chunks: [{ key: 'first', title: 'Six times seven', prompt: 'What is 6 × 7?', check: { expected: '42' }, needs: { size: 'any' } }] }));
@@ -81,9 +82,9 @@ describe('names, and which agent made what', () => {
         'Claude Code started (claude-sonnet) with Constellate connected.',
         'Looked at the open steps.',
         'Answered step “first”; it now waits for a different model family to check it.',
-        'Claude Code finished in 4 s (about $0.03 of your Claude usage).',
+        'Claude Code finished in 4 s (about $0.03, billed to your Claude API key).',
         'Answered 1 step. Each waits for a computer running a different model family to check it.',
       ]);
-    } finally { delete process.env.CONSTELLATE_HOME; process.env.CONSTELLATE_CLAUDE = 'off'; }
+    } finally { delete process.env.CONSTELLATE_HOME; delete process.env.ANTHROPIC_API_KEY; process.env.CONSTELLATE_CLAUDE = 'off'; }
   });
 });

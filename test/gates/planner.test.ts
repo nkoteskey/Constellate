@@ -1,12 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { mkdtempSync, writeFileSync, readFileSync, chmodSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, readFileSync, chmodSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { Hub } from '../../src/hub/hub.js';
 import { LocalSigner } from '../../src/core/identity.js';
-import { Planner } from '../../src/collective/planner.js';
+import { Planner, CLAUDE_NEEDS_KEY } from '../../src/collective/planner.js';
+import { KeyVault } from '../../src/contributor/keyvault.js';
 import { createMcpServer } from '../../src/mcp/server.js';
 import type { ModelRunner } from '../../src/contributor/models.js';
 
@@ -92,6 +93,7 @@ describe('plan it with your agent', () => {
     writeFileSync(fake, `#!/usr/bin/env node\nrequire('fs').writeFileSync(${JSON.stringify(argsFile)}, JSON.stringify(process.argv.slice(2)));\n`);
     chmodSync(fake, 0o755);
     process.env.CONSTELLATE_CLAUDE = fake;
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-test';
     try {
       expect(hub.planner.options().claude_code).toBe(true);
       const r = await hub.planner.start(idea, 'claude_code');
@@ -104,7 +106,32 @@ describe('plan it with your agent', () => {
       expect(JSON.parse(args[args.indexOf('--mcp-config') + 1]).mcpServers.constellate.args.at(-1)).toBe('mcp');
       expect(hub.planner.get(r.id)).toMatchObject({ status: 'failed', error: 'Claude Code finished without reporting a plan.' });
       expect(args.slice(args.indexOf('--output-format'), args.indexOf('--output-format') + 3)).toEqual(['--output-format', 'stream-json', '--verbose']);
-    } finally { delete process.env.CONSTELLATE_HOME; process.env.CONSTELLATE_CLAUDE = 'off'; }
+    } finally { delete process.env.CONSTELLATE_HOME; delete process.env.ANTHROPIC_API_KEY; process.env.CONSTELLATE_CLAUDE = 'off'; }
+  });
+
+  it('Claude Code runs only on a Claude API key, never on a Claude plan', async () => {
+    const { hub, idea, home } = await withIdea();
+    const fake = join(home, 'claude');
+    const seen = join(home, 'env.json');
+    writeFileSync(fake, `#!/usr/bin/env node\nrequire('fs').writeFileSync(${JSON.stringify(seen)}, JSON.stringify({ key: process.env.ANTHROPIC_API_KEY ?? null, plan: process.env.CLAUDE_CODE_OAUTH_TOKEN ?? null }));\n`);
+    chmodSync(fake, 0o755);
+    process.env.CONSTELLATE_CLAUDE = fake;
+    process.env.CLAUDE_CODE_OAUTH_TOKEN = 'plan-token'; // a Claude plan login handed down from the environment
+    try {
+      // Installed, but no key: not offered, and asking for it says how to add one.
+      expect(hub.planner.options().claude_code).toBe(false);
+      expect(hub.agentRuns.available()).toBe(false);
+      const none = await hub.planner.start(idea, 'claude_code');
+      expect(hub.planner.get(none.id)).toMatchObject({ status: 'failed', error: CLAUDE_NEEDS_KEY });
+      expect(existsSync(seen)).toBe(false); // never started
+
+      // A key saved in the encrypted key store: it runs on that key, and the plan login isn't passed down.
+      new KeyVault(join(home, 'keys.json')).set('anthropic', 'sk-ant-saved');
+      expect(hub.planner.options().claude_code).toBe(true);
+      const r = await hub.planner.start(idea, 'claude_code');
+      for (let i = 0; i < 100 && hub.planner.get(r.id)?.status === 'running'; i++) await wait(30);
+      expect(JSON.parse(readFileSync(seen, 'utf8'))).toEqual({ key: 'sk-ant-saved', plan: null });
+    } finally { delete process.env.CONSTELLATE_HOME; delete process.env.CLAUDE_CODE_OAUTH_TOKEN; process.env.CONSTELLATE_CLAUDE = 'off'; }
   });
 
   it('the person can see what actually happened: who picked the request up, each search, and how it ended', async () => {
@@ -135,6 +162,7 @@ describe('plan it with your agent', () => {
       writeFileSync(fake, `#!/usr/bin/env node\nfor (const l of ${JSON.stringify(lines.map((x) => JSON.stringify(x)))}) console.log(l);\n`);
       chmodSync(fake, 0o755);
       process.env.CONSTELLATE_CLAUDE = fake;
+      process.env.ANTHROPIC_API_KEY = 'sk-ant-test';
       const c = await hub.planner.start(idea, 'claude_code');
       for (let i = 0; i < 100 && hub.planner.get(c.id)?.status === 'running'; i++) await wait(30);
       expect(hub.planner.get(c.id)!.log!.map((l) => l.text)).toEqual([
@@ -143,10 +171,10 @@ describe('plan it with your agent', () => {
         'Claude Code started (claude-sonnet) with Constellate connected.',
         'Searched what already failed: “Ramsey lower bounds”',
         'Looked for solved answers: “best known R(5,5) lower bound”',
-        'Claude Code finished in 3 s (about $0.04 of your Claude usage).',
+        'Claude Code finished in 3 s (about $0.04, billed to your Claude API key).',
         'Stopped: Claude Code finished without reporting a plan. Its last words: “thinking”',
       ]);
-    } finally { delete process.env.CONSTELLATE_HOME; delete process.env.CONSTELLATE_APP_URL; process.env.CONSTELLATE_CLAUDE = 'off'; }
+    } finally { delete process.env.CONSTELLATE_HOME; delete process.env.CONSTELLATE_APP_URL; delete process.env.ANTHROPIC_API_KEY; process.env.CONSTELLATE_CLAUDE = 'off'; }
   });
 
   it('when Claude Code ends without plan_report, it says why, and a plan written in its reply still counts', async () => {
@@ -160,6 +188,7 @@ describe('plan it with your agent', () => {
       return hub.planner.get(r.id)!;
     };
     process.env.CONSTELLATE_CLAUDE = fake;
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-test';
     try {
       // Constellate's tools didn't connect, a tool call failed, and it gave up: each is said, with its last words.
       const failed = await run([
@@ -178,7 +207,7 @@ describe('plan it with your agent', () => {
       const written = await run([{ type: 'result', duration_ms: 1000, result: `Here is the plan:\n${JSON.stringify(good)}` }]);
       expect(written).toMatchObject({ status: 'reported', problems: [], agent: 'Claude Code' });
       expect(written.log!.at(-1)!.text).toMatch(/Took the plan from Claude Code’s reply/);
-    } finally { delete process.env.CONSTELLATE_HOME; process.env.CONSTELLATE_CLAUDE = 'off'; }
+    } finally { delete process.env.CONSTELLATE_HOME; delete process.env.ANTHROPIC_API_KEY; process.env.CONSTELLATE_CLAUDE = 'off'; }
   });
 
   it('plan_report accepts the plan as JSON text as well as an object (models often send it that way)', async () => {

@@ -4,7 +4,8 @@
 // contribute` on the machine itself, so both always suggest the same thing.
 // Constellate runs no model of its own: contributors bring theirs. Open-weight
 // models that run locally are free and private, so they are suggested first;
-// any hosted model works too, through its OpenAI-compatible API or Claude's.
+// any hosted model works too on the person's own API key (never a subscription),
+// through its OpenAI-compatible API or Claude's.
 
 /** When this list was last reviewed. Model names move fast; the list is data, easy to update. */
 export const CATALOG_UPDATED = '2026-11-06';

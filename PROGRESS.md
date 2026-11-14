@@ -781,3 +781,14 @@ Still stop points, deliberately not approved on the owner's behalf: publishing a
   - Point `announce set cta` at the page people should land on.
   - No real post has been made.
 - **Not done yet:** an announcements panel in the app; how X counts links (posts are fitted with links at full length, which can only overcount); Bluesky has no idempotency key, so a post accepted but whose reply was lost could repeat on the next send.
+
+### Hosted models by API key only (Nov 11)
+- **Claude Code started by the app runs only on a Claude API key, never on a Claude plan** (`claudeKeyEnv`, src/collective/planner.ts).
+  - Before, the planner and "Have your agent work on it" started Claude Code with the person's whole environment, so it ran on their Claude plan login. Anthropic doesn't allow apps to route requests through Free, Pro, Max or Ultra plan credentials.
+  - Now the key comes from the encrypted key store (`constellate keys set anthropic`) or `ANTHROPIC_API_KEY`. A headless Claude Code run always uses `ANTHROPIC_API_KEY` ahead of a plan login (code.claude.com/docs/en/authentication, read 2026-11-11), and a plan token in `CLAUDE_CODE_OAUTH_TOKEN` is removed before it starts.
+  - Without a key Claude Code isn't offered, and the sheet says how to add one. Cost lines say "billed to your Claude API key".
+- **Lent computers take steps only of problems the constitution has cleared** (`constellate contribute`, which the desktop lend switch runs). Before, its workers had no constitution, so they could take steps of blocked or unchecked problems, on a hosted key too.
+- **Wording:** DESIGN.md ("Hosted models: by API key only" replaces "Paid subscriptions"), README, docs/AGENT_STEPS.md, docs/DESKTOP.md and the app. Subscriptions are never used or lent; a key is used only for its owner's own work; Constellate never relays other people's prompts to a key and never offers its records as training data.
+- **Tests never spend a real key or plan:** test/setup.ts clears `*_API_KEY` and `CLAUDE_CODE_OAUTH_TOKEN`; tests that need a key set a fake one.
+- **Gate:** `test/gates/planner.test.ts` ("Claude Code runs only on a Claude API key, never on a Claude plan"), plus the Claude Code tests in agent_names, agent_tools and agent_work_reach.
+- **Not done yet:** a lent computer trusts the proposer's own constitution check; re-checking each problem locally before lending to it is a follow-up.

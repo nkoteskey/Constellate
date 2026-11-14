@@ -52,6 +52,7 @@ describe('what Claude Code may use when it runs on its own', () => {
     process.env.CONSTELLATE_HOME = home;
     const claude = fakeClaude(home);
     process.env.CONSTELLATE_CLAUDE = claude.fake;
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-test'; // it runs only on a Claude API key
     try {
       const hub = new Hub({ signer: LocalSigner.generate(), store: new RecordStore(), preview: false });
       const id = (await hub.collective.propose(problemBody())).problem!.id;
@@ -82,7 +83,7 @@ describe('what Claude Code may use when it runs on its own', () => {
       await runOnce(hub, id);
       const third = claude.read();
       expect(third.args[third.args.indexOf('--tools') + 1]).toBe(''); // Constellate's tools only
-    } finally { process.env.CONSTELLATE_CLAUDE = 'off'; delete process.env.CONSTELLATE_HOME; }
+    } finally { process.env.CONSTELLATE_CLAUDE = 'off'; delete process.env.ANTHROPIC_API_KEY; delete process.env.CONSTELLATE_HOME; }
   });
 
   it('an older Claude Code without those flags still runs: only the flags it knows are passed', async () => {
@@ -90,6 +91,7 @@ describe('what Claude Code may use when it runs on its own', () => {
     process.env.CONSTELLATE_HOME = home;
     const claude = fakeClaude(home, []);
     process.env.CONSTELLATE_CLAUDE = claude.fake;
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-test'; // it runs only on a Claude API key
     try {
       const hub = new Hub({ signer: LocalSigner.generate(), store: new RecordStore(), preview: false });
       const id = (await hub.collective.propose(problemBody())).problem!.id;
@@ -97,13 +99,14 @@ describe('what Claude Code may use when it runs on its own', () => {
       const { args } = claude.read();
       for (const f of ['--tools', '--restricted', '--permission-mode']) expect(args).not.toContain(f);
       expect(args[args.indexOf('--allowedTools') + 1]).toContain('WebFetch');
-    } finally { process.env.CONSTELLATE_CLAUDE = 'off'; delete process.env.CONSTELLATE_HOME; }
+    } finally { process.env.CONSTELLATE_CLAUDE = 'off'; delete process.env.ANTHROPIC_API_KEY; delete process.env.CONSTELLATE_HOME; }
   });
 
   it('the switches sit under Claude Code in the list, and changing one is saved for the next run', async () => {
     const home = mkdtempSync(join(tmpdir(), 'tools-ui-'));
     process.env.CONSTELLATE_HOME = home;
     process.env.CONSTELLATE_CLAUDE = fakeClaude(home).fake;
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-test';
     const hub = new Hub({ signer: LocalSigner.generate(), store: new RecordStore(), preview: false });
     const id = (await hub.collective.propose(problemBody())).problem!.id;
     const web = new WebServer(hub);
@@ -126,6 +129,6 @@ describe('what Claude Code may use when it runs on its own', () => {
       for (let i = 0; i < 50 && !agentTools().code; i++) await wait(20);
       expect(agentTools()).toEqual({ web: true, code: true });
       expect(errors).toEqual([]);
-    } finally { await browser.close(); await web.close(); process.env.CONSTELLATE_CLAUDE = 'off'; delete process.env.CONSTELLATE_HOME; }
+    } finally { await browser.close(); await web.close(); process.env.CONSTELLATE_CLAUDE = 'off'; delete process.env.ANTHROPIC_API_KEY; delete process.env.CONSTELLATE_HOME; }
   }, 60_000);
 });

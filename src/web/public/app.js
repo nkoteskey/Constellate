@@ -699,7 +699,7 @@ async function agentWorkSheet(p) {
   // Every way to do the work, as one list (docs/AGENT_STEPS.md): Claude Code first, then any other model this
   // computer reaches (local, or a saved key), then agents the person has to start themselves.
   const choices = [
-    ...(info.claude_code ? [{ id: 'claude_code', name: 'Claude Code', note: 'Runs on this computer with only Constellate’s tools; uses your Claude plan.' }] : []),
+    ...(info.claude_code ? [{ id: 'claude_code', name: 'Claude Code', note: 'Runs on this computer with only Constellate’s tools, billed to your Claude API key (never a Claude plan).' }] : []),
     ...(info.models ?? []).map((m) => ({ id: `model:${m.spec}`, name: m.name, note: `${m.note[0].toUpperCase()}${m.note.slice(1)}. The app does the steps with it.` })),
     { id: 'any', name: 'Claude Desktop, Cursor or another connected agent', note: 'You have to start it yourself: these apps can’t be started by another app. After Start, open it and say “Use Constellate’s work_step tool to do the work I asked for.”' },
   ];
@@ -722,7 +722,7 @@ async function agentWorkSheet(p) {
       </div>
       ${online.length ? `<p class="faint" style="font-size:12.5px;margin:10px 0 0">Connected now: ${esc(online.join(', '))}.</p>` : ''}
       <div class="row" style="margin-top:12px"><button class="btn primary" id="aw-go"${running || (pick === 'any' && waiting) ? ' disabled' : ''}>Start</button>${pick === 'any' ? `<button class="btn ghost sm" id="aw-say">${icon.copy}Copy what to say</button>` : ''}</div></div>
-      ${!info.claude_code && !(info.models ?? []).length ? `<p class="faint" style="font-size:12.5px;margin:10px 0 0">To have this run on its own, install <a href="https://docs.claude.com/en/docs/claude-code/setup" target="_blank" rel="noopener">Claude Code</a>, run a model with Ollama or LM Studio, or save a provider key (<code>constellate keys set openai</code>, for example).</p>` : ''}
+      ${!info.claude_code && !(info.models ?? []).length ? `<p class="faint" style="font-size:12.5px;margin:10px 0 0">To have this run on its own, run a model with Ollama or LM Studio, or save a provider API key (<code>constellate keys set openai</code>, for example). <a href="https://docs.claude.com/en/docs/claude-code/setup" target="_blank" rel="noopener">Claude Code</a> runs here too once a Claude API key is saved (<code>constellate keys set anthropic</code>); it never uses a Claude plan.</p>` : ''}
       <details class="more-options" style="margin-top:10px"><summary><span>Paste a line to an agent yourself</span></summary>
         <div class="copy-row" style="margin-top:8px"><pre class="code" style="white-space:pre-wrap">${esc(info.prompt)}</pre><button class="btn" id="aw-copy">${icon.copy}Copy</button></div></details>`;
     $('#aw-copy', el).onclick = () => copy(info.prompt, 'Copied. Paste it to your agent');

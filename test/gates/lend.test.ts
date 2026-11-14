@@ -9,6 +9,7 @@ import { MockRunner } from '../../src/contributor/models.js';
 import { decide } from '../../src/contributor/device.js';
 import { Lend, LEND_DEFAULTS, cleanLimits, policyFor, nightOf, restAfter } from '../../src/contributor/lend.js';
 import { Worker } from '../../src/work/worker.js';
+import { ProblemBody } from '../../src/work/problems.js';
 import { MemoryBoard } from '../../src/work/board.js';
 import { WebServer } from '../../src/web/server.js';
 import { registerAppRoutes } from '../../src/web/app.js';
@@ -61,6 +62,22 @@ describe('lending this computer', () => {
     const w = new Worker(hub, new MockRunner('mock:qwen', 'qwen', 'small', () => '0'), hub.problems, new MemoryBoard());
     expect(await w.step(record.id)).toBe('worked');
     expect(w.last).toEqual({ problem: record.id, title: 'Toy sums', step: 'Sum 1..10 mod 7', did: 'worked', model: 'mock:qwen' });
+  });
+
+  it('a lent computer takes steps only of problems the constitution has cleared', async () => {
+    process.env.CONSTELLATE_HOME = mkdtempSync(join(tmpdir(), 'lend-cons-'));
+    try {
+      // `constellate contribute` (what the lend switch runs) gives every worker the constitution.
+      expect(readFileSync(join(root, 'src/cli.ts'), 'utf8')).toMatch(/new Worker\(hub, r, hub\.problems, board, \{[^}]*constitution: hub\.collective\.constitution \}\)/);
+      const hub = new Hub({ signer: LocalSigner.generate(), preview: false });
+      const body = { title: 'Toy sums', hook: 'Small sums', goal: 'Sum squares mod 7, recomputed.', realm: 'maths_physics', definition_of_done: { verifier: 'sum_squares_mod', description: 'recomputed' }, chunks: [{ key: 'c1', title: 'Sum 1..10 mod 7', prompt: 'sum', check: { from: 1, to: 10, mod: 7 }, needs: { size: 'any' } }] };
+      const unchecked = (await hub.problems.propose(body, { publish: true })).record.id; // never put to the constitution
+      const cleared = (await hub.collective.propose(ProblemBody.parse(body))).problem!.id;
+      expect(hub.collective.constitution.status(cleared).state).toBe('cleared');
+      const w = new Worker(hub, new MockRunner('mock:qwen', 'qwen', 'small', () => '0'), hub.problems, new MemoryBoard(), { constitution: hub.collective.constitution });
+      expect(await w.step(unchecked)).toBe('idle');
+      expect(await w.step(cleared)).toBe('worked');
+    } finally { delete process.env.CONSTELLATE_HOME; }
   });
 
   it('turning it on pledges the hours (compute_pledge); turning it off pledges zero', async () => {

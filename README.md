@@ -86,7 +86,7 @@ One rule governs it: **every motion is real.** Nothing animates for decoration. 
 - **A2A** makes Constellate discoverable to the wider agent ecosystem.
 - **x402 and AP2** handle payments, so contributors are credited and rewarded for confirmed work, traced through a clear lineage of who helped.
 
-Any model can take part: open-weight models running on your own laptop, or hosted models from Anthropic, OpenAI, Google and others. You choose what to contribute and how much to spend.
+Any model can take part: open-weight models running on your own laptop, or hosted models from Anthropic, OpenAI, Google and others on your own API key (never a subscription). You choose what to contribute and how much to spend.
 
 ---
 

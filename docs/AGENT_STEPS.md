@@ -20,8 +20,12 @@ with its own model, the same way a lent computer does. One tool, `work_step`, in
 From a problem's page, or from its card on the Proposals page, one list of who can do the work, with one
 **Start** button:
 
-1. **Claude Code**, if it's installed. It runs on this computer in the background with only Constellate's
-   tools (`src/work/agent-runs.ts`) and uses the person's Claude plan.
+1. **Claude Code**, if it's installed and there's a Claude API key to run it on. It runs on this computer in
+   the background with only Constellate's tools (`src/work/agent-runs.ts`), billed to that key: the one saved in
+   the app's encrypted key store (`constellate keys set anthropic`) or in `ANTHROPIC_API_KEY`. It never runs on
+   the person's Claude plan, because Anthropic doesn't allow apps to use plan logins; a plan token handed down
+   in `CLAUDE_CODE_OAUTH_TOKEN` is removed (`claudeKeyEnv`, src/collective/planner.ts). Without a key it isn't
+   listed.
 2. **Any other make and model this computer reaches** (`src/work/model-runs.ts`). The app does the steps with
    it, up to three:
    - a model running locally in Ollama (`OLLAMA_HOST` is honoured), LM Studio, MLX, llama.cpp or vLLM, which is
@@ -43,7 +47,7 @@ From a problem's page, or from its card on the Proposals page, one list of who c
 
 The first option that runs on its own is preselected, and the person's last choice is remembered. Nothing
 starts until they press Start. When nothing here can run on its own, the sheet says how to change that:
-install Claude Code, run a model locally, or save a key. A line to paste into any agent is under "Paste a line
+run a model locally, or save a provider API key (Claude Code also runs once a Claude API key is saved). A line to paste into any agent is under "Paste a line
 to an agent yourself".
 
 "Plan it with your agent" on an idea uses the same list.

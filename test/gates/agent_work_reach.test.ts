@@ -82,6 +82,7 @@ describe('your agent works on a problem without you asking it to check Constella
     const home = mkdtempSync(join(tmpdir(), 'reach-list-'));
     process.env.CONSTELLATE_HOME = home;
     process.env.CONSTELLATE_CLAUDE = fakeClaude(home);
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-test'; // Claude Code runs only on a Claude API key, which also reaches Claude's API
     const ollama = await fakeOllama();
     process.env.OLLAMA_HOST = ollama.url;
     const hub = new Hub({ signer: LocalSigner.generate(), store: new RecordStore(), preview: false });
@@ -93,7 +94,7 @@ describe('your agent works on a problem without you asking it to check Constella
     try {
       await page.waitForSelector('input[name="aw-who"]');
       const names = await page.$$eval('input[name="aw-who"]', (rs) => rs.map((r) => (r as HTMLInputElement).value));
-      expect(names).toEqual(['claude_code', 'model:ollama/qwen3:8b', 'any']);
+      expect(names).toEqual(['claude_code', 'model:ollama/qwen3:8b', 'model:anthropic/claude-opus-5-5', 'any']);
       expect(await page.$eval('input[name="aw-who"]:checked', (r) => (r as HTMLInputElement).value)).toBe('claude_code');
       const text = await page.textContent('#aw-body');
       expect(text).not.toMatch(/default/i); // first in the list, not singled out
@@ -103,7 +104,7 @@ describe('your agent works on a problem without you asking it to check Constella
       for (let i = 0; i < 100 && hub.agentRuns.forProblem(id)[0]?.status !== 'done'; i++) await wait(50);
       expect(hub.agentRuns.forProblem(id)[0]).toMatchObject({ status: 'done', steps: 1 });
       expect(errors).toEqual([]);
-    } finally { await browser.close(); await web.close(); ollama.close(); delete process.env.OLLAMA_HOST; process.env.CONSTELLATE_CLAUDE = 'off'; delete process.env.CONSTELLATE_HOME; }
+    } finally { await browser.close(); await web.close(); ollama.close(); delete process.env.OLLAMA_HOST; process.env.CONSTELLATE_CLAUDE = 'off'; delete process.env.ANTHROPIC_API_KEY; delete process.env.CONSTELLATE_HOME; }
   }, 60_000);
 
   it('any make and model: without Claude Code, a model this computer reaches does the steps, and its answer is checked like any other', async () => {
@@ -144,7 +145,7 @@ describe('your agent works on a problem without you asking it to check Constella
       const text = await page.textContent('#aw-body');
       expect(text).toMatch(/Claude Desktop, Cursor or another connected agent/);
       expect(text).toMatch(/You have to start it yourself/);
-      expect(text).toMatch(/install Claude Code, run a model with Ollama or LM Studio, or save a provider key/);
+      expect(text).toMatch(/run a model with Ollama or LM Studio, or save a provider API key.*Claude Code runs here too once a Claude API key is saved.*it never uses a Claude plan/s);
       await page.click('#aw-go');
       await page.waitForFunction(() => document.querySelector('#aw-body')?.textContent?.includes('waiting for you to start it'));
       expect(hub.workRequests.forProblem(id)[0].status).toBe('waiting');
@@ -158,6 +159,7 @@ describe('planning an idea: the same list', () => {
     const home = mkdtempSync(join(tmpdir(), 'reach-plan-'));
     process.env.CONSTELLATE_HOME = home;
     process.env.CONSTELLATE_CLAUDE = fakeClaude(home);
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-test'; // Claude Code runs only on a Claude API key, which also reaches Claude's API
     const ollama = await fakeOllama();
     process.env.OLLAMA_HOST = ollama.url;
     const hub = new Hub({ signer: LocalSigner.generate(), store: new RecordStore(), preview: false });
@@ -175,7 +177,7 @@ describe('planning an idea: the same list', () => {
       await page.click('[data-ptab="ideas"]');
       await page.click(`[data-plan="${idea.id}"]`);
       await page.waitForSelector('input[name="plan-who"]');
-      expect(await page.$$eval('input[name="plan-who"]', (rs) => rs.map((r) => (r as HTMLInputElement).value))).toEqual(['claude_code', 'model:ollama/qwen3:8b', 'any_agent']);
+      expect(await page.$$eval('input[name="plan-who"]', (rs) => rs.map((r) => (r as HTMLInputElement).value))).toEqual(['claude_code', 'model:ollama/qwen3:8b', 'model:anthropic/claude-opus-5-5', 'any_agent']);
       expect(await page.textContent('#plan-body')).toMatch(/You have to start it yourself/);
       await page.check('input[name="plan-who"][value="model:ollama/qwen3:8b"]');
       await page.click('#plan-go');
@@ -184,7 +186,7 @@ describe('planning an idea: the same list', () => {
       expect(requests[0].via).toBe('model');
       expect(requests[0].log[0].text).toMatch(/ollama:qwen3:8b/);
       expect(errors).toEqual([]);
-    } finally { await browser.close(); await web.close(); ollama.close(); delete process.env.OLLAMA_HOST; process.env.CONSTELLATE_CLAUDE = 'off'; delete process.env.CONSTELLATE_HOME; }
+    } finally { await browser.close(); await web.close(); ollama.close(); delete process.env.OLLAMA_HOST; process.env.CONSTELLATE_CLAUDE = 'off'; delete process.env.ANTHROPIC_API_KEY; delete process.env.CONSTELLATE_HOME; }
   }, 60_000);
 });
 

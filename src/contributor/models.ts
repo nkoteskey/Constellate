@@ -43,7 +43,7 @@ export class OpenAICompatibleRunner implements ModelRunner {
   }
 }
 
-/** Claude through the Anthropic SDK (API key or `ant auth login` profile). Loaded lazily so the hub has no hard dependency. */
+/** Claude through the Anthropic SDK, on the person's API key (never a Claude plan). Loaded lazily so the hub has no hard dependency. */
 export class AnthropicRunner implements ModelRunner {
   readonly family = 'claude';
   constructor(readonly id = 'anthropic:claude-opus-5-5', private readonly model = 'claude-opus-5-5', readonly size: ModelSize = 'large', readonly costPerCall = 2, private readonly apiKey?: string) {}
