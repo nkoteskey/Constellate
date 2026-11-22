@@ -1,0 +1,29 @@
+// Store what you shared permanently on Autonomi, paid by this computer's own wallet (src/hub/self-store.ts).
+// A signed, timestamped receipt proves the contribution; publish it, or keep it to yourself.
+import { esc, api, toast, ago } from './ui.js';
+
+const mb = (b) => (b >= 1e6 ? `${(b / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1e3))} KB`);
+const ant = (a) => (a && a !== '0' ? `${(Number(BigInt(a)) / 1e18).toPrecision(3)} ANT` : null);
+
+export async function selfStoreCard(slot, me) {
+  if (!slot) return;
+  const q = await api(`/api/self-store${me ? `?also=${me}` : ''}`).catch(() => null);
+  if (!q) { slot.innerHTML = ''; return; }
+  slot.innerHTML = `<div class="card" id="self-store" style="margin:14px 0"><div class="eyebrow">Store what you shared, for good</div>
+    <p class="muted" style="font-size:13.5px;margin:6px 0 0">Sharing is free: your contributions live on everyone’s computers. To keep them permanently on Autonomi, this computer pays for exactly what you shared, from its own wallet. You get a signed, timestamped receipt that proves you contributed.</p>
+    <p style="margin:10px 0 0;font-size:13.5px">${q.waiting ? `<b>${q.waiting}</b> contribution${q.waiting === 1 ? '' : 's'} not stored yet${q.next < q.waiting ? ` (the next upload takes ${q.next})` : ''}, about ${mb(q.bytes)}${ant(q.atto_ant) ? `, about ${ant(q.atto_ant)}` : ''}.` : 'Everything you shared is stored.'}</p>
+    ${q.archive !== 'autonomi' ? '<p class="faint" style="font-size:12.5px;margin:6px 0 0">Autonomi isn’t set up on this computer, so this stores to the local archive for now (docs/MAINNET.md shows how to connect a wallet).</p>' : ''}
+    ${q.waiting ? `<label class="row" style="gap:8px;margin-top:10px;font-size:13.5px;cursor:pointer"><input type="checkbox" id="ss-private"> Keep my receipt private <span class="faint">(stored the same; the receipt stays on this computer until you share it)</span></label>
+      <button class="btn primary" id="ss-go" style="margin-top:10px">Store them permanently</button>` : ''}
+    ${q.receipts.length ? `<details style="margin-top:10px"><summary class="faint" style="font-size:12.5px">Your receipts (${q.receipts.length})</summary><div style="display:grid;gap:6px;margin-top:8px;font-size:13px">${q.receipts.map((r) => `<div class="spread"><span>${r.records} records, ${mb(r.bytes)}${ant(r.atto_ant) ? `, ${ant(r.atto_ant)}` : ''} · ${r.published ? 'published' : 'private'} · ${ago(r.at)}</span><a href="/api/self-store/proof/${esc(r.receipt)}" download="constellate-receipt-${esc(r.receipt.slice(0, 12))}.json">Download</a></div>`).join('')}</div></details>` : ''}
+  </div>`;
+  const go = slot.querySelector('#ss-go');
+  if (go) go.onclick = async () => {
+    go.disabled = true;
+    try {
+      const r = await api(`/api/self-store${me ? `?also=${me}` : ''}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ private: slot.querySelector('#ss-private').checked }) });
+      toast(r.stored ? `Stored ${r.stored} contributions${r.archive === 'autonomi' ? ' on Autonomi' : ''}. Your receipt is ready.` : 'Nothing new to store.');
+    } catch (e) { toast(`Not stored: ${e.message}`, 5200); }
+    selfStoreCard(slot, me);
+  };
+}

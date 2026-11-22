@@ -847,3 +847,9 @@ Still stop points, deliberately not approved on the owner's behalf: publishing a
   - Results count with 5+ computers per arm in shared hours, reported as a spread.
   - Gate: `test/gates/x0x_home_test.test.ts` (against a stand-in x0xd).
   - **NEEDS HUMAN:** the launch checklist in docs/LAUNCH.md (npm 0.2.0, the two-computer check, @dirvine's revision, a private run on real computers).
+
+### Each contributor stores their own (Nov 22)
+- **Decision (owner, 2026-11-22):** no central donation fund or shared wallet to beg for or hack. Sharing stays free; anyone who wants their contributions permanent on Autonomi pays for exactly those, from their own computer's wallet, and gets a signed receipt as proof of contribution. The fund-based "keep my own" from earlier the same day was reverted in favour of this.
+- `src/hub/self-store.ts`: bundles this computer's public contributions (and the person's browser key's), uploads through the local antd, signs a `self_store` receipt (address, bundle sha256, ids, bytes, cost). Publish the receipt or keep it private and downloadable. The keeper doesn't pay again for self-stored records.
+- Me page card, `/api/self-store`, `constellate store-mine [--quote] [--private]`. Gate: `test/gates/self_store.test.ts`.
+- **Not done yet:** a public "verify a receipt" page that fetches the bundle and checks it in the browser; an on-chain transaction id in the receipt (antd's response would need to expose it).

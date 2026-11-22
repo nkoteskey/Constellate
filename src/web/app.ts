@@ -423,6 +423,15 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
     return tryIt(() => ({ ...hub.agentRuns.start(m[1]), via: 'claude_code' }));
   });
   // What Claude Code may use when the app starts it (src/work/claude-tools.ts): web research on, running code off.
+  // Store what you shared permanently, paid by this computer's own Autonomi wallet (src/hub/self-store.ts).
+  const browserKey = (u: URL) => { const a = u.searchParams.get('also') ?? ''; return /^[0-9a-f]{64}$/.test(a) ? a : undefined; };
+  web.route('GET', /^\/api\/self-store$/, (req, _m, u) => (here(req) ? hub.selfStore.quote(browserKey(u)) : new HttpReply(403, { error: 'only on this computer' })));
+  web.route('POST', /^\/api\/self-store$/, async (req, _m, u, body) => {
+    if (!here(req)) return new HttpReply(403, { error: 'only on this computer' });
+    const b = (await body().catch(() => ({}))) as { private?: boolean };
+    try { return (await hub.selfStore.run({ private: b.private === true, also: browserKey(u) })) ?? { stored: 0 }; } catch (e) { return new HttpReply(400, { error: (e as Error).message }); }
+  });
+  web.route('GET', /^\/api\/self-store\/proof\/([0-9a-f]{64})$/, (req, m) => (here(req) ? hub.selfStore.proof(m[1]) ?? new HttpReply(404, { error: 'no such receipt' }) : new HttpReply(403, { error: 'only on this computer' })));
   // The x0x home test (src/x0x/home-test.ts, docs/X0X_HOME_TEST.md): a session runs here, the person sees the exact
   // numbers, and only "send" publishes them. Results are public aggregates.
   const homeTest: { running: boolean; phase: string; done: number; report: Report | null; error: string | null; sent: string | null } = { running: false, phase: '', done: 0, report: null, error: null, sent: null };

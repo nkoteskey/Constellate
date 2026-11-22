@@ -1443,6 +1443,7 @@ async function mePage(id) {
     ${me.agents.length > 1 ? `<h2 class="section">${mine ? 'Your' : 'Their'} agents</h2><div class="stack">${me.agents.map((a) => `<div class="card row">${identicon(a.id, a.human, 30)}<span class="num">${short(a.id)}</span><span class="muted">${a.records} records</span></div>`).join('')}</div>` : ''}
     ${mine ? `
     <h2 class="section">Share your light</h2>${/^(localhost|127\.|0\.0\.0\.0)/.test(location.hostname) ? '<p class="muted">Your shareable link appears here once Constellate is hosted.</p><button hidden id="copy-light"></button>' : `<div class="copy-row"><pre class="code">${esc(location.origin)}/#/me/${who}</pre><button class="btn" id="copy-light">${icon.copy}Copy</button></div>`}
+    <div id="store-slot"></div>
     <div id="wallet-slot"></div>
     <h2 class="section">Your weekly digest</h2><pre style="font-family:var(--sans);font-size:14px">${esc(digest.text)}</pre>
     <div class="row"><button class="btn sm" id="copy-digest">${icon.copy}Copy to forward</button>${typeof Notification !== 'undefined' && !STATIC ? `<button class="btn ghost sm" id="notify" aria-pressed="${ls.get('notify', false)}">${ls.get('notify', false) ? 'Notifications on' : 'Notify me in this browser'}</button>` : ''}</div>
@@ -1485,6 +1486,8 @@ async function mePage(id) {
     $('#team-form').onsubmit = (e) => { e.preventDefault(); ls.set('team', $('#team').value.trim()); toast('Team saved on this device.'); };
     $('#copy-digest').onclick = () => copy(digest.text, 'Digest copied');
     if (!STATIC) import('./js/wallet.js').then((w) => w.walletSection($('#wallet-slot'), who));
+    // Store what you shared permanently, paid by this computer's own wallet, with a receipt (src/hub/self-store.ts).
+    if (!STATIC) import('./js/self-store.js').then((m) => m.selfStoreCard($('#store-slot'), who)).catch(() => {});
     $('#notify')?.addEventListener('click', async () => {
       const on = !ls.get('notify', false);
       if (on && (await Notification.requestPermission()) !== 'granted') { toast('Notifications are blocked in this browser.'); return; }

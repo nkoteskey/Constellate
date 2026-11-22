@@ -1,4 +1,5 @@
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { SelfStore } from './self-store.js';
 import { join, dirname } from 'node:path';
 import { homedir } from 'node:os';
 import type { Hub } from './hub.js';
@@ -60,8 +61,9 @@ export class Keeper {
     const ctx = this.context();
     const keep: { s: StoredRecord; why: Reason }[] = [];
     let skipped = 0;
+    const self = SelfStore.storedByAnyone(this.hub.node.store.all()); // already stored by whoever shared it
     for (const s of this.hub.node.store.all()) {
-      if (done.has(s.rec.id) || s.visibility !== 'public') continue;
+      if (done.has(s.rec.id) || self.has(s.rec.id) || s.visibility !== 'public') continue;
       const why = this.reason(s, ctx);
       if (why) keep.push({ s, why }); else if (EARNED.has(s.rec.kind)) skipped++;
     }

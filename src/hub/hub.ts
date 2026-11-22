@@ -23,6 +23,7 @@ import { HistorySync } from './sync.js';
 import { Problems } from '../work/problems.js';
 import { Results } from '../work/results.js';
 import { GithubLookup } from '../seed/lookup.js';
+import { SelfStore } from './self-store.js';
 import { Collective } from '../collective/collective.js';
 import { Skills } from '../economy/skills.js';
 import { Deliberation } from '../collective/deliberation.js';
@@ -94,6 +95,8 @@ export class Hub {
   readonly results: Results;
   /** On a miss, look an error up once on GitHub's closed issues (src/seed/lookup.ts). Replaceable in tests. */
   lookup: GithubLookup;
+  /** Store what you shared permanently on Autonomi, paid by this computer's own wallet (src/hub/self-store.ts). */
+  readonly selfStore: SelfStore;
   readonly memory: PrivateMemory;
   readonly graph: KnowledgeGraph;
   private _collective?: Collective;
@@ -177,6 +180,7 @@ export class Hub {
     this.problems = new Problems(this);
     this.results = new Results(this);
     this.lookup = new GithubLookup(this);
+    this.selfStore = new SelfStore(this);
     this.memory = new PrivateMemory(this.archive, o.memoryKey ?? MemoryKey.generate());
   }
 

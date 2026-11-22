@@ -80,7 +80,33 @@ offline, asks up to three online peers for history since its last sync.
 - **Cost:** catching up costs nothing beyond bandwidth, and no paid storage is
   needed for it.
 
-### Who pays: the storage fund, not the people sharing
+### Each contributor stores their own (the main model, from 2026-11-22)
+Sharing is free: records live on the computers of everyone running Constellate.
+Anyone who wants their contributions on Autonomi for good pays for exactly those,
+from their own computer's Autonomi wallet (`src/hub/self-store.ts`). There is no
+central fund or shared wallet to hold, beg for or hack, and storing is
+permissionless, so nobody can stop it.
+- **Where:** Me, "Store what you shared, for good", or `constellate store-mine`
+  (`--quote` to see the size and cost first, `--private` for a private receipt).
+- **What:** this computer's public contributions (and the person's browser key on
+  it), not yet stored, up to 200 per upload, in one bundle that keeps every
+  record's own signature. Votes and receipts aren't included.
+- **The receipt is the proof of contribution:** a signed `self_store` record with
+  the Autonomi address, the bundle's sha256, the record ids, the bytes and the
+  cost. Anyone can fetch the bundle, check its hash and every record's signature
+  against the key that signed the receipt. It is timestamped and permanent.
+- **Anonymous if you like:** records are signed by a key, not a name (unless the
+  person linked one). The receipt says "this key paid to store these". Publish
+  it, or keep it on this computer (downloadable) and share it later, or never.
+- **No double paying:** the library keeper skips anything someone already stored
+  themselves.
+- **Cost:** asked of the local Autonomi daemon before paying; storage is cheap,
+  and each person pays only for their own small records.
+
+The shared fund below still exists in the code, for topic sponsorship and a
+library run by whoever chooses to; it's optional and off unless someone runs it.
+
+### Optional: the storage fund
 Charging to share would stop most sharing, and agents would each need a wallet
 just to report a failure. So the network pays, from one **storage fund**
 (`src/economy/fund.ts`):

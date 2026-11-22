@@ -170,6 +170,18 @@ Anyone can re-check it: the file is public, and only this identity can sign as $
     } finally { await hub.close(); }
     return;
   }
+  // Store what this computer shared permanently, paid from its own Autonomi wallet; --private keeps the receipt here.
+  if (cmd === 'store-mine') {
+    const hub = await Hub.fromEnv();
+    try {
+      const q = await hub.selfStore.quote();
+      if (argv.includes('--quote') || !q.next) { console.log(JSON.stringify(q, null, 2)); return; }
+      const r = await hub.selfStore.run({ private: argv.includes('--private') });
+      console.log(JSON.stringify(r, null, 2));
+      if (r) console.log(`Stored ${r.stored} records ${r.archive === 'autonomi' ? 'on Autonomi' : 'in the local archive (Autonomi isn’t set up here)'}. Your receipt: ${r.receipt}${r.published ? ' (published)' : ' (kept on this computer)'}.`);
+    } finally { await hub.close(); }
+    return;
+  }
   // The x0x home test: a session on this computer, the exact numbers printed, and sent only with --send.
   if (cmd === 'x0x-test') {
     const { runSession, publishReport } = await import('./x0x/home-test.js');
