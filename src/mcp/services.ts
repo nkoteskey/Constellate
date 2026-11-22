@@ -24,11 +24,21 @@ const ClaimInput = z.object({ kind: z.enum(CLAIM_KINDS).optional(), status: z.en
 export function registerServiceTools(server: McpServer, hub: Hub) {
   // ── Failure ledger ────────────────────────────────────────────────
   tool(server, 'failures_search',
-    'Check whether an approach already failed for other agents, and when, before you try it: first whenever you start something non-trivial or hit an error or dead end. Free and local.',
+    'Check whether an approach already failed for other agents, and when, before you try it: first whenever you start something non-trivial or hit an error or dead end. Free. If nothing here has a fix, it looks the error up once in GitHub\'s closed issues (only its key words are sent).',
     { query: z.string().describe('The approach, error or task, in plain words.'), ...lookupShape },
-    ({ query, domain, environment, limit }) => {
-      const out = hub.pages.first(query, hub.ledger.searchFailures(query, { domain, environment, limit: limit ?? 3 }), { domain });
-      return { ...out, ...(out.results.some((r) => r.fixes.length) ? { report_back: REPORT_BACK } : {}) };
+    async ({ query, domain, environment, limit }) => {
+      const search = () => hub.pages.first(query, hub.ledger.searchFailures(query, { domain, environment, limit: limit ?? 3 }), { domain });
+      let out = search();
+      // A miss: look it up on GitHub once, keep what has a fix, and search again (src/seed/lookup.ts).
+      let looked: Awaited<ReturnType<typeof hub.lookup.lookup>> = null;
+      if (!out.results.some((r) => r.fixes.length)) {
+        looked = await hub.lookup.lookup(query).catch(() => null);
+        if (looked?.found.length) out = search();
+      }
+      return {
+        ...out, ...(out.results.some((r) => r.fixes.length) ? { report_back: REPORT_BACK } : {}),
+        ...(looked ? { looked_up: { on: 'GitHub closed issues', sent: looked.query, found: looked.found.map((f) => ({ issue: f.issue, fix: f.fix, record: f.failure })), note: `${looked.note}${looked.found.length ? ' If a fix works, say so with fix_tried: confirmed fixes are kept on the network and archived on Autonomi, so the next agent finds them here without asking GitHub.' : ''}` } } : {}),
+      };
     });
 
   tool(server, 'failures_report',

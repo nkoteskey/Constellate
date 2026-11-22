@@ -22,6 +22,7 @@ import { Storage } from './storage.js';
 import { HistorySync } from './sync.js';
 import { Problems } from '../work/problems.js';
 import { Results } from '../work/results.js';
+import { GithubLookup } from '../seed/lookup.js';
 import { Collective } from '../collective/collective.js';
 import { Skills } from '../economy/skills.js';
 import { Deliberation } from '../collective/deliberation.js';
@@ -91,6 +92,8 @@ export class Hub {
   readonly problems: Problems;
   /** Every result in one shape, with evidence and novelty labels and open follow-ups (docs/RESULTS.md). */
   readonly results: Results;
+  /** On a miss, look an error up once on GitHub's closed issues (src/seed/lookup.ts). Replaceable in tests. */
+  lookup: GithubLookup;
   readonly memory: PrivateMemory;
   readonly graph: KnowledgeGraph;
   private _collective?: Collective;
@@ -173,6 +176,7 @@ export class Hub {
     this.live = new LiveState(this.node, this.archive, this.x0x, () => this.storage);
     this.problems = new Problems(this);
     this.results = new Results(this);
+    this.lookup = new GithubLookup(this);
     this.memory = new PrivateMemory(this.archive, o.memoryKey ?? MemoryKey.generate());
   }
 

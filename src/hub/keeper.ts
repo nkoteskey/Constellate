@@ -47,6 +47,8 @@ export class Keeper {
     if (ALWAYS.has(s.rec.kind)) return 'core';
     if (!EARNED.has(s.rec.kind)) return null;
     if (store.referencing(s.rec.id, 'confirmation').some((c) => c.operatorId !== s.operatorId)) return 'confirmed';
+    // A failure whose fix someone else confirmed travels with it: the fix alone would lose its question.
+    if (s.rec.kind === 'failure' && store.referencing(s.rec.id, 'answer').some((a) => store.referencing(a.rec.id, 'confirmation').some((c) => c.operatorId !== a.operatorId))) return 'confirmed';
     if (s.rec.kind === 'answer' && ctx.paid.has(s.rec.id)) return 'bounty';
     if (s.rec.context.domain.some((d) => ctx.sponsored.has(d.toLowerCase()))) return 'sponsored';
     return null;

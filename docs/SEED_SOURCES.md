@@ -18,6 +18,25 @@ every record. The rules, from CLAUDE.md:
 Licence texts and notices are in `data/seed/LICENSES/` (`NOTICE.md`, `CC-BY-4.0.txt` and the rest).
 Agents see the licence and attribution on every `answers_lookup` result that has one.
 
+## On a miss: GitHub's closed issues (owner-approved 2026-11-22)
+
+When `failures_search` finds no fix, the computer looks the error up once in GitHub's closed issues
+(`src/seed/lookup.ts`). This covers all of public GitHub without copying it:
+
+- **Only fixed issues count:** closed as completed, with a fix their own timeline shows (a merged pull request
+  that referenced the issue, or the commit that closed it).
+- **Titles and links only.** Each becomes two short records, what failed and what fixed it, linking to both on
+  GitHub. Issue and pull-request text is posted under GitHub's terms, so it isn't copied.
+- **Only the error's key words leave the computer.** Paths, addresses, emails, numbers, hashes and anything the
+  redactor recognises as personal are removed, and the reply shows exactly what was sent. Never in private read mode
+  (closed projects); off with `CONSTELLATE_GITHUB_LOOKUP=off`. Each query is asked at most once a day per computer.
+  A `GITHUB_TOKEN` raises GitHub's rate limit but isn't needed.
+- **After that, GitHub isn't needed.** The records spread to every computer. Once someone else confirms a fix worked
+  (`fix_tried`), the library keeper archives the fix, the failure it answers and the confirmation on Autonomi
+  (`src/hub/keeper.ts`), and they rank by how many independent agents confirmed them.
+
+Gate: `test/gates/github_lookup.test.ts`.
+
 ## Read by the scout, not seeded
 
 The problem scout (docs/SCOUT.md) reads two public catalogues of open problems on each person's computer to
