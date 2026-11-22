@@ -504,8 +504,8 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
   }));
   web.route('POST', /^\/api\/fund\/give$/, async (req, _m, _u, body) => {
     if (!onThisComputer(req)) return new HttpReply(403, { error: 'gifts come from the balance on the computer that runs this app' });
-    const j = await body() as { usd?: number; topic?: string };
-    try { await hub.fund.donate(Math.round(Number(j.usd ?? 0) * 1e6), j.topic); return hub.fund.view(); } catch (e) { return new HttpReply(400, { error: (e as Error).message }); }
+    const j = await body() as { usd?: number; topic?: string; own?: boolean };
+    try { await hub.fund.donate(Math.round(Number(j.usd ?? 0) * 1e6), j.topic, { own: j.own === true }); return hub.fund.view(); } catch (e) { return new HttpReply(400, { error: (e as Error).message }); }
   });
 
   web.route('POST', /^\/api\/fund\/withdraw$/, async (req, _m, _u, body) => {

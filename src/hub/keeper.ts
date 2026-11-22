@@ -38,7 +38,7 @@ export class Keeper {
   /** Why a record belongs in the permanent library, or null if peers are enough. */
   private context() {
     const paid = new Set(this.hub.node.store.ofKind('receipt').filter((r) => (r.rec.body as { type?: string }).type === 'bounty_paid').map((r) => r.rec.refs[1]));
-    return { sponsored: this.hub.fund.sponsoredTopics(), paid };
+    return { sponsored: this.hub.fund.sponsoredTopics(), own: this.hub.fund.ownSponsors(), paid };
   }
 
   reason(s: StoredRecord, ctx = this.context()): Reason | null {
@@ -51,6 +51,9 @@ export class Keeper {
     if (s.rec.kind === 'failure' && store.referencing(s.rec.id, 'answer').some((a) => store.referencing(a.rec.id, 'confirmation').some((c) => c.operatorId !== a.operatorId))) return 'confirmed';
     if (s.rec.kind === 'answer' && ctx.paid.has(s.rec.id)) return 'bounty';
     if (s.rec.context.domain.some((d) => ctx.sponsored.has(d.toLowerCase()))) return 'sponsored';
+    // Someone paid to keep their own contributions: everything public they published up to that gift.
+    const own = ctx.own.get(s.rec.agent_id);
+    if (own && s.rec.created <= own) return 'sponsored';
     return null;
   }
 
