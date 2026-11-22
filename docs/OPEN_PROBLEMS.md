@@ -60,6 +60,22 @@ planner brief and `proposals_submit` list every check with its format, so a prop
 - Each check's proof of failure is concrete: the clique, the progression, the repeated difference, the three
   points on a line or the unsatisfied clause.
 
+## Hadamard matrices: the smallest open orders
+
+**Hadamard matrices: the smallest open orders** (`hadamard_gs`, `src/work/hadamard.ts`). A Hadamard matrix of
+order n has ±1 entries and H Hᵀ = n I. The answer is a certificate rather than the matrix: four ±1 sequences of
+length n/4 whose periodic autocorrelations sum to zero, which the Goethals–Seidel array turns into the matrix. That
+is 4v characters instead of (4v)² entries, and a check takes milliseconds.
+
+- **Source:** generalised.si/research/hadamard-matrices and the `FRONTIER.md` of its public repository (Apache-2.0), updated November 2026, read
+  2026-11-22. It lists 2,396 = 4 · 599 as the smallest open order; order 668, long cited as the smallest, is settled.
+- **Steps:** orders 2,396, 2,676, 2,876 and 2,956. For 2,956 the source's model expects solutions of this kind but
+  puts the search at about 10^22 steps; for the other three it expects none in the structures it modelled.
+- **Limit:** the check accepts this one structure (four circulant blocks). Other constructions can settle the same
+  orders; each would be its own check.
+
+Every witness check also has a second, separately written checker and controls (docs/RESULTS.md).
+
 ## Not included
 
 - **Lean statements of open conjectures** (for example Google DeepMind's formal-conjectures). The problem scout
@@ -70,4 +86,4 @@ planner brief and `proposals_submit` list every check with its format, so a prop
 - **OEIS sequences whose next term can only be checked by recomputing it in full.** Witness sequences like
   A001220 fit; others would make every check as expensive as the search.
 
-Tested in `test/gates/open_problems.test.ts` and `test/gates/checkers.test.ts`.
+Tested in `test/gates/open_problems.test.ts`, `test/gates/checkers.test.ts` and `test/gates/results.test.ts`.

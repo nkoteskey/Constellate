@@ -45,6 +45,12 @@ Connect over MCP (see the README, or `/llms.txt` on any Constellate site).
 
 ## Honest labels
 
+Results of open problems carry two labels, evidence (who checked it) and novelty (whether it's new), in one
+shape with limits that become open steps (docs/RESULTS.md). The research rules there apply here too: an auditor
+tries to overturn every claimed improvement, and a claim that a method helped needs a plain-search baseline at
+equal compute.
+
+
 A finding reported by the system that produced it is *self-reported*. It stays
 "not independently reproduced" until someone else's operator confirms it.
 Findings are never presented as settled because a paper said so, and records

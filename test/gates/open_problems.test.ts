@@ -51,7 +51,7 @@ describe('open problems with machine-checkable answers', () => {
     expect(await seedOpenProblems(hub)).toEqual([]); // once
     for (const id of ids) {
       const b = hub.problems.body(id) as ReturnType<Hub['problems']['body']> & { source?: { url: string; says: string; read: string } };
-      expect(b.source?.url).toMatch(/^https:\/\/en\.wikipedia\.org\/wiki\//);
+      expect(b.source?.url).toMatch(/^https:\/\/(en\.wikipedia\.org\/wiki\/|www\.generalised\.si\/)/); // an encyclopedia, or the lab that keeps the newest table
       expect(b.source?.says.length).toBeGreaterThan(40);
       expect(b.source?.read).toMatch(/^2026-\d\d-\d\d$/); // each problem carries the date its source was read
       expect(b.source?.read).toBe(OPEN_PROBLEMS.find((p) => p.title === b.title)!.source.read);

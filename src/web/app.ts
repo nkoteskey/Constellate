@@ -11,7 +11,9 @@ import { agentName, Planner } from '../collective/planner.js';
 import { Profiles, profileProblem, ProfileBody } from '../collab/profiles.js';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { HttpReply, RawReply, StreamReply, WebServer } from './server.js';
+import { HttpReply, PUBLIC, RawReply, StreamReply, WebServer } from './server.js';
+import { llmsFull } from './llms-full.js';
+import { runControls } from '../work/checker-controls.js';
 import { Guide } from './guide.js';
 import { ProblemSpaces } from '../x0x/spaces.js';
 import { Deliberation } from '../collective/deliberation.js';
@@ -127,6 +129,12 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
 
   web.route('GET', /^\/api\/snapshot$/, async () => { const { exportSnapshot } = await import('../seed/snapshot.js'); return new RawReply(Buffer.from(exportSnapshot(hub.node.store)), 'application/cbor'); });
 
+  // Results in one shape, with evidence and novelty labels (src/work/results.ts, docs/RESULTS.md).
+  web.route('GET', /^\/api\/results$/, () => hub.results.all());
+  web.route('GET', /^\/api\/results\/(CR-[0-9a-f]{12})$/, async (_r, m) => (await hub.results.get(m[1])) ?? new HttpReply(404, { error: 'no such result' }));
+  // How each checker does on its controls: known answers must pass, planted errors must fail.
+  web.route('GET', /^\/api\/checkers$/, () => Promise.all(hub.problems.verifiers.names().map((n) => runControls(hub.problems.verifiers.get(n)!))));
+  web.route('GET', /^\/llms-full\.txt$/, async () => new RawReply(Buffer.from(await llmsFull(hub, join(PUBLIC, 'llms.txt'))), 'text/plain; charset=utf-8'));
   web.route('GET', /^\/\.well-known\/agent-card\.json$/, async () => {
     const { agentCard } = await import('../economy/a2a.js');
     let base: Record<string, unknown> = {};
@@ -211,7 +219,7 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
     const done = new Set(s.checkpoints.map((c) => c.chunk));
     const reviewing = new Set(hub.node.store.referencing(m[1], 'constitution_check').filter((c) => (c.rec.body as { stage: string; needs_human: boolean }).stage === 'checkpoint' && (c.rec.body as { needs_human: boolean }).needs_human).map((c) => { const r = hub.node.store.get(c.rec.refs[1]); return (r?.rec.body as { chunk?: string } | undefined)?.chunk; }));
     const steps = prob.chunks.map((c) => ({ key: c.key, title: c.title, state: done.has(c.key) ? 'done' : reviewing.has(c.key) && constitution.state === 'awaiting_review' ? 'review' : 'open' }));
-    return { ...s, steps, source: (prob as { source?: unknown }).source ?? null, witness: !!hub.problems.verifiers.get(prob.definition_of_done.verifier)?.witness, realm_info: REALM_INFO[s.realm], recent, people: [...people.values()].sort((a, b) => b.contributions - a.contributions).slice(0, 30), votes, constitution };
+    return { ...s, steps, results: await hub.results.forProblem(m[1]), source: (prob as { source?: unknown }).source ?? null, witness: !!hub.problems.verifiers.get(prob.definition_of_done.verifier)?.witness, realm_info: REALM_INFO[s.realm], recent, people: [...people.values()].sort((a, b) => b.contributions - a.contributions).slice(0, 30), votes, constitution };
   });
 
   web.route('GET', /^\/api\/proposals$/, () => hub.collective.queue(5));

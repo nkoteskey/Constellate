@@ -15,7 +15,7 @@ export class StreamReply { constructor(readonly open: (res: ServerResponse) => v
 export type ApiHandler = (req: IncomingMessage, url: URL, body: () => Promise<any>) => Promise<unknown> | unknown;
 
 const here = dirname(fileURLToPath(import.meta.url));
-const PUBLIC = [join(here, 'public'), join(here, '../../src/web/public')].find((p) => existsSync(p)) ?? join(here, 'public');
+export const PUBLIC = [join(here, 'public'), join(here, '../../src/web/public')].find((p) => existsSync(p)) ?? join(here, 'public');
 const TYPES: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.json': 'application/json', '.woff2': 'font/woff2', '.txt': 'text/plain' };
 
 /**

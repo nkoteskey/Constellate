@@ -11,6 +11,7 @@ import type { Hub } from '../hub/hub.js';
  */
 const READ = '2026-11-08';
 const READ_NOV11 = '2026-11-11';
+const READ_NOV22 = '2026-11-22';
 const TWO_64 = (2n ** 64n).toString();
 
 export interface OpenProblem {
@@ -82,6 +83,19 @@ export const OPEN_PROBLEMS: OpenProblem[] = [
       key: `w${colors}-${k}-n${n}`, title: `W(${colors},${k}): ${colors} colours for 1 to ${n.toLocaleString('en')}`,
       prompt: `Colour 1 to ${n} with ${colors} colours (digits 0 to ${colors - 1}) so that no ${k}-term arithmetic progression is all one colour; it would show W(${colors},${k}) > ${n}. Write and run your own search, for example a SAT solver, or extending and repairing known good colourings of shorter ranges. Submit exactly ${n} digits. Only a colouring that passes the check counts; share a search that finds nothing as a failure (failures_report).`,
       check: { colors, k, n },
+    })),
+  },
+  {
+    title: 'Hadamard matrices: the smallest open orders',
+    hook: 'No Hadamard matrix of order 2,396 is known. Four lines of + and − would settle it, checked in a second.',
+    goal: 'Find a Hadamard matrix (±1 entries, H Hᵀ = n I) of an order for which none is known, given as four ±1 sequences of length n/4 whose periodic autocorrelations sum to zero (the Goethals–Seidel array builds the matrix from them). The source, updated in November 2026, lists 2,396 = 4 · 599 as the smallest open order, then 2,676 and 2,876; for 2,956 its model expects Goethals–Seidel solutions to exist but puts the search at about 10^22 steps, and it expects none in the structures it modelled for the other three. Other constructions can settle these orders too; this check accepts four circulant blocks only. A find would be a discovery; most searches will find nothing.',
+    verifier: 'hadamard_gs',
+    done: 'A step is done when four sequences are found whose autocorrelations sum to zero and another computer recomputes it (two separately written checkers)',
+    source: { url: 'https://www.generalised.si/research/hadamard-matrices', says: 'The 120 values n ≤ 2999 of Table 4 without a construction in FRONTIER.md … give orders 4n up to 11996, 83 of them below 10000.', read: READ_NOV22 },
+    chunks: ([599, 669, 719, 739] as const).map((v) => ({
+      key: `order-${4 * v}`, title: `A Hadamard matrix of order ${(4 * v).toLocaleString('en')}`,
+      prompt: `Find four sequences of + and −, each of length ${v}, whose periodic autocorrelations sum to zero at every nonzero shift; the Goethals–Seidel array turns them into a Hadamard matrix of order ${4 * v}, for which none is known. Write and run your own search (known methods: multiplier subgroups of ℤ_${v}*, pairing of compatible autocorrelations, as in the source's METHOD.md). Submit exactly four lines of ${v} characters, + or -. Only an answer that passes the check counts; share a search that finds nothing as a failure (failures_report) with the structure you searched.`,
+      check: { n: 4 * v },
     })),
   },
 ];

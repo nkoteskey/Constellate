@@ -1,4 +1,5 @@
 import { Hub } from '../hub/hub.js';
+import { checkerId } from './checker-controls.js';
 import { ModelRunner, Budget } from '../contributor/models.js';
 import { decide, Policy, Power, Status } from '../contributor/device.js';
 import { Board, BoardTask } from './board.js';
@@ -112,7 +113,7 @@ export class Worker {
           }
         }
         if (agrees) {
-          const body: CheckpointBody = { problem: problemId, chunk: c.key, seq: st.done + 1, result: r.rec.id, verifier_model: this.runner.id, verifier_family: this.runner.family, machine_check: machine.detail };
+          const body: CheckpointBody = { problem: problemId, chunk: c.key, seq: st.done + 1, result: r.rec.id, verifier_model: this.runner.id, verifier_family: this.runner.family, machine_check: machine.detail, checker: checkerId(verifier.name) };
           await this.hub.node.submit({ kind: 'checkpoint', context: ctx, body: body as unknown as Record<string, unknown>, refs: [problemId, r.rec.id] }, { publish: true });
           const task = (await this.board.list()).find((t) => t.tags.problem === problemId && t.tags.chunk === c.key);
           if (task) await this.board.complete(task.id, this.hub.node.agentId);

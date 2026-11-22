@@ -36,6 +36,8 @@ export const RECORD_KINDS = [
   // storage: one signature over many of an author's records (a Merkle root of their ids), so archives and
   // catch-up bundles needn't carry a 3.3 KB signature per record (docs/STORAGE.md)
   'batch_root',
+  // results: what someone found when they compared a verified result with the published tables (docs/RESULTS.md)
+  'novelty',
 ] as const;
 export type RecordKind = (typeof RECORD_KINDS)[number];
 

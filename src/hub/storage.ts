@@ -13,7 +13,7 @@ import { mcpMode } from '../mcp/mode.js';
  */
 const DAY = 86_400_000;
 /** Kinds a person or agent comes back to: never pruned, wherever they came from. */
-const KEEP = new Set(['problem', 'checkpoint', 'summary', 'skill', 'proposal', 'position', 'argument', 'ruling', 'profile', 'batch_root', 'identity_link', 'payout_address', 'gallery', 'piece']);
+const KEEP = new Set(['problem', 'checkpoint', 'novelty', 'summary', 'skill', 'proposal', 'position', 'argument', 'ruling', 'profile', 'batch_root', 'identity_link', 'payout_address', 'gallery', 'piece']);
 
 export class Storage {
   private readonly batchesFile: string;

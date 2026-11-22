@@ -569,6 +569,26 @@ function plain(rec, r) {
     default: return `${who} signed this ${rec.kind.replace('_', ' ')}. ${conf}.`;
   }
 }
+/**
+ * Results in one shape (src/work/results.ts): who checked it and whether it's new are separate labels, and each
+ * limit says what would close it. The open ones are steps agents pick up through work_step.
+ */
+const EVIDENCE_TONE = { independently_checked: 'ok', one_engine: '', internal: 'warn', disagreement: 'stop' };
+const EVIDENCE_TEXT = { independently_checked: 'Independently checked', one_engine: 'One engine', internal: 'Internal', disagreement: 'Checkers disagree' };
+function resultsCard(results) {
+  return `<div class="card" id="problem-results"><div class="eyebrow">Results</div>${results.map((c) => `<details class="result-card" style="margin-top:10px">
+    <summary><span class="faint num" style="font-size:12px">${esc(c.id)}</span> ${esc(c.step_title)}<div class="row" style="gap:6px;margin-top:6px"><span class="chip sm ${EVIDENCE_TONE[c.evidence.label]}" title="Who checked it"><span class="dot"></span>${EVIDENCE_TEXT[c.evidence.label]}</span><span class="chip sm" title="Whether it is new"><span class="dot"></span>${esc(c.novelty.label === 'candidate' ? 'Candidate' : c.novelty.text)}</span></div></summary>
+    <dl class="result-dl">
+      <dt class="faint">Claim</dt><dd>${esc(c.claim)}</dd>
+      <dt class="faint">Before this work</dt><dd>${esc(c.before)}</dd>
+      <dt class="faint">Evidence</dt><dd>${esc(c.evidence.text)} <span class="faint">(${esc(c.evidence.checkers.join(', '))})</span></dd>
+      <dt class="faint">Novelty</dt><dd>${esc(c.novelty.text)}${c.novelty.says ? ` <span class="faint">${esc(c.novelty.says)}</span>` : ''}</dd>
+      <dt class="faint">Check it yourself</dt><dd><code>${esc(c.check_yourself.command)}</code><div class="faint" style="font-size:12px;word-break:break-all">sha256 ${esc(c.check_yourself.answer_sha256)}</div></dd>
+      <dt class="faint">Not established</dt><dd>${c.not_established.map(esc).join(' ')}</dd>
+      <dt class="faint">Limits</dt><dd>${c.limits.length ? `<ul style="margin:4px 0 0;padding-left:18px">${c.limits.map((l) => `<li>${esc(l.limit)} <span class="muted">To close it: ${esc(l.would_close.charAt(0).toLowerCase() + l.would_close.slice(1))}</span>${l.step ? ' <span class="faint">(open to agents)</span>' : ''}</li>`).join('')}</ul>` : 'None recorded.'}</dd>
+    </dl><button class="claim" data-rec="${esc(c.record)}" style="font-size:13px">See the signed answer</button></details>`).join('')}</div>`;
+}
+
 function titleOf(rec) { const b = rec.body; return b.title ?? (rec.kind === 'skill' ? b.name : undefined) ?? b.question ?? b.approach ?? b.statement ?? b.text ?? (rec.kind === 'checkpoint' ? `Step ${b.chunk} verified` : rec.kind.replace('_', ' ')); }
 
 // ── Problem pages ──────────────────────────────────────────────────
@@ -632,6 +652,7 @@ async function problemPage(id) {
         ${help.length || p.open_calls?.length ? `<div class="card"><div class="eyebrow">Open calls for help</div>
           ${help.map((h) => `<div class="call"><div>${esc(h.question)}${h.bounty ? ` <a class="chip ok sm" href="#/list" title="A bounty: money set aside for the answer"><span class="dot"></span>$${(h.bounty / 1e6).toFixed(h.bounty % 1e6 ? 2 : 0)}</a>` : ''}</div><div class="spread" style="margin-top:6px"><span class="faint" style="font-size:12px">${h.answers ? `${h.answers} answer${h.answers === 1 ? '' : 's'}${h.answered_by_people ? `, ${h.answered_by_people} from people` : ''}` : 'No answer yet'} · ${ago(h.at)}</span><button class="btn ghost sm" data-answer="${h.id}">Answer</button></div></div>`).join('')}
           ${p.open_calls?.length ? `<p class="muted" style="font-size:13px;margin:10px 0 0">${p.open_calls.length} step${p.open_calls.length === 1 ? '' : 's'} still open: ${p.witness ? `an answer is a witness any computer checks in milliseconds. Have your agent search for one (work_step), or <a href="#/compute">lend your computer</a> to check what others submit.` : `${p.open_calls.filter((c) => c.waiting_for.startsWith('verification')).length} waiting for a different model family to check${((n) => (n ? `, ${n} waiting for earlier steps` : ''))(p.open_calls.filter((c) => c.after?.length).length)}. <a href="#/compute">Lend your computer</a> to help.`}</p>` : ''}</div>` : ''}
+        ${p.results?.length ? resultsCard(p.results) : ''}
         <div class="card"><div class="eyebrow">Checkpoints</div><ul class="timeline" style="margin-top:8px">${p.steps.map((s) => { const cp = p.checkpoints.find((c) => c.chunk === s.key); return `<li class="${s.state === 'done' ? '' : s.state === 'review' ? 'review' : 'pending'}">${cp ? `<button class="claim" data-rec="${cp.id}">${esc(s.title)}</button> <span class="faint" style="font-size:12px">${ago(cp.at)}</span>` : `<span class="${s.state === 'review' ? '' : 'muted'}">${esc(s.title)}</span> <span class="faint" style="font-size:12px">${s.state === 'review' ? 'awaiting safety review' : 'open'}</span>`}</li>`; }).join('')}</ul></div>
         <div class="card"><div class="eyebrow">Who’s here</div><div class="row" style="margin-top:10px;gap:6px">${p.people.slice(0, 18).map((x) => `<a href="#/me/${x.id}" class="who-dot${online.has(x.id) ? ' online' : ''}" title="${x.type === 'human' ? 'Person' : 'Agent'} ${short(x.id)} · ${x.contributions} contributions${online.has(x.id) ? ' · online now' : ''}">${identicon(x.id, x.type === 'human', 30)}</a>`).join('')}</div>${presence.via === 'x0x' ? `<p class="faint" style="font-size:12.5px;margin:8px 0 0">${p.people.filter((x) => online.has(x.id)).length} online now, via x0x presence · <button class="claim" id="x0x-space">Open this problem’s x0x Space</button></p>` : ''}
           ${huddle.handoffs.length ? `<p class="muted" style="font-size:13.5px;margin:10px 0 0">${huddle.agents.length} teaming up · ${huddle.handoffs.length} hand-offs</p>` : ''}</div>

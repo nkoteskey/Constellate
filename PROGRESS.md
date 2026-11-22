@@ -792,3 +792,27 @@ Still stop points, deliberately not approved on the owner's behalf: publishing a
 - **Tests never spend a real key or plan:** test/setup.ts clears `*_API_KEY` and `CLAUDE_CODE_OAUTH_TOKEN`; tests that need a key set a fake one.
 - **Gate:** `test/gates/planner.test.ts` ("Claude Code runs only on a Claude API key, never on a Claude plan"), plus the Claude Code tests in agent_names, agent_tools and agent_work_reach.
 - **Not done yet:** a lent computer trusts the proposer's own constitution check; re-checking each problem locally before lending to it is a follow-up.
+
+## 2026-11-22
+
+### Results in one shape, and checkers tested before they're trusted (Nov 22)
+- **Why:** a review of Generalised Superintelligence (generalised.si, read 2026-11-22), a lab publishing machine-checked discoveries. What we read, what we took and what we didn't is logged in docs/RESULTS.md ("Where this came from"). No code was copied.
+- **Every result in one shape** (`src/work/results.ts`): claim, what was known before (with the source and date; no priority claimed), evidence, novelty, how to check it yourself (a command, the record, the sha256 of the answer), what isn't established, and limits with what would close each.
+  - **Evidence says who checked it:** Independently checked, One engine, Internal, or Checkers disagree.
+  - **Novelty is separate:** New; New, but obtainable from known results; First explicit construction; Concurrent; Known; or Candidate until someone compares it with the tables (a new `novelty` record, with a link). The most cautious label shows.
+  - **Stable ids:** `CR-` and 12 hex digits of the answer's record; unchanged once verified.
+- **Limits become open steps:** `work_step` with no arguments now lists `follow_ups` (re-check, audit, novelty) on other people's results. A re-check runs both checkers on the agent's own computer and signs what they say; an audit says holds or overturned and what was checked. Nobody settles their own.
+- **Checkers are tested** (`src/work/checker-controls.ts`): known answers must pass and planted errors fail, for every checker. Where no correct answer exists (perfect cuboids, Wall–Sun–Sun primes) that's said. `constellate checkers` and `/api/checkers` run them.
+- **Second checkers** (`src/work/second-checkers.ts`): every witness check written again by a different method; the gate runs both on random answers and they must agree.
+- **Version pins:** each problem records the checker version it was posted with, each checkpoint the one that passed it. A fingerprint test (`src/work/checker-pins.json`) fails if a check changes without a version raise. A later checker that rejects an earlier answer shows "Checkers disagree" instead of dropping it.
+- **Research rules** (docs/RESULTS.md, docs/RESEARCH_AGENTS.md, llms.txt): the frozen checker is the only judge; an auditor tries to overturn every claimed improvement; refuted ideas are kept; a claim that a method helped needs a plain-search baseline at equal compute; quoted numbers are cited.
+- **New open problem: the smallest open Hadamard orders** (`hadamard_gs`, `src/work/hadamard.ts`). Four ±1 sequences are the certificate (Goethals–Seidel). The source was re-checked first: order 668, long cited as the smallest open order, is settled; the smallest now is 2,396.
+- **`/llms-full.txt`:** llms.txt plus the label definitions, every result in the standard shape with its id, and the open problems. In the static site too.
+- **App:** a Results card on each problem page. **CLI:** `constellate recheck CR-…`, `constellate checkers`.
+- **Gate:** `test/gates/results.test.ts`.
+- **Not done yet:**
+  - Covering designs (the La Jolla repository's site couldn't be reached from the build environment, so no bounds were read).
+  - Code distances (checking one is itself a hard computation).
+  - SAT Competition "unknown" formulas (too large for a record).
+  - A second checker in another language.
+  - Offering GSI to re-check their One engine and Internal results.

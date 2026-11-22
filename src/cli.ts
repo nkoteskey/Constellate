@@ -156,6 +156,34 @@ Anyone can re-check it: the file is public, and only this identity can sign as $
     return;
   }
   if (cmd === 'status') { const hub = await Hub.fromEnv(); console.log(JSON.stringify(hub.status(), null, 2)); await hub.close(); return; }
+  // Re-run both checkers on a result this computer holds, and print its card (docs/RESULTS.md).
+  if (cmd === 'recheck') {
+    const id = argv[1];
+    if (!id) throw new Error('usage: constellate recheck CR-<12 hex digits>');
+    const hub = await Hub.fromEnv();
+    try {
+      const card = await hub.results.get(id);
+      if (!card) { console.error(`No result ${id} on this computer yet. Run \`constellate mcp\` or the app once to catch up with the network.`); process.exitCode = 1; return; }
+      const { resultText } = await import('./web/llms-full.js');
+      console.log(resultText(card));
+      process.exitCode = card.evidence.label === 'disagreement' ? 1 : 0;
+    } finally { await hub.close(); }
+    return;
+  }
+  // Every checker against its controls: known answers must pass, planted errors must fail, both checkers alike.
+  if (cmd === 'checkers') {
+    const { VerifierRegistry } = await import('./work/verifiers.js');
+    const { runControls } = await import('./work/checker-controls.js');
+    const reg = new VerifierRegistry();
+    let bad = 0;
+    for (const n of reg.names()) {
+      const r = await runControls(reg.get(n)!);
+      bad += r.failures.length;
+      console.log(`${r.failures.length ? '✗' : '✓'} ${r.version}: ${r.passed} controls pass${r.second ? ', both checkers' : ', one checker'}${r.skipped ? ` (${r.skipped})` : ''}${r.no_known_answer ? ` (${r.no_known_answer})` : ''}${r.failures.map((f) => `\n    ${f}`).join('')}`);
+    }
+    process.exitCode = bad ? 1 : 0;
+    return;
+  }
   if (cmd === 'setup') {
     // Snippets point at this install's own CLI; `npx -y constellate-mcp mcp` (our npm package) needs nothing installed.
     const cli = fileURLToPath(new URL(import.meta.url.endsWith('.ts') ? '../dist/cli.js' : './cli.js', import.meta.url));

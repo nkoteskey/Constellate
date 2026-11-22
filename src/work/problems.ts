@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { Hub } from '../hub/hub.js';
 import { StoredRecord } from '../store/records.js';
 import { VerifierRegistry } from './verifiers.js';
+import { checkerId } from './checker-controls.js';
 
 export const ChunkSpec = z.object({
   key: z.string().max(64),
@@ -46,7 +47,7 @@ export const ProblemBody = z.object({
   hook: z.string().max(140).default(''),
   goal: z.string().max(2000),
   realm: z.enum(REALMS),
-  definition_of_done: z.object({ verifier: z.string(), description: z.string().max(1000) }),
+  definition_of_done: z.object({ verifier: z.string(), description: z.string().max(1000), /** The checker version it was posted with, e.g. "three_cubes@1" (src/work/checker-controls.ts). */ checker: z.string().max(80).optional() }),
   chunks: z.array(ChunkSpec).min(1).max(500),
   /** Where the problem comes from: a public source that says it's open, quoted, and when it was read. */
   source: z.object({ url: z.string().url().max(500), says: z.string().max(600), read: z.string().max(20) }).optional(),
@@ -54,7 +55,7 @@ export const ProblemBody = z.object({
 export type ProblemBody = z.infer<typeof ProblemBody>;
 
 export interface TaskResultBody { problem: string; chunk: string; output: string; model: string; family: string }
-export interface CheckpointBody { problem: string; chunk: string; seq: number; result: string; verifier_model: string; verifier_family: string; machine_check: string }
+export interface CheckpointBody { problem: string; chunk: string; seq: number; result: string; verifier_model: string; verifier_family: string; machine_check: string; /** The checker version that passed it, e.g. "three_cubes@1". */ checker?: string }
 
 export interface ChunkState {
   key: string;
@@ -77,6 +78,7 @@ export class Problems {
   async propose(body: z.input<typeof ProblemBody>, opts: { publish?: boolean } = {}) {
     const b = ProblemBody.parse(body);
     if (!this.verifiers.get(b.definition_of_done.verifier)) throw new Error(`unknown verifier "${b.definition_of_done.verifier}": only problems with checkable progress enter the queue`);
+    b.definition_of_done.checker ??= checkerId(b.definition_of_done.verifier); // pinned: the version it was posted with
     const order = orderProblem(b.chunks);
     if (order) throw new Error(`the steps can't all open: ${order}`);
     return this.hub.node.submit({ kind: 'problem', context: { task: b.title, domain: [b.realm], environment: '' }, body: b }, opts);

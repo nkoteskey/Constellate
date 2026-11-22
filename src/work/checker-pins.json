@@ -1,0 +1,58 @@
+{
+  "exact": {
+    "version": 1,
+    "fingerprint": "e2aedf11e23c1947"
+  },
+  "sum_squares_mod": {
+    "version": 1,
+    "fingerprint": "a251c945b5bfe191"
+  },
+  "lean": {
+    "version": 1,
+    "fingerprint": "8571775c85092315"
+  },
+  "lean_project": {
+    "version": 1,
+    "fingerprint": "d4ff90c80db077a7"
+  },
+  "three_cubes": {
+    "version": 1,
+    "fingerprint": "4d15a78595b10a57"
+  },
+  "perfect_cuboid": {
+    "version": 1,
+    "fingerprint": "9621813c925d4a39"
+  },
+  "wieferich": {
+    "version": 1,
+    "fingerprint": "ec42a8c03e5463e1"
+  },
+  "wall_sun_sun": {
+    "version": 1,
+    "fingerprint": "462456a4be2a1f0c"
+  },
+  "ramsey_graph": {
+    "version": 1,
+    "fingerprint": "aaf6cefa48e08b97"
+  },
+  "vdw_coloring": {
+    "version": 1,
+    "fingerprint": "46c3fc1e3e72314e"
+  },
+  "golomb_ruler": {
+    "version": 1,
+    "fingerprint": "252c2c7ad53f25a6"
+  },
+  "cap_set": {
+    "version": 1,
+    "fingerprint": "f15934239db249d7"
+  },
+  "sat_assignment": {
+    "version": 1,
+    "fingerprint": "9adb53a3fa7c8deb"
+  },
+  "hadamard_gs": {
+    "version": 1,
+    "fingerprint": "75ddd6261c5d9005"
+  }
+}
