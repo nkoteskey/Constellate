@@ -853,3 +853,10 @@ Still stop points, deliberately not approved on the owner's behalf: publishing a
 - `src/hub/self-store.ts`: bundles this computer's public contributions (and the person's browser key's), uploads through the local antd, signs a `self_store` receipt (address, bundle sha256, ids, bytes, cost). Publish the receipt or keep it private and downloadable. The keeper doesn't pay again for self-stored records.
 - Me page card, `/api/self-store`, `constellate store-mine [--quote] [--private]`. Gate: `test/gates/self_store.test.ts`.
 - **Not done yet:** a public "verify a receipt" page that fetches the bundle and checks it in the browser; an on-chain transaction id in the receipt (antd's response would need to expose it).
+
+### Top up storage with USDC on Base (Nov 22)
+- `src/economy/topup.ts` and the Me page's "Top up storage with USDC on Base": USDC on Base becomes ANT (plus gas when low) in this computer's Autonomi wallet, via a LI.FI quote checked before it's shown (chains, tokens, sender, destination, amount, slippage of 3% at most, contract). Exact-amount approval, signed in the person's own wallet; the app follows the transfer.
+- Test mode shows real quotes and sends nothing (LI.FI has no test network); sending needs `CONSTELLATE_PAYMENTS=live`. Capped at $50 a top-up by default.
+- Gate: `test/gates/topup.test.ts` (a stand-in LI.FI, and a stand-in wallet in a real browser).
+- **NEEDS HUMAN:** before going live, check Autonomi 2.0's payment flow against `src/store/autonomi.ts` with a real antd, and try one small real top-up.
+- **Not done yet:** Coinbase's passkey Smart Wallet (it works today through Coinbase Wallet's injected provider; the passkey-only flow needs its SDK); buying USDC by card inside the app; the x402 "store for others" market.

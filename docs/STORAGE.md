@@ -103,6 +103,29 @@ permissionless, so nobody can stop it.
 - **Cost:** asked of the local Autonomi daemon before paying; storage is cheap,
   and each person pays only for their own small records.
 
+#### Top up storage (USDC on Base, converted for you)
+Autonomi charges in ANT on Arbitrum One. Rather than make people buy ANT, the
+Me page's "Top up storage with USDC on Base" (`src/economy/topup.ts`) turns
+USDC on Base into ANT, plus a little ETH for fees when the wallet is low, sent
+straight to this computer's Autonomi wallet:
+1. Connect a wallet in the browser (MetaMask or Coinbase Wallet) and choose an
+   amount ($1 to $50 by default, `CONSTELLATE_TOPUP_MAX_USD`).
+2. The app asks LI.FI, a public cross-chain swap service, for a quote and
+   checks it before showing it: the right chains and tokens, the person's own
+   address, the amount asked, delivery to this computer's storage wallet, at
+   most 3% slippage, and a transaction to the contract it asks approval for.
+3. The person approves the exact amount (never unlimited) and sends, both in
+   their own wallet. The app follows the transfer to Arbitrum.
+
+Nobody else holds the money. LI.FI sees the person's wallet address and the
+storage wallet's; the sheet says so. LI.FI has no test network, so in test
+mode the quotes are real and nothing can be sent; sending needs
+`CONSTELLATE_PAYMENTS=live` (docs/MAINNET.md). ANT's liquidity is thin (pools
+of roughly $75k to $155k in November 2026), which is why there's a slippage
+limit and top-ups are small. Before turning it on for real, check that the
+local Autonomi daemon still pays the way `src/store/autonomi.ts` expects after
+Autonomi 2.0 (April 2026). Gate: `test/gates/topup.test.ts`.
+
 The shared fund below still exists in the code, for topic sponsorship and a
 library run by whoever chooses to; it's optional and off unless someone runs it.
 

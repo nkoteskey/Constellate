@@ -14,6 +14,8 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { HttpReply, PUBLIC, RawReply, StreamReply, WebServer } from './server.js';
 import { llmsFull } from './llms-full.js';
+import { sendingAllowed } from '../economy/topup.js';
+import { AutonomiArchive } from '../store/autonomi.js';
 import { runSession, publishReport, TEST_ID, type Report } from '../x0x/home-test.js';
 import { summary as measurementSummary } from '../work/measurement.js';
 import { runControls } from '../work/checker-controls.js';
@@ -423,6 +425,22 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
     return tryIt(() => ({ ...hub.agentRuns.start(m[1]), via: 'claude_code' }));
   });
   // What Claude Code may use when the app starts it (src/work/claude-tools.ts): web research on, running code off.
+  // Top up storage: quotes for turning the person's USDC on Base into ANT here, signed in their own wallet
+  // (src/economy/topup.ts). Only on this computer; sending needs real payments on.
+  web.route('GET', /^\/api\/storage-wallet$/, async (req) => {
+    if (!here(req)) return new HttpReply(403, { error: 'only on this computer' });
+    const a = hub.archive instanceof AutonomiArchive ? await hub.archive.status().catch(() => null) : null;
+    return { address: a?.wallet ?? null, ant_atto: a?.ant_atto ?? null, eth_wei: a?.eth_wei ?? null, archive: a ? 'autonomi' : 'local', can_send: sendingAllowed() };
+  });
+  web.route('POST', /^\/api\/storage-wallet\/quote$/, async (req, _m, _u, body) => {
+    if (!here(req)) return new HttpReply(403, { error: 'only on this computer' });
+    const b = (await body().catch(() => ({}))) as { from?: string; usd?: number };
+    try { return await hub.topup.quote(String(b.from ?? ''), Number(b.usd)); } catch (e) { return new HttpReply(400, { error: (e as Error).message }); }
+  });
+  web.route('GET', /^\/api\/storage-wallet\/status$/, async (req, _m, u) => {
+    if (!here(req)) return new HttpReply(403, { error: 'only on this computer' });
+    try { return await hub.topup.status(u.searchParams.get('tx') ?? ''); } catch (e) { return new HttpReply(400, { error: (e as Error).message }); }
+  });
   // Store what you shared permanently, paid by this computer's own Autonomi wallet (src/hub/self-store.ts).
   const browserKey = (u: URL) => { const a = u.searchParams.get('also') ?? ''; return /^[0-9a-f]{64}$/.test(a) ? a : undefined; };
   web.route('GET', /^\/api\/self-store$/, (req, _m, u) => (here(req) ? hub.selfStore.quote(browserKey(u)) : new HttpReply(403, { error: 'only on this computer' })));
