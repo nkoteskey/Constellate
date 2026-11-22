@@ -1,4 +1,5 @@
 import { readFileSync, existsSync } from 'node:fs';
+import type { IdeaBody } from '../collective/versions.js';
 import { agentTools, setAgentTools, type AgentTools } from '../work/claude-tools.js';
 import { ModelRuns, reachableModels, appVault } from '../work/model-runs.js';
 import { runnerFromSpec } from '../contributor/catalog.js';
@@ -17,7 +18,7 @@ import { runControls } from '../work/checker-controls.js';
 import { Guide } from './guide.js';
 import { ProblemSpaces } from '../x0x/spaces.js';
 import { Deliberation } from '../collective/deliberation.js';
-import { verifyRecord, SignedRecord, RecordKind } from '../core/record.js';
+import { verifyRecord, operatorOf, SignedRecord, RecordKind } from '../core/record.js';
 import { scrub, readableBody } from '../privacy/scrub.js';
 import { StoredRecord } from '../store/records.js';
 import { REALMS, ProblemBody } from '../work/problems.js';
@@ -39,6 +40,7 @@ export const REALM_INFO: Record<string, { name: string; colour: string; judged: 
   planet_energy: { name: 'Planet and energy', colour: '#9ad66b', judged: 'Machine-scored' },
   philosophy_ethics: { name: 'Philosophy and ethics', colour: '#d9a6ff', judged: 'Deliberation maps, rated by humans' },
   art_creativity: { name: 'Art and creativity', colour: '#ff9fb2', judged: 'Appreciated, not scored; humans curate' },
+  tech_infrastructure: { name: 'Technology and infrastructure', colour: '#5fd0e0', judged: 'Measured: tests and benchmarks against a baseline' },
 };
 
 const isHuman = (s: StoredRecord) => /^human\b/.test(s.rec.context.environment);
@@ -219,7 +221,11 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
     const done = new Set(s.checkpoints.map((c) => c.chunk));
     const reviewing = new Set(hub.node.store.referencing(m[1], 'constitution_check').filter((c) => (c.rec.body as { stage: string; needs_human: boolean }).stage === 'checkpoint' && (c.rec.body as { needs_human: boolean }).needs_human).map((c) => { const r = hub.node.store.get(c.rec.refs[1]); return (r?.rec.body as { chunk?: string } | undefined)?.chunk; }));
     const steps = prob.chunks.map((c) => ({ key: c.key, title: c.title, state: done.has(c.key) ? 'done' : reviewing.has(c.key) && constitution.state === 'awaiting_review' ? 'review' : 'open' }));
-    return { ...s, steps, results: await hub.results.forProblem(m[1]), source: (prob as { source?: unknown }).source ?? null, witness: !!hub.problems.verifiers.get(prob.definition_of_done.verifier)?.witness, realm_info: REALM_INFO[s.realm], recent, people: [...people.values()].sort((a, b) => b.contributions - a.contributions).slice(0, 30), votes, constitution };
+    // Other framings of this problem: ideas and problems that ask it differently, and what it was forked from.
+    const from = prob.forked_from ? hub.node.store.get(prob.forked_from) : undefined;
+    const framings = [...hub.collective.versions.framingsOf(new Set([m[1]])), ...hub.problems.list().filter((x) => (x.rec.body as { forked_from?: string }).forked_from === m[1]).map((x) => ({ id: x.rec.id, title: String((x.rec.body as { title: string }).title), by: x.rec.agent_id, at: x.rec.created, voters: hub.collective.supporters(x.rec.id).length, kind: 'problem' as const }))];
+    const forkedFrom = from ? { id: from.rec.kind === 'proposal' ? hub.collective.versions.root(from.rec.id)?.rec.id ?? from.rec.id : from.rec.id, title: String((from.rec.body as { title?: string }).title ?? ''), kind: from.rec.kind === 'problem' ? 'problem' : 'idea' } : null;
+    return { ...s, steps, framings, forked_from: forkedFrom, results: await hub.results.forProblem(m[1]), source: (prob as { source?: unknown }).source ?? null, witness: !!hub.problems.verifiers.get(prob.definition_of_done.verifier)?.witness, realm_info: REALM_INFO[s.realm], recent, people: [...people.values()].sort((a, b) => b.contributions - a.contributions).slice(0, 30), votes, constitution };
   });
 
   web.route('GET', /^\/api\/proposals$/, () => hub.collective.queue(5));
@@ -234,6 +240,8 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
       helped: [...helped].map((id) => { const b = hub.node.store.get(id)!.rec.body as { title?: string; question?: string }; return { id, title: b.title ?? b.question }; }),
       reputation: hub.reputation.profile(m[1]), credit: receipts.reduce((n, r) => n + r.b.amount, 0),
       pledged_hours: hub.collective.pledged(m[1]),
+      // Credit for the question: ideas they framed that others asked differently, and their changes that were adopted.
+      questions: hub.collective.versions.questionCredit(m[1]),
       linked_user: (() => { const l = mine.filter((s) => s.rec.kind === 'identity_link' && (s.rec.body as { claim?: OperatorClaim }).claim).sort((a, b) => b.rec.created.localeCompare(a.rec.created))[0]; return l ? (l.rec.body as { claim: OperatorClaim }).claim.user_id : null; })(),
       // This computer's x0x agent vouching for the person's key (desktop app, one click); re-verified on every read.
       linked_x0x: (() => { const l = mine.filter((s) => s.rec.kind === 'identity_link' && (s.rec.body as { method?: string }).method === 'x0x-agent').sort((a, b) => b.rec.created.localeCompare(a.rec.created))[0]; return l ? x0xAgentLink(l.rec) : null; })(),
@@ -269,6 +277,9 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
         if (!b.title || !b.goal || !b.done || !REALMS.includes(b.realm)) return { error: 'a proposal needs a title, a goal, how success is checked, and a realm' };
         // Proposed from the scout's suggestions: which one, so it isn't suggested again (docs/SCOUT.md).
         if (b.scout !== undefined && (typeof b.scout !== 'string' || !SCOUT_ID.test(b.scout))) return { error: 'scout must be the id of a suggested problem' };
+        // A revision, a suggested change or a new framing (src/collective/versions.ts).
+        const why = hub.collective.versions.problemWith(b as IdeaBody, rec.refs, operatorOf(rec));
+        if (why) return { error: why };
         const check = await hub.collective.constitution.checkText(`${b.title}\n${b.goal}\n${b.done}`, b.realm);
         if (!check.ok) return { error: 'the constitution check stopped this proposal', findings: check.findings };
         return null;
@@ -579,11 +590,13 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
     return { read: r.read, counts: r.counts, items: r.items.map(view) };
   });
 
-  web.route('GET', /^\/api\/ideas$/, () => hub.node.store.ofKind('proposal').filter((s) => { const b = s.rec.body as { title?: string; done?: string }; return !!(b.title && b.done); }).map((s) => {
-    const b = s.rec.body as { title: string; goal: string; done: string; check: string; realm: string };
-    const voters = hub.collective.supporters(s.rec.id);
-    return { id: s.rec.id, ...b, at: s.rec.created, by: s.rec.agent_id, human: isHuman(s), voters: voters.length, voter_ids: voters };
-  }).sort((a, b) => b.voters - a.voters || b.at.localeCompare(a.at)));
+  // One entry per idea, not per version: its current version, its history, suggested changes, and other framings.
+  web.route('GET', /^\/api\/ideas$/, () => hub.collective.versions.lines().map((l) => {
+    const root = hub.node.store.get(l.id)!;
+    const { revises: _r, forked_from: _f, adopts: _a, ...b } = l.body;
+    return { id: l.id, current: l.current, ...b, at: root.rec.created, updated: l.at, by: root.rec.agent_id, human: isHuman(root), voters: l.voters.length, voter_ids: l.voters,
+      versions: l.versions, suggestions: l.suggestions, improved_by: l.improved_by, forked_from: l.forked_from, framings: l.framings };
+  }));
 
   // Art: appreciated, not scored. Galleries of pieces by people and agents; people curate.
   const galleryView = (id: string) => {

@@ -649,6 +649,10 @@ async function problemPage(id) {
       </div>
       <aside class="side stack">
         <div class="card"><div class="eyebrow">Done means</div><p style="margin:8px 0 0">${esc(p.definition_of_done.description.replace(/^./, (c) => c.toUpperCase()))}.</p><p class="muted" style="font-size:13.5px;margin:8px 0 0">${esc(p.source ? p.goal.replace(/\n\nSource \(read [^)]*\): \S+$/, '') : p.goal)}</p>${p.source ? `<p class="faint" style="font-size:12.5px;margin:8px 0 0">Open, according to <a href="${esc(p.source.url)}" target="_blank" rel="noopener">its public source</a> (read ${esc(p.source.read)}): “${esc(p.source.says)}”</p>` : ''}</div>
+        <div class="card" id="framings"><div class="eyebrow">Other framings</div>
+          ${p.forked_from ? `<p class="muted" style="font-size:13.5px;margin:8px 0 0">This asks differently: <a href="${p.forked_from.kind === 'problem' ? `#/p/${p.forked_from.id}` : '#/proposals'}">${esc(p.forked_from.title)}</a></p>` : ''}
+          ${p.framings?.length ? `<ul style="font-size:13.5px;margin:8px 0 0;padding-left:18px">${p.framings.map((f) => `<li><a href="${f.kind === 'problem' ? `#/p/${f.id}` : '#/proposals'}">${esc(f.title)}</a> <span class="faint num">${f.voters} voter${f.voters === 1 ? '' : 's'}</span></li>`).join('')}</ul>` : '<p class="muted" style="font-size:13.5px;margin:8px 0 0">The right question often matters most. Ask this one differently and it links back here, with credit for the framing.</p>'}
+          ${STATIC ? '' : '<button class="btn ghost sm" id="ask-differently" style="margin-top:10px">Ask it differently</button>'}</div>
         ${help.length || p.open_calls?.length ? `<div class="card"><div class="eyebrow">Open calls for help</div>
           ${help.map((h) => `<div class="call"><div>${esc(h.question)}${h.bounty ? ` <a class="chip ok sm" href="#/list" title="A bounty: money set aside for the answer"><span class="dot"></span>$${(h.bounty / 1e6).toFixed(h.bounty % 1e6 ? 2 : 0)}</a>` : ''}</div><div class="spread" style="margin-top:6px"><span class="faint" style="font-size:12px">${h.answers ? `${h.answers} answer${h.answers === 1 ? '' : 's'}${h.answered_by_people ? `, ${h.answered_by_people} from people` : ''}` : 'No answer yet'} · ${ago(h.at)}</span><button class="btn ghost sm" data-answer="${h.id}">Answer</button></div></div>`).join('')}
           ${p.open_calls?.length ? `<p class="muted" style="font-size:13px;margin:10px 0 0">${p.open_calls.length} step${p.open_calls.length === 1 ? '' : 's'} still open: ${p.witness ? `an answer is a witness any computer checks in milliseconds. Have your agent search for one (work_step), or <a href="#/compute">lend your computer</a> to check what others submit.` : `${p.open_calls.filter((c) => c.waiting_for.startsWith('verification')).length} waiting for a different model family to check${((n) => (n ? `, ${n} waiting for earlier steps` : ''))(p.open_calls.filter((c) => c.after?.length).length)}. <a href="#/compute">Lend your computer</a> to help.`}</p>` : ''}</div>` : ''}
@@ -670,6 +674,9 @@ async function problemPage(id) {
   }));
   $('#follow').onclick = (e) => { const f = new Set(ls.get('follow', [])); f.has(id) ? f.delete(id) : f.add(id); ls.set('follow', [...f]); setFollow(e.currentTarget, f.has(id)); toast(f.has(id) ? 'Following. You’ll hear when a step is verified.' : 'Unfollowed.'); };
   $('#share').onclick = async () => { const me = hasIdentity() ? (await ID()).identity().agentId.slice(0, 16) : 'friend'; post('/api/metrics/event', { type: 'invite', who: me }); copy(`${location.href.split('#')[0]}#/p/${id}?from=${me}`, 'Invite link copied. No account needed to open it'); };
+  // Ask it differently: the proposal form, filled in from this problem, linked back to it (src/collective/versions.ts).
+  const ask = $('#ask-differently');
+  if (ask) ask.onclick = () => { ls.set('pendingFork', { title: p.title, goal: p.source ? p.goal.replace(/\n\nSource \(read [^)]*\): \S+$/, '') : p.goal, done: p.definition_of_done.description, realm: p.realm, target: id }); ls.set('proposalsTab', 'ideas'); location.hash = '#/proposals'; };
   $('#embed').onclick = () => copy(`<iframe src="${new URL('embed.html', location.href).href.split('#')[0]}?p=${id}" width="420" height="170" style="border:0;border-radius:14px" title="${esc(p.title)} on Constellate"></iframe>`, 'Embed code copied');
   void helpersSection($('#helpers'), p);
   $('#chat-form').onsubmit = async (e) => { e.preventDefault(); const t = $('#chat-text').value.trim(); if (!t) return; if (await give({ kind: 'message', task: 'problem chat', domain: [p.realm], body: { channel: 'problem', text: t }, refs: [id] }, 'Posted')) problemPage(id); };
@@ -950,14 +957,26 @@ async function proposalsPage() {
   // The newest attempt per idea (by when it started, so an old attempt failing late doesn't hide a new one).
   const latestPlans = (reqs) => { const m = new Map(); for (const r of reqs ?? []) { const cur = m.get(r.idea); if (!cur || r.at > cur.at) m.set(r.idea, r); } return m; };
   const planOf = latestPlans(plans?.requests);
+  const meId = hasIdentity() ? (await ID()).identity().agentId : null;
   const state = (c) => c.state === 'cleared' ? '' : c.state === 'awaiting_review' ? '<span class="chip warn"><span class="dot"></span>Awaiting safety review</span>' : `<span class="chip stop"><span class="dot"></span>${esc(c.state)}</span>`;
   const row = (r) => `<div class="card"><div class="spread"><a href="#/p/${r.id}" class="serif" style="font-size:20px;text-decoration:none">${esc(r.title)}</a>${state(r.constitution)}</div>
     <div class="row muted" style="font-size:13.5px;margin:6px 0 10px"><span>${r.votes.voters} voters</span><span>· vote weight ${r.votes.weight.toFixed(1)}</span>${r.share !== undefined ? `<span>· ${Math.round(r.share * 100)}% of compute</span>` : ''}<span>· ${r.progress.done}/${r.progress.total} verified</span></div>
     ${r.share !== undefined ? `<div class="meter"><i style="width:${Math.round(r.share * 100)}%"></i></div>` : ''}
     <div class="row" style="margin-top:12px"><button class="btn sm" data-vote="${r.id}" aria-pressed="${votedSet().has(r.id)}">${voteLabel(r.id)}</button>${STATIC ? '' : `<button class="btn sm agent" data-work="${r.id}" data-title="${esc(r.title)}">Have your agent work on it</button>`}</div></div>`;
-  const ideaCard = (i) => `<div class="card"><div class="spread"><b class="serif" style="font-size:19px">${esc(i.title)}</b><span class="chip sm" style="--c:${realm(i.realm).c}"><span class="dot"></span>${esc(realm(i.realm).short)}</span></div>
+  // Revise, suggest a change, ask it differently (src/collective/versions.ts): improve a question instead of posting it again.
+  const mine = (i) => !!meId && i.by === meId;
+  const ideaFamily = (i) => {
+    const sug = (i.suggestions ?? []).filter((x) => x.status === 'suggested');
+    const from = i.forked_from ? `<p class="faint" style="font-size:12.5px;margin:8px 0 0">Asks differently: ${i.forked_from.kind === 'problem' ? `<a href="#/p/${i.forked_from.id}">${esc(i.forked_from.title)}</a>` : `<a href="#idea-${i.forked_from.id}" data-idea-link="${i.forked_from.id}">${esc(i.forked_from.title)}</a>`}</p>` : '';
+    const history = (i.versions?.length ?? 0) > 1 || i.improved_by?.length ? `<details style="margin-top:8px"><summary class="faint" style="font-size:12.5px">Version ${i.versions.length}${i.improved_by?.length ? ` · improved by ${i.improved_by.length} other${i.improved_by.length === 1 ? '' : 's'}` : ''}</summary><ul class="faint" style="font-size:12.5px;margin:6px 0 0;padding-left:18px">${i.versions.slice().reverse().map((v) => `<li>${ago(v.at)}: ${esc(v.note || (v.status === 'current' ? 'current' : 'first version'))}</li>`).join('')}</ul></details>` : '';
+    const framings = i.framings?.length ? `<p class="faint" style="font-size:12.5px;margin:8px 0 0">Also asked as: ${i.framings.map((f) => `<a href="#idea-${f.id}" data-idea-link="${f.id}">${esc(f.title)}</a> <span class="num">(${f.voters})</span>`).join(' · ')}</p>` : '';
+    const suggested = sug.length ? `<div style="margin-top:8px"><div class="faint" style="font-size:12.5px">Suggested changes</div>${sug.map((x) => `<div class="call" style="margin-top:6px"><div style="font-size:13.5px"><b>${esc(x.title)}</b> <span class="muted">${esc(x.note)}</span></div>${mine(i) && !STATIC ? `<button class="btn sm" data-adopt="${x.id}" data-idea="${i.id}" style="margin-top:6px">Adopt this change</button>` : ''}</div>`).join('')}</div>` : '';
+    const buttons = STATIC ? '' : `<div class="row" style="margin-top:8px;gap:6px"><button class="btn ghost sm" data-revise="${i.id}">${mine(i) ? 'Revise' : 'Suggest a change'}</button><button class="btn ghost sm" data-fork="${i.id}">Ask it differently</button></div>`;
+    return from + history + framings + suggested + buttons;
+  };
+  const ideaCard = (i) => `<div class="card" id="idea-${i.id}"><div class="spread"><b class="serif" style="font-size:19px">${esc(i.title)}</b><span class="chip sm" style="--c:${realm(i.realm).c}"><span class="dot"></span>${esc(realm(i.realm).short)}</span></div>
       <p class="muted" style="font-size:13.5px;margin:6px 0">${esc(i.goal)}</p><p class="faint" style="font-size:12.5px;margin:0">Done means: ${esc(i.done)}</p>
-      <div class="row" style="margin-top:10px"><button class="btn sm" data-vote="${i.id}" aria-pressed="${votedSet().has(i.id)}">${voteLabel(i.id)}</button><button class="btn sm agent" data-plan="${i.id}">${planUi.planButtonLabel(planOf.get(i.id))}</button>${!STATIC && planOf.get(i.id)?.status === 'published' && planOf.get(i.id).published ? `<button class="btn sm agent" data-work="${planOf.get(i.id).published}" data-title="${esc(i.title)}">Have your agent work on it</button>` : ''}<span class="faint" style="font-size:12.5px">${i.voters} voter${i.voters === 1 ? '' : 's'} · from a ${i.human ? 'person' : 'an agent'}</span></div>${planUi.planChip(planOf.get(i.id))}</div>`;
+      <div class="row" style="margin-top:10px"><button class="btn sm" data-vote="${i.id}" aria-pressed="${votedSet().has(i.id)}">${voteLabel(i.id)}</button><button class="btn sm agent" data-plan="${i.id}">${planUi.planButtonLabel(planOf.get(i.id))}</button>${!STATIC && planOf.get(i.id)?.status === 'published' && planOf.get(i.id).published ? `<button class="btn sm agent" data-work="${planOf.get(i.id).published}" data-title="${esc(i.title)}">Have your agent work on it</button>` : ''}<span class="faint" style="font-size:12.5px">${i.voters} voter${i.voters === 1 ? '' : 's'} · from a ${i.human ? 'person' : 'an agent'}</span></div>${planUi.planChip(planOf.get(i.id))}${ideaFamily(i)}</div>`;
   // Three short lists behind tabs instead of one long page; proposing and pledging open in a panel from the top.
   const TABS = [
     { key: 'active', name: 'Being worked on', items: q.active, html: () => q.active.map(row).join('') || '<p class="muted">Nothing yet.</p>' },
@@ -993,6 +1012,15 @@ async function proposalsPage() {
       if (c) openPropose({ ...c.idea, check: c.check.kind === 'lean' ? 'proof checker' : c.check.kind === 'none' ? 'not sure yet' : 'machine (test or benchmark)', scout: c.id });
     }));
     $$('[data-goto-tab]', root).forEach((b) => (b.onclick = () => show(TABS.find((t) => t.key === b.dataset.gotoTab))));
+    $$('[data-revise]', root).forEach((b) => (b.onclick = () => { const i = ideas.find((x) => x.id === b.dataset.revise); if (i) openPropose({ ...i, mode: mine(i) ? 'revise' : 'suggest', target: i.current }); }));
+    $$('[data-fork]', root).forEach((b) => (b.onclick = () => { const i = ideas.find((x) => x.id === b.dataset.fork); if (i) openPropose({ ...i, mode: 'fork', target: i.current }); }));
+    $$('[data-adopt]', root).forEach((b) => (b.onclick = async () => {
+      const i = ideas.find((x) => x.id === b.dataset.idea), x = i?.suggestions.find((y) => y.id === b.dataset.adopt);
+      if (!i || !x?.body) return;
+      const body = { ...x.body, revises: i.current, adopts: x.id, note: `Adopted a suggested change${x.note ? `: ${x.note}` : ''}`.slice(0, 600) };
+      if (await give({ kind: 'proposal', task: body.title, domain: [body.realm], body, refs: [i.current] }, 'Change adopted')) proposalsPage();
+    }));
+    $$('[data-idea-link]', root).forEach((a) => (a.onclick = (e) => { const el = document.getElementById(`idea-${a.dataset.ideaLink}`); if (el) { e.preventDefault(); el.scrollIntoView({ behavior: 'smooth', block: 'center' }); } }));
     const sq = $('#scout-q', root);
     if (sq) sq.oninput = () => { clearTimeout(sq.t); sq.t = setTimeout(() => searchScout(sq.value), 300); };
   };
@@ -1034,28 +1062,38 @@ async function proposalsPage() {
     }, 3000);
   }
   $('#open-propose').onclick = () => openPropose();
+  // "Ask it differently" on a problem page lands here with the problem filled in.
+  const pendingFork = ls.get('pendingFork', null);
+  if (pendingFork) { ls.set('pendingFork', null); openPropose({ ...pendingFork, mode: 'fork' }); }
   /** The propose form; prefill comes from a suggested problem (title, goal, done, realm, check, scout id). */
   function openPropose(prefill = {}) {
-    const el = sheet(`<div class="spread"><div class="eyebrow">Propose a problem</div><button class="btn ghost sm" data-close>Close</button></div>
+    // Modes (src/collective/versions.ts): a new idea, your own revision, a suggested change to someone else's, or
+    // the same problem asked differently. The last three point at the version they start from.
+    const MODES = { revise: ['Revise your idea', 'What changed, and why'], suggest: ['Suggest a change', 'What you changed, and why (the author can adopt it)'], fork: ['Ask it differently', 'How this asks it differently'] };
+    const mode = MODES[prefill.mode] ? prefill.mode : null;
+    const el = sheet(`<div class="spread"><div class="eyebrow">${mode ? MODES[mode][0] : 'Propose a problem'}</div><button class="btn ghost sm" data-close>Close</button></div>
     <form class="stack" id="idea" style="margin-top:12px">
       <label>What should we take on?<input class="field" id="i-title" maxlength="200" required placeholder="e.g. Find counterexamples to a conjecture in graph colouring"></label>
       <label>Why it matters, and the goal<textarea class="field" id="i-goal" rows="3" maxlength="2000" required></textarea></label>
       <label>How will we know it’s done?<textarea class="field" id="i-done" rows="2" maxlength="1000" required placeholder="A test, benchmark, proof checker, or reproduction anyone can run"></textarea></label>
       <div class="row"><label style="flex:1">Realm<select class="field" id="i-realm">${Object.entries(REALM).map(([k, v]) => `<option value="${k}">${esc(v.name)}</option>`).join('')}</select></label>
         <label style="flex:1">Checked by<select class="field" id="i-check"><option>machine (test or benchmark)</option><option>proof checker</option><option>reproduction</option><option>human review</option><option>not sure yet</option></select></label></div>
+      ${mode ? `<label>${MODES[mode][1]}<input class="field" id="i-note" maxlength="600" required></label>` : ''}
       <p class="faint" style="font-size:12.5px;margin:0">It’s checked against the constitution before it’s shared. Results are published under an open licence.</p>
-      <div class="row"><button class="btn primary">Propose</button></div></form>`, { label: 'Propose a problem' });
+      <div class="row"><button class="btn primary">${mode === 'revise' ? 'Publish the new version' : mode === 'suggest' ? 'Suggest it' : mode === 'fork' ? 'Post this framing' : 'Propose'}</button></div></form>`, { label: mode ? MODES[mode][0] : 'Propose a problem' });
     if (prefill.title) {
       $('#i-title', el).value = prefill.title; $('#i-goal', el).value = prefill.goal ?? ''; $('#i-done', el).value = prefill.done ?? '';
       if (prefill.realm) $('#i-realm', el).value = prefill.realm;
       if (prefill.check) $('#i-check', el).value = prefill.check;
-      $('#idea > p.faint', el).insertAdjacentHTML('beforebegin', '<p class="faint" style="font-size:12.5px;margin:0">Filled in from a public catalogue. Read it through and change anything before you post it.</p>');
+      if (prefill.scout) $('#idea > p.faint', el).insertAdjacentHTML('beforebegin', '<p class="faint" style="font-size:12.5px;margin:0">Filled in from a public catalogue. Read it through and change anything before you post it.</p>');
     }
     $('#i-title', el).focus();
     $('#idea', el).onsubmit = async (e) => {
       e.preventDefault();
-      const body = { title: $('#i-title', el).value.trim(), goal: $('#i-goal', el).value.trim(), done: $('#i-done', el).value.trim(), realm: $('#i-realm', el).value, check: $('#i-check', el).value, ...(prefill.scout ? { scout: prefill.scout } : {}) };
-      if (await give({ kind: 'proposal', task: body.title, domain: [body.realm], body }, 'Proposed')) { ls.set('proposalsTab', 'ideas'); closeSheet(); proposalsPage(); }
+      const link = mode === 'fork' ? { forked_from: prefill.target } : mode ? { revises: prefill.target } : {};
+      const body = { title: $('#i-title', el).value.trim(), goal: $('#i-goal', el).value.trim(), done: $('#i-done', el).value.trim(), realm: $('#i-realm', el).value, check: $('#i-check', el).value, ...(prefill.scout ? { scout: prefill.scout } : {}), ...link, ...(mode ? { note: $('#i-note', el).value.trim() } : {}) };
+      const said = { revise: 'New version published', suggest: 'Change suggested', fork: 'New framing posted' }[mode] ?? 'Proposed';
+      if (await give({ kind: 'proposal', task: body.title, domain: [body.realm], body, ...(mode ? { refs: [prefill.target] } : {}) }, said)) { ls.set('proposalsTab', 'ideas'); closeSheet(); proposalsPage(); }
     };
   }
   $('#open-pledge').onclick = () => {
@@ -1192,7 +1230,7 @@ async function profileEditor(slot, who, linkedGithub, opts = {}) {
     $('#pf-edit', slot).onclick = () => profileEditor(slot, who, linkedGithub, { edit: true });
     return;
   }
-  const realms = ['maths_physics', 'life_sciences', 'planet_energy', 'philosophy_ethics', 'art_creativity'];
+  const realms = Object.keys(REALM);
   slot.innerHTML = `<form class="card" id="prof-form" style="display:grid;grid-template-columns:minmax(0,1fr);gap:10px">
     <p class="muted" style="margin:0;font-size:13.5px">How others find you, message you, or invite you to a problem. Use a public handle, not your real name.${d.via === 'x0x' ? ' It’s published to the x0x network.' : ' It’s saved on this computer and goes on the network once you’re connected to x0x (the desktop app does this).'}</p>
     <label style="display:grid;gap:4px;font-size:12.5px" class="faint">Handle<input class="field" id="pf-handle" maxlength="30" placeholder="your-handle" value="${esc(cur.handle ?? linkedGithub?.handle ?? '')}" style="width:min(280px,100%)"></label>
@@ -1392,6 +1430,7 @@ async function mePage(id) {
       ${me.reputation.overall > 0 ? `<div class="stat"><b class="num">${me.reputation.overall.toFixed(2)}</b><span>reputation</span></div>` : ''}
       ${me.credit > 0 ? `<div class="stat"><b class="num">$${(me.credit / 1e6).toFixed(2)}</b><span>credit earned (testnet)</span></div>` : ''}
       ${me.pledged_hours > 0 ? `<div class="stat"><b class="num">${me.pledged_hours}</b><span>hours pledged a week</span></div>` : ''}
+      ${me.questions && me.questions.asked_differently_by_others + me.questions.changes_adopted > 0 ? `<div class="stat" title="Ideas this person framed that others asked differently, and their changes that authors adopted"><b class="num">${me.questions.asked_differently_by_others + me.questions.changes_adopted}</b><span>questions others built on</span></div>` : ''}
       ${me.saved?.for_others.avoided ? `<div class="stat" title="${esc(me.saved.for_others.basis)}"><b class="num">${me.saved.for_others.avoided}</b><span>dead end${me.saved.for_others.avoided === 1 ? '' : 's'} others avoided thanks to ${mine ? 'you' : 'these lessons'} (about ${me.saved.for_others.minutes >= 90 ? `${me.saved.for_others.hours} h` : `${me.saved.for_others.minutes} min`}, ${me.saved.for_others.tokens.toLocaleString('en')} tokens, estimate)</span></div>` : ''}
       ${me.saved?.for_them.avoided ? `<div class="stat" title="${esc(me.saved.for_them.basis)}"><b class="num">${me.saved.for_them.avoided}</b><span>dead end${me.saved.for_them.avoided === 1 ? '' : 's'} avoided from others’ lessons (estimate: ${me.saved.for_them.tokens.toLocaleString('en')} tokens)</span></div>` : ''}
       ${me.founding > 0 ? `<div class="stat"><b class="num">${me.founding}</b><span>founding contribution${me.founding === 1 ? '' : 's'} confirmed</span></div>` : ''}

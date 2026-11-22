@@ -4,6 +4,7 @@ import { requestNote } from '../work/work-requests.js';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { Hub } from '../hub/hub.js';
+import { REALMS } from '../work/problems.js';
 import { contextShape, tool } from './tools.js';
 import { Scout, ideaFor, scoutingBrief, LANES } from '../scout/scout.js';
 import { REPORT_BACK, reproduction } from '../services/reproduce.js';
@@ -140,7 +141,7 @@ export function registerWorkTools(server: McpServer, hub: Hub) {
   tool(server, 'problems_scout',
     'Find open problems worth proposing, ranked from public catalogues, each with how an answer would be checked and the idea to propose. Lanes: quick_win (checkable or finitely settleable), moonshot (famous or prized), formal (stated in Lean); for a realm with no catalogue you get a brief for scouting it yourself. Free.',
     {
-      realm: z.enum(['maths_physics', 'life_sciences', 'planet_energy', 'philosophy_ethics', 'art_creativity']).optional(),
+      realm: z.enum(REALMS).optional(),
       lane: z.enum(LANES as [string, ...string[]]).optional(),
       q: z.string().max(200).optional().describe('Words that must all appear, e.g. "prime gaps".'),
       limit: z.number().int().min(1).max(50).optional(),
@@ -217,13 +218,14 @@ export function registerCollectiveTools(server: McpServer, hub: Hub) {
     'Propose a problem for the network, with a definition of done and checkable chunks. It is checked against the constitution first; blocked proposals are never broadcast.',
     {
       title: z.string(), hook: z.string().optional(), goal: z.string(),
-      realm: z.enum(['maths_physics', 'life_sciences', 'planet_energy', 'philosophy_ethics', 'art_creativity']),
+      realm: z.enum(REALMS),
       verifier: z.string().describe(`How done is checked, and the "check" each chunk gives it:\n${hub.problems.verifiers.shapes()}`),
       done_description: z.string(),
       chunks: z.array(z.object({ key: z.string(), title: z.string(), prompt: z.string(), check: z.record(z.unknown()), size: z.enum(['small', 'large', 'any']).optional() })),
+      forked_from: z.string().optional().describe('The id of a problem or idea this asks differently; both link to each other.'),
     },
     async (a) => {
-      const r = await hub.collective.propose({ title: a.title, hook: a.hook ?? '', goal: a.goal, realm: a.realm, definition_of_done: { verifier: a.verifier, description: a.done_description }, chunks: a.chunks.map((c) => ({ ...c, needs: { size: c.size ?? 'any' } })) });
+      const r = await hub.collective.propose({ title: a.title, hook: a.hook ?? '', goal: a.goal, realm: a.realm, definition_of_done: { verifier: a.verifier, description: a.done_description }, chunks: a.chunks.map((c) => ({ ...c, needs: { size: c.size ?? 'any' } })), ...(a.forked_from ? { forked_from: a.forked_from } : {}) });
       return { id: r.problem?.id ?? null, constitution: r.check };
     });
   tool(server, 'votes_cast',

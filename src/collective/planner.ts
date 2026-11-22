@@ -100,7 +100,8 @@ export class Planner {
   }
 
   private idea(id: string) {
-    const s = this.hub.node.store.get(id);
+    // The idea's current version: revisions by its author replace what the agent is asked to plan.
+    const s = this.hub.collective.versions.current(id) ?? this.hub.node.store.get(id);
     if (!s || s.rec.kind !== 'proposal') throw new Error('unknown idea');
     return s.rec.body as { title: string; goal: string; done: string; check?: string; realm?: string };
   }

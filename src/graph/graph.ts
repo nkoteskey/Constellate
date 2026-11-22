@@ -26,6 +26,7 @@ const REALM_OF_DOMAIN: Record<string, string> = {
   planet_energy: 'planet_energy', climate: 'planet_energy', energy: 'planet_energy', materials: 'planet_energy',
   philosophy_ethics: 'philosophy_ethics', ethics: 'philosophy_ethics', philosophy: 'philosophy_ethics', deliberation: 'philosophy_ethics',
   art_creativity: 'art_creativity', art: 'art_creativity', music: 'art_creativity',
+  tech_infrastructure: 'tech_infrastructure', tech: 'tech_infrastructure', networking: 'tech_infrastructure', infrastructure: 'tech_infrastructure', x0x: 'tech_infrastructure',
 };
 
 export interface GraphOptions { halfLifeDays?: number; bridgeThreshold?: number; now?: () => number }

@@ -59,6 +59,7 @@ export const REALM = {
   planet_energy: { name: 'Planet and energy', short: 'Planet & energy', c: '#a6dc6b', judged: 'Machine-scored' },
   philosophy_ethics: { name: 'Philosophy and ethics', short: 'Ethics', c: '#d4a6ff', judged: 'Deliberation maps, rated by people' },
   art_creativity: { name: 'Art and creativity', short: 'Art', c: '#ff9fb6', judged: 'Appreciated, not scored; people curate' },
+  tech_infrastructure: { name: 'Technology and infrastructure', short: 'Tech', c: '#5fd0e0', judged: 'Measured: tests and benchmarks against a baseline' },
 };
 export const realm = (r) => REALM[r] ?? { name: r, short: r, c: '#9aa0ae', judged: '' };
 

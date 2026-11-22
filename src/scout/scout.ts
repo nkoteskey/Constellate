@@ -252,6 +252,7 @@ const REALM_SOURCES: Partial<Record<Realm, string>> = {
   planet_energy: 'open materials and climate challenges with public data and a scoring script (battery, catalyst and solar-cell property prediction)',
   philosophy_ethics: 'open questions in published surveys, where done is a written argument that reviewers rate against stated criteria',
   art_creativity: 'open briefs and constraints-based challenges, where done is a piece that meets a checkable constraint',
+  tech_infrastructure: 'open performance and reliability issues in public projects with a benchmark or test anyone can run, where done is a measured improvement over a baseline run at the same time',
 };
 export function scoutingBrief(realm: Realm): string {
   return [
