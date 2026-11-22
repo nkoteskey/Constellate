@@ -1,7 +1,11 @@
 # x0x home test: a draft for the x0x team to revise
 
-**Status: draft, not posted.** A shape for an easy-to-join test where people at home measure how x0x behaves on
-real connections, so changes can be judged by numbers. It is meant for @dirvine (x0x's lead) and the Saorsa Labs
+**Status: draft, not posted; the runner is built.** A shape for an easy-to-join test where people at home measure
+how x0x behaves on real connections, so changes can be judged by numbers. The session runner
+(`src/x0x/home-test.ts`), the check that judges measured results (`src/work/measurement.ts`), the "Help test x0x"
+card (Lend your computer) and `constellate x0x-test` exist and are tested against a stand-in x0xd
+(`test/gates/x0x_home_test.test.ts`). They haven't run against a real x0xd yet: the field names were read from x0x
+v0.49.1's code, and the first private run confirms them. It is meant for @dirvine (x0x's lead) and the Saorsa Labs
 team to revise before it goes up as a problem in the Technology and infrastructure realm. Once posted, revisions go
 through Revise and "Ask it differently" (docs/VERSIONS.md).
 
@@ -77,11 +81,19 @@ uploaded. That is Constellate's rule for every record.
    - a battery or energy reading;
    - config keys for `max_connections` and the SWIM and PlumTree timers, which are fixed today.
 
-## How a result would be checked
+## How a result is checked
 
-A measurement isn't a witness: it is a distribution from many computers. A result would need enough computers in
-both arms, a baseline run at the same time, and the numbers published with their spread. Constellate doesn't have a
-`measurement` check yet; it would be built for this test. Results would carry the usual labels (docs/RESULTS.md).
+A measurement isn't a witness: it is a spread of numbers from many computers (`src/work/measurement.ts`).
+
+- **Same hours:** a change and its baseline are compared only over hours when both ran, so the network was the same
+  for both (the equal-compute rule).
+- **Enough computers:** at least 5 different computers in each arm, or it says "needs 5 computers in each arm" and
+  shows what it has.
+- **The spread, not one number:** the median and the middle half (25th to 75th percentile) of each arm, and
+  "separated" only when the middle halves don't overlap.
+- **One report per computer, arm and hour;** a malformed report or one carrying text is ignored.
+- **What a computer sends** is a `measurement` record: the test, the arm, the hour, the operating system, the NAT
+  type as a category, and numbers. The person sees it first and sends it with one press (or `--send`).
 
 ## Questions for the x0x team
 

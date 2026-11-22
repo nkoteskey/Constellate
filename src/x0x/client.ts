@@ -76,6 +76,8 @@ export class X0xClient {
     return r.valid;
   }
   publish(topic: string, payload: Uint8Array) { return this.req<{ ok: true }>('POST', '/publish', { topic, payload: toB64(payload) }); }
+  /** Any GET endpoint as JSON (the home test reads x0xd's diagnostics; their output stays on this computer). */
+  getJson(path: string) { return this.req<unknown>('GET', path); }
   async subscribe(topic: string) { return (await this.req<{ subscription_id: string }>('POST', '/subscribe', { topic })).subscription_id; }
   unsubscribe(id: string) { return this.req('DELETE', `/subscribe/${id}`); }
 

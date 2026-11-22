@@ -38,6 +38,8 @@ export const RECORD_KINDS = [
   'batch_root',
   // results: what someone found when they compared a verified result with the published tables (docs/RESULTS.md)
   'novelty',
+  // the x0x home test: one computer's session, as numbers and categories only (src/x0x/home-test.ts)
+  'measurement',
 ] as const;
 export type RecordKind = (typeof RECORD_KINDS)[number];
 

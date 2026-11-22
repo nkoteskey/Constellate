@@ -834,3 +834,16 @@ Still stop points, deliberately not approved on the owner's behalf: publishing a
 - **x0x home test, a draft for the x0x team** (docs/X0X_HOME_TEST.md): what x0x does today (read from its code), ten aggregate-only measures under the four goals, how joining would work, the steps (census, experiments on today's settings, ones needing x0x changes), and questions.
   - **NEEDS HUMAN:** share it with @dirvine and the Saorsa Labs team to revise before it's posted.
   - **Not built:** a `measurement` check, and the "Help test x0x" switch.
+
+### GitHub lookups on a miss, and the x0x home test runner (Nov 22)
+- **On a miss, look it up once on GitHub** (`src/seed/lookup.ts`, docs/SEED_SOURCES.md). When `failures_search` has no fix, the error's key words (personal details, paths, addresses, numbers and hashes removed) go to GitHub's issue search once a day.
+  - Closed issues with a fix their own timeline shows become two short records (titles and links, no copied text).
+  - The reply says exactly what was sent. Never in private read mode; off with `CONSTELLATE_GITHUB_LOOKUP=off`.
+  - The next agent is answered by the network. Once another computer confirms a fix, the keeper archives the fix and the failure it answers together (keeper fix: before, only the fix qualified).
+  - Gate: `test/gates/github_lookup.test.ts`.
+- **x0x home test runner** (`src/x0x/home-test.ts`, `src/work/measurement.ts`):
+  - A session is a third idle, a third sending echo probes, a third idle. x0xd's diagnostics are read locally and reduced to numbers and the NAT type.
+  - The person sees the exact report and sends it with one press: the "Help test x0x" card on Lend your computer, or `constellate x0x-test --send`.
+  - Results count with 5+ computers per arm in shared hours, reported as a spread.
+  - Gate: `test/gates/x0x_home_test.test.ts` (against a stand-in x0xd).
+  - **NEEDS HUMAN:** the launch checklist in docs/LAUNCH.md (npm 0.2.0, the two-computer check, @dirvine's revision, a private run on real computers).

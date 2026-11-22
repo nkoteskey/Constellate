@@ -170,6 +170,22 @@ Anyone can re-check it: the file is public, and only this identity can sign as $
     } finally { await hub.close(); }
     return;
   }
+  // The x0x home test: a session on this computer, the exact numbers printed, and sent only with --send.
+  if (cmd === 'x0x-test') {
+    const { runSession, publishReport } = await import('./x0x/home-test.js');
+    const flag = (f: string) => { const i = argv.indexOf(f); return i > 0 ? argv[i + 1] : undefined; };
+    const hub = await Hub.fromEnv();
+    try {
+      if (!hub.x0x) throw new Error('x0x isn’t running on this computer (constellate network join)');
+      const minutes = Number(flag('--minutes') ?? 15);
+      console.log(`Measuring x0x for ${minutes} minutes: a third idle, a third sending small test messages, a third idle.`);
+      const report = await runSession(hub.x0x, { minutes, arm: flag('--arm') }, (p) => process.stdout.write(`\r${p.phase} ${Math.round(p.done * 100)}%   `));
+      console.log(`\n\nThis is everything that would be sent (numbers and the NAT type only):\n${JSON.stringify(report, null, 2)}`);
+      if (argv.includes('--send')) console.log(`Sent as record ${await publishReport(hub, report)}. Thank you.`);
+      else console.log('Nothing was sent. Run again with --send to share it.');
+    } finally { await hub.close(); }
+    return;
+  }
   // Every checker against its controls: known answers must pass, planted errors must fail, both checkers alike.
   if (cmd === 'checkers') {
     const { VerifierRegistry } = await import('./work/verifiers.js');

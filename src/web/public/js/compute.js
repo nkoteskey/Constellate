@@ -213,6 +213,7 @@ export function computePage(page) {
     <p class="muted" style="max-width:60ch">Your computer runs a free AI model and works on open problems while you’re not using it. You don’t need an AI account, and you don’t pay anything.</p>
     <div id="start-slot" style="margin:18px 0 14px"></div>
     ${DESKTOP ? '<div id="desk-slot" style="margin:0 0 14px"></div>' : ''}
+    ${STATIC ? '' : '<div id="x0x-test-slot" style="margin:0 0 14px"></div>'}
     <div id="dash-slot"></div>
     <div class="card" style="margin:14px 0 18px"><ul class="plain-list" style="margin:0;padding-left:18px;display:grid;gap:6px;font-size:13.5px">
       <li><b>What runs:</b> a free, open model on this computer (or right in this browser tab). It fits your machine, so it won’t slow you down.</li>
@@ -243,6 +244,7 @@ export function computePage(page) {
     ${STATIC ? '' : '<h2 class="section">Storage on this computer</h2><div class="card" id="storage-slot"><span class="faint">Checking…</span></div>'}
     </details>
   </div>`);
+  if (!STATIC) import('./x0x-test.js').then((m) => m.x0xTestCard($('#x0x-test-slot'))).catch(() => {});
 
   let dev;
   const render = () => {

@@ -14,6 +14,8 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { HttpReply, PUBLIC, RawReply, StreamReply, WebServer } from './server.js';
 import { llmsFull } from './llms-full.js';
+import { runSession, publishReport, TEST_ID, type Report } from '../x0x/home-test.js';
+import { summary as measurementSummary } from '../work/measurement.js';
 import { runControls } from '../work/checker-controls.js';
 import { Guide } from './guide.js';
 import { ProblemSpaces } from '../x0x/spaces.js';
@@ -421,6 +423,27 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
     return tryIt(() => ({ ...hub.agentRuns.start(m[1]), via: 'claude_code' }));
   });
   // What Claude Code may use when the app starts it (src/work/claude-tools.ts): web research on, running code off.
+  // The x0x home test (src/x0x/home-test.ts, docs/X0X_HOME_TEST.md): a session runs here, the person sees the exact
+  // numbers, and only "send" publishes them. Results are public aggregates.
+  const homeTest: { running: boolean; phase: string; done: number; report: Report | null; error: string | null; sent: string | null } = { running: false, phase: '', done: 0, report: null, error: null, sent: null };
+  web.route('GET', /^\/api\/x0x-test$/, (req) => (here(req) ? { ...homeTest, x0x: !!hub.x0x } : new HttpReply(403, { error: 'only on this computer' })));
+  web.route('POST', /^\/api\/x0x-test\/start$/, async (req, _m, _u, body) => {
+    if (!here(req)) return new HttpReply(403, { error: 'only on this computer' });
+    if (!hub.x0x) return new HttpReply(409, { error: 'x0x isn’t running on this computer' });
+    if (homeTest.running) return homeTest;
+    const b = (await body().catch(() => ({}))) as { minutes?: number; arm?: string };
+    Object.assign(homeTest, { running: true, phase: 'idle', done: 0, report: null, error: null, sent: null });
+    void runSession(hub.x0x, { minutes: Number(b.minutes) || 15, arm: b.arm }, (p) => Object.assign(homeTest, p))
+      .then((r) => { homeTest.report = r; }).catch((e) => { homeTest.error = (e as Error).message; }).finally(() => { homeTest.running = false; homeTest.done = 1; });
+    return homeTest;
+  });
+  web.route('POST', /^\/api\/x0x-test\/send$/, async (req) => {
+    if (!here(req)) return new HttpReply(403, { error: 'only on this computer' });
+    if (!homeTest.report) return new HttpReply(409, { error: 'no finished session to send' });
+    homeTest.sent = await publishReport(hub, homeTest.report);
+    return homeTest;
+  });
+  web.route('GET', /^\/api\/x0x-test\/results$/, () => measurementSummary(hub.node.store.all(), TEST_ID));
   web.route('GET', /^\/api\/agent-tools$/, (req) => (here(req) ? agentTools() : new HttpReply(403, { error: 'only on this computer' })));
   web.route('POST', /^\/api\/agent-tools$/, async (req, _m, _u, body) => (here(req) ? setAgentTools((await body().catch(() => ({}))) as Partial<AgentTools>) : new HttpReply(403, { error: 'only on this computer' })));
   web.route('GET', /^\/api\/work-requests\/([0-9a-f]{12})$/, (req, m) => here(req) ? (hub.workRequests.get(m[1]) ?? new HttpReply(404, { error: 'unknown request' })) : new HttpReply(403, { error: 'only on this computer' }));
