@@ -102,7 +102,7 @@ async function main(argv: string[]) {
       if (!profiles.ownAgent()) void profiles.publishAgent({ about: 'Uses Constellate through an agent', reach: 'agent', open_to: { messages: true, invites: true } }).catch(() => {});
       const appUrl = process.env.CONSTELLATE_APP_URL ?? `http://127.0.0.1:${process.env.PORT ?? 4747}`;
       const appRunning = async () => { try { return (await fetch(`${appUrl}/api/sky`, { signal: AbortSignal.timeout(1500) })).ok; } catch { return false; } };
-      hub.x0x!.directEvents((m) => { if (!hub.sync.handle(m.sender, m.payload)) void appRunning().then((up) => { if (!up) hub.people.receive(m.sender, m.payload); }); });
+      hub.x0x!.directEvents((m) => { if (!hub.sync.handle(m.sender, m.payload) && !hub.market.handle(m.sender, m.payload)) void appRunning().then((up) => { if (!up) hub.people.receive(m.sender, m.payload); }); });
       const collect = async () => { if (!(await appRunning())) await hub.people.collectMail().catch(() => 0); };
       setTimeout(() => void collect(), 5_000).unref();
       setInterval(() => void collect(), 60_000).unref();
@@ -167,6 +167,16 @@ Anyone can re-check it: the file is public, and only this identity can sign as $
       const { resultText } = await import('./web/llms-full.js');
       console.log(resultText(card));
       process.exitCode = card.evidence.label === 'disagreement' ? 1 : 0;
+    } finally { await hub.close(); }
+    return;
+  }
+  // Store for others: offer this computer's Autonomi wallet as a storage service, paid in USDC on Base with x402.
+  if (cmd === 'store-for-others') {
+    const flag = (f: string) => { const i = argv.indexOf(f); return i > 0 ? argv[i + 1] : undefined; };
+    const hub = await Hub.fromEnv();
+    try {
+      const id = await hub.market.offer({ price_micro_usdc_per_mb: Math.round(Number(flag('--price') ?? 0.05) * 1e6), min_micro_usdc: Math.round(Number(flag('--min') ?? 0.01) * 1e6), max_bytes: Number(flag('--max-bytes') ?? 256 * 1024), pay_to: String(flag('--pay-to') ?? ''), network: 'base', note: flag('--note') ?? '' });
+      console.log(`Offer published (${id}). Keep this computer running (constellate serve) to answer requests.`);
     } finally { await hub.close(); }
     return;
   }
@@ -350,7 +360,7 @@ Lend your computer instead: node "${cli}" models, then node "${cli}" contribute`
     // Incoming direct messages: history sync between computers, otherwise a person's message for the app's inbox.
     // (All of this runs once on the network: now, or as soon as Constellate joins it in the background.)
     hub.onOnline((h) => {
-      h.x0x!.directEvents((m) => { if (!h.sync.handle(m.sender, m.payload)) h.people.receive(m.sender, m.payload); });
+      h.x0x!.directEvents((m) => { if (!h.sync.handle(m.sender, m.payload) && !h.market.handle(m.sender, m.payload)) h.people.receive(m.sender, m.payload); });
       // Sealed letters left while this computer was offline (docs/MAILBOX.md): publish the mailbox key, collect
       // now and every minute, and clear this computer's own expired letters once a day.
       const collect = () => void h.people.collectMail().catch(() => {});

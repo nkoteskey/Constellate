@@ -859,4 +859,16 @@ Still stop points, deliberately not approved on the owner's behalf: publishing a
 - Test mode shows real quotes and sends nothing (LI.FI has no test network); sending needs `CONSTELLATE_PAYMENTS=live`. Capped at $50 a top-up by default.
 - Gate: `test/gates/topup.test.ts` (a stand-in LI.FI, and a stand-in wallet in a real browser).
 - **NEEDS HUMAN:** before going live, check Autonomi 2.0's payment flow against `src/store/autonomi.ts` with a real antd, and try one small real top-up.
-- **Not done yet:** Coinbase's passkey Smart Wallet (it works today through Coinbase Wallet's injected provider; the passkey-only flow needs its SDK); buying USDC by card inside the app; the x402 "store for others" market.
+- Coinbase's passkey wallet, card purchases and the x402 "store for others" market followed the same day (below).
+
+### Passkey wallet, USDC by card, and storing for others with x402 (Nov 22)
+- **Base Account (passkey) wallet** next to the browser's own: Coinbase's `@base-org/account` 2.6.0 SDK, loaded only when chosen, pinned to the published file's hash (`js/evm-wallet.js`). Coinbase now recommends this package over `@coinbase/wallet-sdk` (their docs, read 2026-11-22).
+- **USDC by card:** Coinbase Onramp sessions (`src/economy/onramp.ts`, their v2 API: an EdDSA-signed JWT and `POST /platform/v2/onramp/sessions`), delivered to the person's own wallet. Needs a CDP secret key (`constellate keys set cdp`); only a `pay.coinbase.com` page is ever opened.
+- **x402 on Base** (`src/economy/x402-base.ts`): EIP-3009 authorizations signed in the person's wallet (`eth_signTypedData_v4`), checked here (hash verified against viem), verified and settled by an x402 facilitator.
+- **Store for others** (`src/economy/storage-market.ts`): `storage_offer` records; ask, price, pay, done over x0x direct messages; the seller uploads before settling; the buyer's receipt names the seller and the payment, and whether it could read the bundle back. `constellate store-for-others`; offers on the Me page.
+- Gate: `test/gates/storage_market.test.ts`.
+- **NEEDS HUMAN:**
+  - Choose an x402 facilitator for Base mainnet (Coinbase's needs a CDP key) and set `CONSTELLATE_X402_FACILITATOR`.
+  - Create a CDP secret key for card purchases.
+  - Try one small real purchase, top-up and store-for-others with real wallets.
+  - Check how Base Account signatures (smart-wallet signatures) settle with the chosen facilitator: they're passed to it rather than checked locally.

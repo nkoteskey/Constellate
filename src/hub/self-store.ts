@@ -3,6 +3,7 @@ import type { Hub } from './hub.js';
 import type { StoredRecord } from '../store/records.js';
 import { AutonomiArchive } from '../store/autonomi.js';
 import { makeBundle } from '../store/bundle.js';
+import type { Authorization, Requirements } from '../economy/x402-base.js';
 
 /**
  * Store what you shared permanently, paid by you (docs/STORAGE.md, "Each contributor stores their own").
@@ -82,6 +83,44 @@ export class SelfStore {
     };
     const { record } = await this.hub.node.submit({ kind: 'receipt', context: { task: 'stored my contributions permanently', domain: ['storage'], environment: auto ? 'autonomi' : 'local' }, body, refs: [] }, opts.private ? { private: true } : { publish: true });
     return { stored: next.length, address, archive: body.archive as 'autonomi' | 'local', bundle_sha256: body.bundle_sha256, bytes: bytes.length, atto_ant: body.atto_ant, receipt: record.id, published: !opts.private };
+  }
+
+  // ── Through another computer that stores for others (src/economy/storage-market.ts) ──
+  private pending = new Map<string, { seller: string; bundle: Uint8Array; ids: string[]; req: Requirements; auth: Authorization }>();
+
+  /** The next bundle that fits under `maxBytes` (fewer records when needed). */
+  private bundleUnder(maxBytes: number, also?: string) {
+    let next = this.waiting(also).slice(0, PER_BUNDLE);
+    let bytes = makeBundle(next.map((s) => s.rec), []);
+    while (bytes.length > maxBytes && next.length > 1) { next = next.slice(0, Math.max(1, Math.floor(next.length / 2))); bytes = makeBundle(next.map((s) => s.rec), []); }
+    if (bytes.length > maxBytes) throw new Error('a single contribution is larger than this computer takes at once');
+    return { next, bytes };
+  }
+
+  /** Ask a seller's price for the next bundle; returns what the person's wallet signs. */
+  async marketQuote(seller: string, payer: string, also?: string) {
+    const offer = this.hub.market.offers().find((o) => o.seller === seller);
+    if (!offer) throw new Error('that computer has no storage offer');
+    if (!this.waiting(also).length) throw new Error('nothing new to store');
+    const { next, bytes } = this.bundleUnder(offer.b.max_bytes, also);
+    const q = await this.hub.market.quote(seller, bytes, payer);
+    this.pending.set(q.id, { seller, bundle: bytes, ids: next.map((s) => s.rec.id), req: q.requirements, auth: q.authorization });
+    return { id: q.id, records: next.length, bytes: bytes.length, price_micro_usdc: q.requirements.maxAmountRequired, pay_to: q.requirements.payTo, typed_data: q.typed_data };
+  }
+
+  /** Send the bundle with the signature from the person's wallet; sign the receipt when it's stored. */
+  async marketPay(id: string, signature: string, opts: { private?: boolean } = {}): Promise<SelfStoreResult> {
+    const p = this.pending.get(id);
+    if (!p) throw new Error('that quote has expired; ask again');
+    this.pending.delete(id);
+    const r = await this.hub.market.pay(p.seller, id, p.bundle, p.req, p.auth, signature);
+    const body = {
+      type: 'self_store', payer: this.hub.node.agentId, payee: p.seller, amount: Number(p.req.maxAmountRequired), tx: r.transaction, rail: 'x402', network: 'base',
+      address: r.address, archive: 'autonomi', bundle_sha256: createHash('sha256').update(p.bundle).digest('hex'), records: p.ids.length, ids: p.ids, bytes: p.bundle.length, atto_ant: '0',
+      stored_by: p.seller, payment: { asset: 'USDC', network: 'base', amount_micro: p.req.maxAmountRequired, transaction: r.transaction }, verified: r.verified,
+    };
+    const { record } = await this.hub.node.submit({ kind: 'receipt', context: { task: 'stored my contributions permanently', domain: ['storage'], environment: 'autonomi' }, body, refs: [] }, opts.private ? { private: true } : { publish: true });
+    return { stored: p.ids.length, address: r.address, archive: 'autonomi', bundle_sha256: body.bundle_sha256, bytes: p.bundle.length, atto_ant: '0', receipt: record.id, published: !opts.private };
   }
 
   /** This computer's receipts, newest first. */

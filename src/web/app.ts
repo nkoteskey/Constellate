@@ -15,6 +15,7 @@ import { fileURLToPath } from 'node:url';
 import { HttpReply, PUBLIC, RawReply, StreamReply, WebServer } from './server.js';
 import { llmsFull } from './llms-full.js';
 import { sendingAllowed } from '../economy/topup.js';
+import { onrampUrl } from '../economy/onramp.js';
 import { AutonomiArchive } from '../store/autonomi.js';
 import { runSession, publishReport, TEST_ID, type Report } from '../x0x/home-test.js';
 import { summary as measurementSummary } from '../work/measurement.js';
@@ -437,6 +438,12 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
     const b = (await body().catch(() => ({}))) as { from?: string; usd?: number };
     try { return await hub.topup.quote(String(b.from ?? ''), Number(b.usd)); } catch (e) { return new HttpReply(400, { error: (e as Error).message }); }
   });
+  // Buy USDC on Base by card through Coinbase Onramp, to the person's own wallet (src/economy/onramp.ts).
+  web.route('POST', /^\/api\/onramp$/, async (req, _m, _u, body) => {
+    if (!here(req)) return new HttpReply(403, { error: 'only on this computer' });
+    const b = (await body().catch(() => ({}))) as { address?: string; usd?: number };
+    try { return { url: await onrampUrl(appVault().get('cdp'), String(b.address ?? ''), Number(b.usd)) }; } catch (e) { return new HttpReply(400, { error: (e as Error).message }); }
+  });
   web.route('GET', /^\/api\/storage-wallet\/status$/, async (req, _m, u) => {
     if (!here(req)) return new HttpReply(403, { error: 'only on this computer' });
     try { return await hub.topup.status(u.searchParams.get('tx') ?? ''); } catch (e) { return new HttpReply(400, { error: (e as Error).message }); }
@@ -448,6 +455,18 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
     if (!here(req)) return new HttpReply(403, { error: 'only on this computer' });
     const b = (await body().catch(() => ({}))) as { private?: boolean };
     try { return (await hub.selfStore.run({ private: b.private === true, also: browserKey(u) })) ?? { stored: 0 }; } catch (e) { return new HttpReply(400, { error: (e as Error).message }); }
+  });
+  // Storing for others: offers are public; buying runs on this computer, signed in the person's wallet.
+  web.route('GET', /^\/api\/storage-offers$/, () => hub.market.offers().map((o) => ({ seller: o.seller, offer: o.id, ...o.b, stores: o.stores, checked_stores: o.checked_stores })));
+  web.route('POST', /^\/api\/self-store\/market\/quote$/, async (req, _m, u, body) => {
+    if (!here(req)) return new HttpReply(403, { error: 'only on this computer' });
+    const b = (await body().catch(() => ({}))) as { seller?: string; payer?: string };
+    try { return await hub.selfStore.marketQuote(String(b.seller ?? ''), String(b.payer ?? ''), browserKey(u)); } catch (e) { return new HttpReply(400, { error: (e as Error).message }); }
+  });
+  web.route('POST', /^\/api\/self-store\/market\/pay$/, async (req, _m, _u, body) => {
+    if (!here(req)) return new HttpReply(403, { error: 'only on this computer' });
+    const b = (await body().catch(() => ({}))) as { id?: string; signature?: string; private?: boolean };
+    try { return await hub.selfStore.marketPay(String(b.id ?? ''), String(b.signature ?? ''), { private: b.private === true }); } catch (e) { return new HttpReply(400, { error: (e as Error).message }); }
   });
   web.route('GET', /^\/api\/self-store\/proof\/([0-9a-f]{64})$/, (req, m) => (here(req) ? hub.selfStore.proof(m[1]) ?? new HttpReply(404, { error: 'no such receipt' }) : new HttpReply(403, { error: 'only on this computer' })));
   // The x0x home test (src/x0x/home-test.ts, docs/X0X_HOME_TEST.md): a session runs here, the person sees the exact

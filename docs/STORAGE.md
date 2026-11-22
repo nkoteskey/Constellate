@@ -126,6 +126,44 @@ limit and top-ups are small. Before turning it on for real, check that the
 local Autonomi daemon still pays the way `src/store/autonomi.ts` expects after
 Autonomi 2.0 (April 2026). Gate: `test/gates/topup.test.ts`.
 
+**Wallets.** The sheet offers the browser's own wallet (MetaMask, Coinbase
+Wallet, Rabby…) or a **Base Account**: Coinbase's passkey wallet, no extension
+needed. Its SDK (`@base-org/account` 2.6.0, Apache-2.0) loads only when chosen,
+from jsDelivr, pinned to the published file's hash, so the browser refuses any
+other file (`src/web/public/js/evm-wallet.js`).
+
+**No USDC yet?** "Buy some by card" opens Coinbase Onramp, which sells USDC on
+Base by card straight to the person's wallet (`src/economy/onramp.ts`). Coinbase
+handles the card and any checks; this app never sees them. It needs a Coinbase
+Developer Platform secret API key (Ed25519) on the computer running the app
+(`constellate keys set cdp`, the JSON file Coinbase gives). Without one, the
+sheet says to get USDC on Base anywhere and send it to the wallet.
+
+#### Store for others (x402)
+A computer that already holds ANT can store other people's contributions for
+USDC on Base, so they never touch ANT (`src/economy/storage-market.ts`):
+- **Offer:** `constellate store-for-others --price 0.05 --pay-to 0x…` publishes a
+  signed `storage_offer` (price per MB, a minimum, the most it takes at once, up
+  to 256 KB). It needs Autonomi, real payments on and an x402 facilitator
+  (`CONSTELLATE_X402_FACILITATOR`), which settles payments on Base; this computer
+  holds no key that moves the money.
+- **Buy:** on the Me page, a computer without Autonomi sees the cheapest offers,
+  with how many of each seller's stores buyers could check. The buyer's wallet
+  signs one x402 payment authorization (EIP-3009, USDC on Base) for exactly the
+  price, valid for minutes. The protocol runs over x0x direct messages: ask,
+  price, pay with the bundle, done.
+- **The seller** checks the bundle is the one priced and the payment (the
+  signature here, then its facilitator), uploads, and only then settles.
+- **The receipt** names who stored it, the payment transaction, and whether this
+  computer could read the bundle back from Autonomi (`verified`).
+- **Said plainly:** the buyer signs before the upload, so a dishonest seller
+  could take a small payment and not store. Amounts are small, the authorization
+  is exact and short-lived, and each seller's checked stores are shown.
+
+Gate: `test/gates/storage_market.test.ts` (the EIP-712 hash is checked against
+viem's; a stand-in facilitator; an in-memory x0x; the passkey SDK refused when
+the file doesn't match its hash).
+
 The shared fund below still exists in the code, for topic sponsorship and a
 library run by whoever chooses to; it's optional and off unless someone runs it.
 

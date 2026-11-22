@@ -1,6 +1,7 @@
 // Top up storage (src/economy/topup.ts): the person's USDC on Base becomes ANT (and a little gas) in this
 // computer's Autonomi wallet. Every step is signed in the person's own wallet; the app never holds their money.
 import { esc, api, toast, sheet, closeSheet, $ } from './ui.js';
+import { walletChoices, walletProvider } from './evm-wallet.js';
 
 const BASE_HEX = '0x2105';
 const pad = (hex) => hex.replace(/^0x/, '').toLowerCase().padStart(64, '0');
@@ -23,18 +24,32 @@ async function approveExact(eth, from, approvals) {
 }
 
 export function topUpSheet(onDone) {
-  const eth = window.ethereum;
+  const choices = walletChoices();
+  let eth = null;
   const el = sheet(`<div class="spread"><div class="eyebrow">Top up storage</div><button class="btn ghost sm" data-close>Close</button></div>
     <p class="muted" style="font-size:13.5px">Turns USDC on Base into ANT (and a little ETH for fees) in this computer’s Autonomi wallet, which pays for storing what you share. You sign each step in your own wallet; nobody else holds your money.</p>
-    ${eth ? '' : '<p class="faint" style="font-size:13px">Needs a wallet in this browser: MetaMask, or Coinbase Wallet. Then come back here.</p>'}
-    <form class="stack" id="tu-form"><label>Amount (USD)<input class="field" id="tu-usd" type="number" min="1" max="50" step="1" value="5"></label>
-      <div class="row"><button class="btn primary" ${eth ? '' : 'disabled'}>Connect and get a quote</button></div></form>
+    <form class="stack" id="tu-form">
+      <div class="stack" style="gap:6px">${choices.map((c, i) => `<label class="row" style="gap:8px;cursor:pointer;align-items:flex-start"><input type="radio" name="tu-wallet" value="${c.id}"${i === 0 ? ' checked' : ''} style="margin-top:4px"><span><b>${esc(c.name)}</b><span class="faint" style="display:block;font-size:12.5px">${esc(c.note)}</span></span></label>`).join('')}</div>
+      <label>Amount (USD)<input class="field" id="tu-usd" type="number" min="1" max="50" step="1" value="5"></label>
+      <div class="row"><button class="btn primary">Connect and get a quote</button><button class="btn ghost" type="button" id="tu-buy">No USDC yet? Buy some by card</button></div></form>
     <div id="tu-out" style="margin-top:10px"></div>
     <p class="faint" style="font-size:12px;margin-top:10px">Quotes come from LI.FI, a public swap service, which sees your wallet address and this computer’s storage wallet address.</p>`, { label: 'Top up storage' });
+  // No USDC yet: Coinbase Onramp sells it by card, delivered to the wallet chosen above (src/economy/onramp.ts).
+  $('#tu-buy', el).onclick = async () => {
+    const out = $('#tu-out', el);
+    try {
+      eth = await walletProvider($('input[name="tu-wallet"]:checked', el)?.value);
+      const [address] = await eth.request({ method: 'eth_requestAccounts' });
+      const { url } = await api('/api/onramp', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ address, usd: Math.max(2, Number($('#tu-usd', el).value) || 5) }) });
+      window.open(url, '_blank', 'noopener');
+      out.innerHTML = '<p class="faint" style="font-size:13px">Coinbase opened in a new tab. Once the USDC arrives in your wallet, get a quote here.</p>';
+    } catch (err) { out.innerHTML = `<p class="faint" style="font-size:13px">${esc(err.message)}</p>`; }
+  };
   $('#tu-form', el).onsubmit = async (e) => {
     e.preventDefault();
     const out = $('#tu-out', el);
     try {
+      eth = await walletProvider($('input[name="tu-wallet"]:checked', el)?.value);
       const [from] = await eth.request({ method: 'eth_requestAccounts' });
       await eth.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: BASE_HEX }] }).catch(() => {});
       out.innerHTML = '<span class="faint">Getting a quote…</span>';

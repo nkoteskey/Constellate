@@ -40,6 +40,8 @@ export const RECORD_KINDS = [
   'novelty',
   // the x0x home test: one computer's session, as numbers and categories only (src/x0x/home-test.ts)
   'measurement',
+  // storing for others: a computer's offer to store on Autonomi, paid with x402 (src/economy/storage-market.ts)
+  'storage_offer',
 ] as const;
 export type RecordKind = (typeof RECORD_KINDS)[number];
 
