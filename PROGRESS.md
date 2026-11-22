@@ -816,3 +816,21 @@ Still stop points, deliberately not approved on the owner's behalf: publishing a
   - SAT Competition "unknown" formulas (too large for a record).
   - A second checker in another language.
   - Offering GSI to re-check their One engine and Internal results.
+
+### Improve a question instead of asking it again; a tech realm; distributed Lean; an x0x home test draft (Nov 22)
+- **Revise and fork** (`src/collective/versions.ts`, docs/VERSIONS.md):
+  - Revise your own idea: a new version, with history.
+  - Suggest a change to someone else's: the author adopts it with one press, and the suggester is credited.
+  - Ask it differently: from any idea or from a live problem's page; a linked framing with its own votes.
+  - Votes carry across versions; the planner reads the current version.
+  - Profiles show "questions others built on"; `proposals_submit` takes `forked_from`.
+  - Gate: `test/gates/versions.test.ts`.
+- **Technology and infrastructure realm** (DESIGN.md): networks (x0x itself), software, systems; judged by measurement against a baseline.
+- **Distributed Lean checking** (`src/work/lean-distributed.ts`, docs/DISTRIBUTED_LEAN.md):
+  - A project's import graph is cut into slices in dependency order; they become ordered problem steps ending in the axiom check.
+  - A slice counts when independent computers on the same toolchain build identical files; a mismatch is a dispute, not a vote.
+  - Gate: `test/gates/lean_distributed.test.ts`.
+  - **Not done yet:** moving .olean files between computers, the builder itself, and testing whether Lean builds are byte-reproducible across machines.
+- **x0x home test, a draft for the x0x team** (docs/X0X_HOME_TEST.md): what x0x does today (read from its code), ten aggregate-only measures under the four goals, how joining would work, the steps (census, experiments on today's settings, ones needing x0x changes), and questions.
+  - **NEEDS HUMAN:** share it with @dirvine and the Saorsa Labs team to revise before it's posted.
+  - **Not built:** a `measurement` check, and the "Help test x0x" switch.
