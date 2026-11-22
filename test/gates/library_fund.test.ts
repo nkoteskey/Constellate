@@ -87,35 +87,6 @@ describe('the storage fund and the permanent library', () => {
     } finally { delete process.env.CONSTELLATE_HOME; }
   });
 
-  it('anyone can pay to keep their own contributions: everything public they shared up to the gift, nobody else’s', async () => {
-    const home = tmp();
-    process.env.CONSTELLATE_HOME = home;
-    try {
-      const hub = new Hub({ signer: LocalSigner.generate(), preview: false, archive: new LocalArchive(join(home, 'archive')) });
-      const ledger = new TestnetLedger();
-      hub.attachRail(ledger);
-      ledger.faucet(hub.node.agentId, $(20));
-      const mine = [];
-      for (let i = 0; i < 2; i++) mine.push((await hub.node.submit(failure(i), { publish: true })).record.id);
-      const other = new Hub({ signer: LocalSigner.generate(), preview: false });
-      const theirs = (await other.node.submit(failure(9), { publish: true })).record;
-      hub.node.ingest(theirs);
-      expect(hub.keeper.plan().records).toHaveLength(0); // sharing is free; nothing is kept for good yet
-
-      await expect(hub.fund.donate($(0.5), undefined, { own: true })).rejects.toThrow(/at least \$1/);
-      await expect(hub.fund.donate($(2), 'x0x', { own: true })).rejects.toThrow(/one at a time/);
-      await hub.fund.donate($(2), undefined, { own: true });
-      await new Promise((r) => setTimeout(r, 5));
-      const later = (await hub.node.submit(failure(5), { publish: true })).record.id;
-
-      const kept = new Set(hub.keeper.plan().records.map((r) => r.id));
-      for (const id of mine) expect(kept.has(id)).toBe(true);
-      expect(kept.has(theirs.id)).toBe(false); // someone else's work isn't kept by your gift
-      expect(kept.has(later)).toBe(false); // what you share after the gift needs another
-      expect(hub.fund.view().recent[0]).toMatchObject({ type: 'gift', note: 'to keep their own contributions' });
-    } finally { delete process.env.CONSTELLATE_HOME; }
-  });
-
   it('money given to the fund is never listed as owed to anyone, and survives a restart', async () => {
     const path = join(tmp(), 'credits-play.jsonl');
     const hub = new Hub({ signer: LocalSigner.generate(), preview: false });

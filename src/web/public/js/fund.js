@@ -26,7 +26,7 @@ export async function fundCard(slot) {
     ${f.topics.length ? `<div class="row" style="gap:6px;margin-top:10px">${f.topics.slice(0, 8).map((t) => `<span class="chip sm" title="${t.sponsors} sponsor${t.sponsors === 1 ? '' : 's'}">${esc(t.topic)} · ${usd(t.amount)}</span>`).join('')}</div>` : ''}
     ${f.recent.length || f.spends.length ? `<details class="raw" style="margin-top:10px"><summary>Where the money went</summary><div style="display:grid;gap:4px;margin-top:8px;font-size:13px">
       ${f.spends.slice(0, 6).map((s) => `<div class="spread"><span>Kept ${s.records} records, ${mb(s.bytes)}</span><span class="faint">${ant(s.atto_ant) ?? (s.archive === 'local' ? 'on this computer' : '')} · ${ago(s.at)}</span></div>`).join('')}
-      ${f.recent.map((r) => `<div class="spread"><span>${r.type === 'gift' ? `Gift${r.topic ? ` to keep “${esc(r.topic)}”` : r.note ? ` ${esc(r.note)}` : ''}` : `Withdrawn: ${esc(r.note ?? '')}`}</span><span class="faint">${usd(r.amount)} · ${ago(r.at)}</span></div>`).join('')}
+      ${f.recent.map((r) => `<div class="spread"><span>${r.type === 'gift' ? `Gift${r.topic ? ` to keep “${esc(r.topic)}”` : ''}` : `Withdrawn: ${esc(r.note ?? '')}`}</span><span class="faint">${usd(r.amount)} · ${ago(r.at)}</span></div>`).join('')}
     </div></details>` : ''}
   </div>`;
   const g = $('#fund-give', slot);
@@ -36,11 +36,10 @@ export async function fundCard(slot) {
       <form id="fund-form" class="stack">
         <div class="row"><label>Amount ($)<input class="field" id="fund-usd" type="number" min="0.5" step="0.5" value="5" required></label>
         <label>Topic (optional)<input class="field" id="fund-topic" maxlength="48" placeholder="e.g. rust, x0x, antibiotics"></label></div>
-        <label class="row" style="gap:8px;cursor:pointer;font-size:13.5px"><input type="checkbox" id="fund-own"> Keep everything I’ve shared so far, for good <span class="faint">(at least $1; sharing stays free either way)</span></label>
         <div class="row"><button class="btn primary">Give</button></div></form>`, { label: 'Give to the storage fund' });
     $('#fund-form', el).onsubmit = async (e) => {
       e.preventDefault();
-      try { await api('/api/fund/give', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ usd: Number($('#fund-usd', el).value), topic: $('#fund-own', el).checked ? undefined : $('#fund-topic', el).value.trim() || undefined, own: $('#fund-own', el).checked }) }); closeSheet(); toast('Thank you. It’s on the public record.'); fundCard(slot); }
+      try { await api('/api/fund/give', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ usd: Number($('#fund-usd', el).value), topic: $('#fund-topic', el).value.trim() || undefined }) }); closeSheet(); toast('Thank you. It’s on the public record.'); fundCard(slot); }
       catch (err) { toast(err.message, 5200); }
     };
   };

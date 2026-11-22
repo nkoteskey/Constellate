@@ -8,8 +8,6 @@ import type { ReceiptBody } from './economy.js';
  * pay for storage, and every donation, withdrawal and upload is a signed receipt anyone can check.
  */
 export const FUND = 'fund:storage';
-/** The least a gift to keep your own contributions can be, in micro-dollars. */
-export const OWN_MIN = 1_000_000;
 const DAY = 86_400_000;
 const TOPIC = /^[a-z0-9][a-z0-9 _.+-]{0,47}$/;
 
@@ -34,32 +32,16 @@ export class StorageFund {
     return new Set(this.receipts('fund_donation').map((s) => (s.rec.body as { topic?: string }).topic).filter((t): t is string => !!t));
   }
 
-  /**
-   * People who paid to keep their own contributions: their agent id and when they last gave. The library keeps
-   * everything public they published up to that moment (later contributions need another gift). Sharing stays
-   * free either way; this is for people who want their own work kept for good without waiting for confirmations.
-   */
-  ownSponsors(): Map<string, string> {
-    const m = new Map<string, string>();
-    for (const s of this.receipts('fund_donation')) {
-      const b = s.rec.body as { own?: boolean; payer?: string };
-      if (b.own && b.payer && (!m.has(b.payer) || s.rec.created > m.get(b.payer)!)) m.set(b.payer, s.rec.created);
-    }
-    return m;
-  }
-
-  /** Give from this computer's balance: to the fund in general, to keep one topic, or to keep your own contributions. */
-  async donate(amount: number, topic?: string, opts: { own?: boolean } = {}) {
+  /** Give from this computer's balance, to the fund in general or to keep one topic. */
+  async donate(amount: number, topic?: string) {
     const economy = this.hub.economy;
     if (!economy?.rail.release) throw new Error('the storage fund is paid from this computer\'s Constellate balance: open the app (or run `constellate serve`)');
     amount = Math.floor(amount);
     if (!Number.isSafeInteger(amount) || amount <= 0) throw new Error('give an amount above zero');
     const t = topic?.trim().toLowerCase() || undefined;
     if (t && !TOPIC.test(t)) throw new Error('a topic is a short tag, like "rust" or "x0x"');
-    if (opts.own && t) throw new Error('keep your own contributions, or a topic: one at a time');
-    if (opts.own && amount < OWN_MIN) throw new Error(`keeping your own contributions takes at least $${OWN_MIN / 1e6}`);
     if (economy.balance() < amount) throw new Error('not enough balance for that');
-    return economy.pay(FUND, amount, 'fund_donation', [], t ? { topic: t } : opts.own ? { own: true } : {});
+    return economy.pay(FUND, amount, 'fund_donation', [], t ? { topic: t } : {});
   }
 
   /** The holder takes money out to buy storage. Says why, publicly. */
@@ -91,7 +73,7 @@ export class StorageFund {
       spends: spends.sort((a, b) => b.at.localeCompare(a.at)).slice(0, 20),
       last_week: { uploads: week.length, bytes: week.reduce((n, x) => n + x.bytes, 0), atto_ant: week.reduce((n, x) => n + BigInt(x.atto_ant || '0'), 0n).toString() },
       recent: [
-        ...gifts.map(({ s, b }) => ({ at: s.rec.created, type: 'gift', amount: b.amount, topic: b.topic ?? null, note: (b as { own?: boolean }).own ? 'to keep their own contributions' : null })),
+        ...gifts.map(({ s, b }) => ({ at: s.rec.created, type: 'gift', amount: b.amount, topic: b.topic ?? null, note: null })),
         ...this.receipts('fund_withdrawal').map((s) => { const b = s.rec.body as unknown as { amount: number; note?: string }; return { at: s.rec.created, type: 'withdrawal', amount: b.amount, topic: null, note: b.note ?? null }; }),
       ].sort((a, b) => b.at.localeCompare(a.at)).slice(0, 12),
     };

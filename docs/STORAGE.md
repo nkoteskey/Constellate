@@ -87,10 +87,6 @@ just to report a failure. So the network pays, from one **storage fund**
 - **Giving:** anyone can give, from the Help for free page or the API. The gift
   can be general, or **for a topic**. Sponsoring a topic keeps everything public
   in it permanently, not only what was confirmed.
-- **Keeping your own contributions:** anyone can give (at least $1) to keep
-  everything public they shared up to that moment, without waiting for someone
-  to confirm it. Later contributions need another gift; sharing stays free
-  either way, and it never keeps anyone else's records.
 - **The holder:** whoever runs the ledger the fund lives on (the owner, to
   begin with). They withdraw only to pay for storage, and every withdrawal says
   why: `constellate fund withdraw 20 --note "ANT for Autonomi uploads"`.
