@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { Hub } from '../hub/hub.js';
 import { StoredRecord } from '../store/records.js';
 import { VerifierRegistry } from './verifiers.js';
+import { checkerId } from './checker-controls.js';
 
 export const ChunkSpec = z.object({
   key: z.string().max(64),
@@ -38,23 +39,28 @@ export function orderProblem(chunks: { key: string; after?: string[] }[]): strin
   return null;
 }
 
-/** The sky's five realms (Amendment 1 §7). Software and knowledge problems live in mathematics and physics. */
-export const REALMS = ['maths_physics', 'life_sciences', 'planet_energy', 'philosophy_ethics', 'art_creativity'] as const;
+/**
+ * The sky's six realms (DESIGN.md, Realms). Technology and infrastructure (networks, software, systems: x0x itself)
+ * was added on 2026-11-22; before that, software problems lived in mathematics and physics.
+ */
+export const REALMS = ['maths_physics', 'life_sciences', 'planet_energy', 'philosophy_ethics', 'art_creativity', 'tech_infrastructure'] as const;
 
 export const ProblemBody = z.object({
   title: z.string().max(200),
   hook: z.string().max(140).default(''),
   goal: z.string().max(2000),
   realm: z.enum(REALMS),
-  definition_of_done: z.object({ verifier: z.string(), description: z.string().max(1000) }),
+  definition_of_done: z.object({ verifier: z.string(), description: z.string().max(1000), /** The checker version it was posted with, e.g. "three_cubes@1" (src/work/checker-controls.ts). */ checker: z.string().max(80).optional() }),
   chunks: z.array(ChunkSpec).min(1).max(500),
   /** Where the problem comes from: a public source that says it's open, quoted, and when it was read. */
   source: z.object({ url: z.string().url().max(500), says: z.string().max(600), read: z.string().max(20) }).optional(),
+  /** Another problem or idea this one asks differently (src/collective/versions.ts): both pages link to each other. */
+  forked_from: z.string().regex(/^[0-9a-f]{64}$/).optional(),
 });
 export type ProblemBody = z.infer<typeof ProblemBody>;
 
 export interface TaskResultBody { problem: string; chunk: string; output: string; model: string; family: string }
-export interface CheckpointBody { problem: string; chunk: string; seq: number; result: string; verifier_model: string; verifier_family: string; machine_check: string }
+export interface CheckpointBody { problem: string; chunk: string; seq: number; result: string; verifier_model: string; verifier_family: string; machine_check: string; /** The checker version that passed it, e.g. "three_cubes@1". */ checker?: string }
 
 export interface ChunkState {
   key: string;
@@ -77,6 +83,8 @@ export class Problems {
   async propose(body: z.input<typeof ProblemBody>, opts: { publish?: boolean } = {}) {
     const b = ProblemBody.parse(body);
     if (!this.verifiers.get(b.definition_of_done.verifier)) throw new Error(`unknown verifier "${b.definition_of_done.verifier}": only problems with checkable progress enter the queue`);
+    b.definition_of_done.checker ??= checkerId(b.definition_of_done.verifier); // pinned: the version it was posted with
+    if (b.forked_from && !['problem', 'proposal'].includes(this.hub.node.store.get(b.forked_from)?.rec.kind ?? '')) throw new Error('forked_from must be a problem or an idea this computer has');
     const order = orderProblem(b.chunks);
     if (order) throw new Error(`the steps can't all open: ${order}`);
     return this.hub.node.submit({ kind: 'problem', context: { task: b.title, domain: [b.realm], environment: '' }, body: b }, opts);

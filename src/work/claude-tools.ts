@@ -47,6 +47,9 @@ function supports(bin: string, flag: string, env: NodeJS.ProcessEnv) {
 /** The arguments and working folder for a headless Claude Code run with these Constellate tools. */
 export function claudeRun(bin: string, o: { prompt: string; mcp: unknown; mcpTools: string[]; env: NodeJS.ProcessEnv; tools?: AgentTools }) {
   const t = o.tools ?? agentTools();
+  // Constellate's server can take longer than Claude Code's 30 s connect limit on a slow or busy computer (an Intel
+  // build under Rosetta took 22–42 s): two minutes, unless the person set their own.
+  o.env.MCP_TIMEOUT ||= '120000';
   const builtin = [...(t.web ? WEB_TOOLS : []), ...(t.code ? CODE_TOOLS : [])];
   const allowed = [...o.mcpTools.map((x) => `mcp__constellate__${x}`), ...builtin];
   const args = ['-p', `${o.prompt}\n\n${toolsNote(t)}`, '--mcp-config', JSON.stringify(o.mcp), '--strict-mcp-config', '--allowedTools', allowed.join(','), '--output-format', 'stream-json', '--verbose'];

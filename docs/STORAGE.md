@@ -80,7 +80,94 @@ offline, asks up to three online peers for history since its last sync.
 - **Cost:** catching up costs nothing beyond bandwidth, and no paid storage is
   needed for it.
 
-### Who pays: the storage fund, not the people sharing
+### Each contributor stores their own (the main model, from 2026-11-22)
+Sharing is free: records live on the computers of everyone running Constellate.
+Anyone who wants their contributions on Autonomi for good pays for exactly those,
+from their own computer's Autonomi wallet (`src/hub/self-store.ts`). There is no
+central fund or shared wallet to hold, beg for or hack, and storing is
+permissionless, so nobody can stop it.
+- **Where:** Me, "Store what you shared, for good", or `constellate store-mine`
+  (`--quote` to see the size and cost first, `--private` for a private receipt).
+- **What:** this computer's public contributions (and the person's browser key on
+  it), not yet stored, up to 200 per upload, in one bundle that keeps every
+  record's own signature. Votes and receipts aren't included.
+- **The receipt is the proof of contribution:** a signed `self_store` record with
+  the Autonomi address, the bundle's sha256, the record ids, the bytes and the
+  cost. Anyone can fetch the bundle, check its hash and every record's signature
+  against the key that signed the receipt. It is timestamped and permanent.
+- **Anonymous if you like:** records are signed by a key, not a name (unless the
+  person linked one). The receipt says "this key paid to store these". Publish
+  it, or keep it on this computer (downloadable) and share it later, or never.
+- **No double paying:** the library keeper skips anything someone already stored
+  themselves.
+- **Cost:** asked of the local Autonomi daemon before paying; storage is cheap,
+  and each person pays only for their own small records.
+
+#### Top up storage (USDC on Base, converted for you)
+Autonomi charges in ANT on Arbitrum One. Rather than make people buy ANT, the
+Me page's "Top up storage with USDC on Base" (`src/economy/topup.ts`) turns
+USDC on Base into ANT, plus a little ETH for fees when the wallet is low, sent
+straight to this computer's Autonomi wallet:
+1. Connect a wallet in the browser (MetaMask or Coinbase Wallet) and choose an
+   amount ($1 to $50 by default, `CONSTELLATE_TOPUP_MAX_USD`).
+2. The app asks LI.FI, a public cross-chain swap service, for a quote and
+   checks it before showing it: the right chains and tokens, the person's own
+   address, the amount asked, delivery to this computer's storage wallet, at
+   most 3% slippage, and a transaction to the contract it asks approval for.
+3. The person approves the exact amount (never unlimited) and sends, both in
+   their own wallet. The app follows the transfer to Arbitrum.
+
+Nobody else holds the money. LI.FI sees the person's wallet address and the
+storage wallet's; the sheet says so. LI.FI has no test network, so in test
+mode the quotes are real and nothing can be sent; sending needs
+`CONSTELLATE_PAYMENTS=live` (docs/MAINNET.md). ANT's liquidity is thin (pools
+of roughly $75k to $155k in November 2026), which is why there's a slippage
+limit and top-ups are small. Before turning it on for real, check that the
+local Autonomi daemon still pays the way `src/store/autonomi.ts` expects after
+Autonomi 2.0 (April 2026). Gate: `test/gates/topup.test.ts`.
+
+**Wallets.** The sheet offers the browser's own wallet (MetaMask, Coinbase
+Wallet, Rabby…) or a **Base Account**: Coinbase's passkey wallet, no extension
+needed. Its SDK (`@base-org/account` 2.6.0, Apache-2.0) loads only when chosen,
+from jsDelivr, pinned to the published file's hash, so the browser refuses any
+other file (`src/web/public/js/evm-wallet.js`).
+
+**No USDC yet?** "Buy some by card" opens Coinbase Onramp, which sells USDC on
+Base by card straight to the person's wallet (`src/economy/onramp.ts`). Coinbase
+handles the card and any checks; this app never sees them. It needs a Coinbase
+Developer Platform secret API key (Ed25519) on the computer running the app
+(`constellate keys set cdp`, the JSON file Coinbase gives). Without one, the
+sheet says to get USDC on Base anywhere and send it to the wallet.
+
+#### Store for others (x402)
+A computer that already holds ANT can store other people's contributions for
+USDC on Base, so they never touch ANT (`src/economy/storage-market.ts`):
+- **Offer:** `constellate store-for-others --price 0.05 --pay-to 0x…` publishes a
+  signed `storage_offer` (price per MB, a minimum, the most it takes at once, up
+  to 256 KB). It needs Autonomi, real payments on and an x402 facilitator
+  (`CONSTELLATE_X402_FACILITATOR`), which settles payments on Base; this computer
+  holds no key that moves the money.
+- **Buy:** on the Me page, a computer without Autonomi sees the cheapest offers,
+  with how many of each seller's stores buyers could check. The buyer's wallet
+  signs one x402 payment authorization (EIP-3009, USDC on Base) for exactly the
+  price, valid for minutes. The protocol runs over x0x direct messages: ask,
+  price, pay with the bundle, done.
+- **The seller** checks the bundle is the one priced and the payment (the
+  signature here, then its facilitator), uploads, and only then settles.
+- **The receipt** names who stored it, the payment transaction, and whether this
+  computer could read the bundle back from Autonomi (`verified`).
+- **Said plainly:** the buyer signs before the upload, so a dishonest seller
+  could take a small payment and not store. Amounts are small, the authorization
+  is exact and short-lived, and each seller's checked stores are shown.
+
+Gate: `test/gates/storage_market.test.ts` (the EIP-712 hash is checked against
+viem's; a stand-in facilitator; an in-memory x0x; the passkey SDK refused when
+the file doesn't match its hash).
+
+The shared fund below still exists in the code, for topic sponsorship and a
+library run by whoever chooses to; it's optional and off unless someone runs it.
+
+### Optional: the storage fund
 Charging to share would stop most sharing, and agents would each need a wallet
 just to report a failure. So the network pays, from one **storage fund**
 (`src/economy/fund.ts`):

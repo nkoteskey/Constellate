@@ -102,7 +102,7 @@ async function main(argv: string[]) {
       if (!profiles.ownAgent()) void profiles.publishAgent({ about: 'Uses Constellate through an agent', reach: 'agent', open_to: { messages: true, invites: true } }).catch(() => {});
       const appUrl = process.env.CONSTELLATE_APP_URL ?? `http://127.0.0.1:${process.env.PORT ?? 4747}`;
       const appRunning = async () => { try { return (await fetch(`${appUrl}/api/sky`, { signal: AbortSignal.timeout(1500) })).ok; } catch { return false; } };
-      hub.x0x!.directEvents((m) => { if (!hub.sync.handle(m.sender, m.payload)) void appRunning().then((up) => { if (!up) hub.people.receive(m.sender, m.payload); }); });
+      hub.x0x!.directEvents((m) => { if (!hub.sync.handle(m.sender, m.payload) && !hub.market.handle(m.sender, m.payload)) void appRunning().then((up) => { if (!up) hub.people.receive(m.sender, m.payload); }); });
       const collect = async () => { if (!(await appRunning())) await hub.people.collectMail().catch(() => 0); };
       setTimeout(() => void collect(), 5_000).unref();
       setInterval(() => void collect(), 60_000).unref();
@@ -156,6 +156,75 @@ Anyone can re-check it: the file is public, and only this identity can sign as $
     return;
   }
   if (cmd === 'status') { const hub = await Hub.fromEnv(); console.log(JSON.stringify(hub.status(), null, 2)); await hub.close(); return; }
+  // Re-run both checkers on a result this computer holds, and print its card (docs/RESULTS.md).
+  if (cmd === 'recheck') {
+    const id = argv[1];
+    if (!id) throw new Error('usage: constellate recheck CR-<12 hex digits>');
+    const hub = await Hub.fromEnv();
+    try {
+      const card = await hub.results.get(id);
+      if (!card) { console.error(`No result ${id} on this computer yet. Run \`constellate mcp\` or the app once to catch up with the network.`); process.exitCode = 1; return; }
+      const { resultText } = await import('./web/llms-full.js');
+      console.log(resultText(card));
+      process.exitCode = card.evidence.label === 'disagreement' ? 1 : 0;
+    } finally { await hub.close(); }
+    return;
+  }
+  // Store for others: offer this computer's Autonomi wallet as a storage service, paid in USDC on Base with x402.
+  if (cmd === 'store-for-others') {
+    const flag = (f: string) => { const i = argv.indexOf(f); return i > 0 ? argv[i + 1] : undefined; };
+    const hub = await Hub.fromEnv();
+    try {
+      const id = await hub.market.offer({ price_micro_usdc_per_mb: Math.round(Number(flag('--price') ?? 0.05) * 1e6), min_micro_usdc: Math.round(Number(flag('--min') ?? 0.01) * 1e6), max_bytes: Number(flag('--max-bytes') ?? 256 * 1024), pay_to: String(flag('--pay-to') ?? ''), network: 'base', note: flag('--note') ?? '' });
+      console.log(`Offer published (${id}). Keep this computer running (constellate serve) to answer requests.`);
+    } finally { await hub.close(); }
+    return;
+  }
+  // Store what this computer shared permanently, paid from its own Autonomi wallet; --private keeps the receipt here.
+  if (cmd === 'store-mine') {
+    const hub = await Hub.fromEnv();
+    try {
+      const q = await hub.selfStore.quote();
+      if (argv.includes('--quote') || !q.next) { console.log(JSON.stringify(q, null, 2)); return; }
+      // --via SELLER: through a computer that stores for others, paid from the agent spending wallet.
+      const via = argv.indexOf('--via') > 0 ? argv[argv.indexOf('--via') + 1] : undefined;
+      if (via) { console.log(JSON.stringify(await hub.selfStore.marketViaAgent(via, { private: argv.includes('--private') }), null, 2)); return; }
+      const r = await hub.selfStore.run({ private: argv.includes('--private') });
+      console.log(JSON.stringify(r, null, 2));
+      if (r) console.log(`Stored ${r.stored} records ${r.archive === 'autonomi' ? 'on Autonomi' : 'in the local archive (Autonomi isn’t set up here)'}. Your receipt: ${r.receipt}${r.published ? ' (published)' : ' (kept on this computer)'}.`);
+    } finally { await hub.close(); }
+    return;
+  }
+  // The x0x home test: a session on this computer, the exact numbers printed, and sent only with --send.
+  if (cmd === 'x0x-test') {
+    const { runSession, publishReport } = await import('./x0x/home-test.js');
+    const flag = (f: string) => { const i = argv.indexOf(f); return i > 0 ? argv[i + 1] : undefined; };
+    const hub = await Hub.fromEnv();
+    try {
+      if (!hub.x0x) throw new Error('x0x isn’t running on this computer (constellate network join)');
+      const minutes = Number(flag('--minutes') ?? 15);
+      console.log(`Measuring x0x for ${minutes} minutes: a third idle, a third sending small test messages, a third idle.`);
+      const report = await runSession(hub.x0x, { minutes, arm: flag('--arm') }, (p) => process.stdout.write(`\r${p.phase} ${Math.round(p.done * 100)}%   `));
+      console.log(`\n\nThis is everything that would be sent (numbers and the NAT type only):\n${JSON.stringify(report, null, 2)}`);
+      if (argv.includes('--send')) console.log(`Sent as record ${await publishReport(hub, report)}. Thank you.`);
+      else console.log('Nothing was sent. Run again with --send to share it.');
+    } finally { await hub.close(); }
+    return;
+  }
+  // Every checker against its controls: known answers must pass, planted errors must fail, both checkers alike.
+  if (cmd === 'checkers') {
+    const { VerifierRegistry } = await import('./work/verifiers.js');
+    const { runControls } = await import('./work/checker-controls.js');
+    const reg = new VerifierRegistry();
+    let bad = 0;
+    for (const n of reg.names()) {
+      const r = await runControls(reg.get(n)!);
+      bad += r.failures.length;
+      console.log(`${r.failures.length ? '✗' : '✓'} ${r.version}: ${r.passed} controls pass${r.second ? ', both checkers' : ', one checker'}${r.skipped ? ` (${r.skipped})` : ''}${r.no_known_answer ? ` (${r.no_known_answer})` : ''}${r.failures.map((f) => `\n    ${f}`).join('')}`);
+    }
+    process.exitCode = bad ? 1 : 0;
+    return;
+  }
   if (cmd === 'setup') {
     // Snippets point at this install's own CLI; `npx -y constellate-mcp mcp` (our npm package) needs nothing installed.
     const cli = fileURLToPath(new URL(import.meta.url.endsWith('.ts') ? '../dist/cli.js' : './cli.js', import.meta.url));
@@ -294,7 +363,7 @@ Lend your computer instead: node "${cli}" models, then node "${cli}" contribute`
     // Incoming direct messages: history sync between computers, otherwise a person's message for the app's inbox.
     // (All of this runs once on the network: now, or as soon as Constellate joins it in the background.)
     hub.onOnline((h) => {
-      h.x0x!.directEvents((m) => { if (!h.sync.handle(m.sender, m.payload)) h.people.receive(m.sender, m.payload); });
+      h.x0x!.directEvents((m) => { if (!h.sync.handle(m.sender, m.payload) && !h.market.handle(m.sender, m.payload)) h.people.receive(m.sender, m.payload); });
       // Sealed letters left while this computer was offline (docs/MAILBOX.md): publish the mailbox key, collect
       // now and every minute, and clear this computer's own expired letters once a day.
       const collect = () => void h.people.collectMail().catch(() => {});

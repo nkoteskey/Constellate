@@ -100,7 +100,8 @@ export class Planner {
   }
 
   private idea(id: string) {
-    const s = this.hub.node.store.get(id);
+    // The idea's current version: revisions by its author replace what the agent is asked to plan.
+    const s = this.hub.collective.versions.current(id) ?? this.hub.node.store.get(id);
     if (!s || s.rec.kind !== 'proposal') throw new Error('unknown idea');
     return s.rec.body as { title: string; goal: string; done: string; check?: string; realm?: string };
   }
@@ -243,7 +244,8 @@ If plan_report isn't available or keeps failing, end your reply with the same { 
       }
     });
     let lastText = '';
-    const timer = setTimeout(() => child.kill(), 15 * 60_000);
+    let timedOut = false;
+    const timer = setTimeout(() => { timedOut = true; child.kill(); }, 15 * 60_000);
     this.runs.set(id, { kill: () => child.kill() });
     child.on('error', (e) => { clearTimeout(timer); this.fail(id, `Claude Code couldn’t start: ${e.message}`); });
     child.on('close', async (code) => {
@@ -256,7 +258,7 @@ If plan_report isn't available or keeps failing, end your reply with the same { 
       }
       if (this.get(id)?.status !== 'running') return;
       const said = lastText.trim() ? ` Its last words: “${lastText.trim().replace(/\s+/g, ' ').slice(0, 240)}”` : '';
-      this.fail(id, code === 0 ? `Claude Code finished without reporting a plan.${said}` : `Claude Code stopped (${code}): ${err.trim().slice(-300) || 'no error output'}${said}`);
+      this.fail(id, timedOut ? `Claude Code ran for 15 minutes without reporting a plan, so it was stopped.${said}` : code === 0 ? `Claude Code finished without reporting a plan.${said}` : `Claude Code stopped (${code}): ${err.trim().slice(-300) || 'no error output'}${said}`);
     });
   }
 }

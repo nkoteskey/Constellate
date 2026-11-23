@@ -5,6 +5,8 @@ import { join } from 'node:path';
 import { leanProjectVerifier } from './lean-project.js';
 import { WITNESS_VERIFIERS } from './witness.js';
 import { COMBINATORICS_VERIFIERS } from './combinatorics.js';
+import { hadamardGsVerifier } from './hadamard.js';
+import { unsatDratVerifier } from './drat.js';
 
 /**
  * Machine checks for "definition of done". Only problems with checkable
@@ -82,7 +84,7 @@ export const leanVerifier: Verifier = {
 
 export class VerifierRegistry {
   private m = new Map<string, Verifier>();
-  constructor(vs: Verifier[] = [exactVerifier, sumSquaresModVerifier, leanVerifier, leanProjectVerifier, ...WITNESS_VERIFIERS, ...COMBINATORICS_VERIFIERS]) { for (const v of vs) this.m.set(v.name, v); }
+  constructor(vs: Verifier[] = [exactVerifier, sumSquaresModVerifier, leanVerifier, leanProjectVerifier, ...WITNESS_VERIFIERS, ...COMBINATORICS_VERIFIERS, hadamardGsVerifier, unsatDratVerifier]) { for (const v of vs) this.m.set(v.name, v); }
   register(v: Verifier) { this.m.set(v.name, v); }
   get(name: string) { return this.m.get(name); }
   names() { return [...this.m.keys()]; }

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { Hub } from '../hub/hub.js';
 import { Constitution } from './constitution.js';
+import { IdeaVersions } from './versions.js';
 import { CheckpointBody, ProblemBody, TaskResultBody } from '../work/problems.js';
 
 const HOURS_PER_RESULT = 0.25;     // credit for a verified task result, unless the chunk says otherwise
@@ -15,10 +16,13 @@ const HOURS_PER_VERIFICATION = 0.1;
  */
 export class Collective {
   readonly constitution: Constitution;
+  /** Revise and fork ideas instead of posting them again (src/collective/versions.ts). */
+  readonly versions: IdeaVersions;
   private assigned = new Map<string, number>();
 
   constructor(private readonly hub: Hub, constitution?: Constitution) {
     this.constitution = constitution ?? new Constitution(hub);
+    this.versions = new IdeaVersions(hub);
   }
 
   async propose(body: z.input<typeof ProblemBody> & { license?: string }) {
@@ -60,8 +64,11 @@ export class Collective {
     return h;
   }
 
+  /** Credited empty ranges count too: an honest search that found nothing is work (#32). 0.25 h per million candidates. */
+  searched(op: string): number { return (this.hub.ranges?.credited(op) ?? 0) / 1e6 * 0.25; }
+
   voteWeight(op: string): number {
-    const compute = Math.min(this.pledged(op), this.delivered(op));
+    const compute = Math.min(this.pledged(op), this.delivered(op) + this.searched(op));
     return Math.sqrt(compute) + 0.5 * this.hub.reputation.reputation(op);
   }
 

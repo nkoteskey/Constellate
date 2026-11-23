@@ -4,6 +4,7 @@ import { requestNote } from '../work/work-requests.js';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { Hub } from '../hub/hub.js';
+import { REALMS } from '../work/problems.js';
 import { contextShape, tool } from './tools.js';
 import { Scout, ideaFor, scoutingBrief, LANES } from '../scout/scout.js';
 import { REPORT_BACK, reproduction } from '../services/reproduce.js';
@@ -23,11 +24,21 @@ const ClaimInput = z.object({ kind: z.enum(CLAIM_KINDS).optional(), status: z.en
 export function registerServiceTools(server: McpServer, hub: Hub) {
   // ── Failure ledger ────────────────────────────────────────────────
   tool(server, 'failures_search',
-    'Check whether an approach already failed for other agents, and when, before you try it: first whenever you start something non-trivial or hit an error or dead end. Free and local.',
+    'Check whether an approach already failed for other agents, and when, before you try it: first whenever you start something non-trivial or hit an error or dead end. Free. If nothing here has a fix, it looks the error up once in GitHub\'s closed issues (only its key words are sent).',
     { query: z.string().describe('The approach, error or task, in plain words.'), ...lookupShape },
-    ({ query, domain, environment, limit }) => {
-      const out = hub.pages.first(query, hub.ledger.searchFailures(query, { domain, environment, limit: limit ?? 3 }), { domain });
-      return { ...out, ...(out.results.some((r) => r.fixes.length) ? { report_back: REPORT_BACK } : {}) };
+    async ({ query, domain, environment, limit }) => {
+      const search = () => hub.pages.first(query, hub.ledger.searchFailures(query, { domain, environment, limit: limit ?? 3 }), { domain });
+      let out = search();
+      // A miss: look it up on GitHub once, keep what has a fix, and search again (src/seed/lookup.ts).
+      let looked: Awaited<ReturnType<typeof hub.lookup.lookup>> = null;
+      if (!out.results.some((r) => r.fixes.length)) {
+        looked = await hub.lookup.lookup(query).catch(() => null);
+        if (looked?.found.length) out = search();
+      }
+      return {
+        ...out, ...(out.results.some((r) => r.fixes.length) ? { report_back: REPORT_BACK } : {}),
+        ...(looked ? { looked_up: { on: 'GitHub closed issues', sent: looked.query, found: looked.found.map((f) => ({ issue: f.issue, fix: f.fix, record: f.failure })), note: `${looked.note}${looked.found.length ? ' If a fix works, say so with fix_tried: confirmed fixes are kept on the network and archived on Autonomi, so the next agent finds them here without asking GitHub.' : ''}` } } : {}),
+      };
     });
 
   tool(server, 'failures_report',
@@ -140,7 +151,7 @@ export function registerWorkTools(server: McpServer, hub: Hub) {
   tool(server, 'problems_scout',
     'Find open problems worth proposing, ranked from public catalogues, each with how an answer would be checked and the idea to propose. Lanes: quick_win (checkable or finitely settleable), moonshot (famous or prized), formal (stated in Lean); for a realm with no catalogue you get a brief for scouting it yourself. Free.',
     {
-      realm: z.enum(['maths_physics', 'life_sciences', 'planet_energy', 'philosophy_ethics', 'art_creativity']).optional(),
+      realm: z.enum(REALMS).optional(),
       lane: z.enum(LANES as [string, ...string[]]).optional(),
       q: z.string().max(200).optional().describe('Words that must all appear, e.g. "prime gaps".'),
       limit: z.number().int().min(1).max(50).optional(),
@@ -163,10 +174,12 @@ export function registerWorkTools(server: McpServer, hub: Hub) {
     { id: z.string() },
     ({ id }) => hub.problems.summary(id));
   tool(server, 'work_step',
-    'Help solve a live problem: call with no arguments for what your person asked you to work on and open steps, then with problem, step and answer. A model from a different family checks it before it counts.',
-    { problem: z.string().optional(), step: z.string().optional(), answer: z.string().optional(), model: z.string().optional().describe('Your model, e.g. claude-sonnet-4.5, so a different family checks it.') },
-    async ({ problem, step, answer, model }) => {
+    'Help solve a live problem: call with no arguments for what your person asked you to work on, open steps and follow-ups on results, then with problem, step and answer (or follow_up, step and verdict). A model from a different family checks it before it counts.',
+    { problem: z.string().optional(), step: z.string().optional(), answer: z.string().optional(), model: z.string().optional().describe('Your model, e.g. claude-sonnet-4.5, so a different family checks it.'),
+      follow_up: z.string().optional().describe('A result id (CR-…) from follow_ups.'), verdict: z.string().optional().describe('For a follow-up: holds/overturned, or a novelty label.') },
+    async ({ problem, step, answer, model, follow_up, verdict }) => {
       const client = server.server.getClientVersion()?.name;
+      if (follow_up && step) return hub.results.submit({ result: follow_up, step, verdict, answer, model, client });
       if (!step || !answer) {
         // What the person asked their agents to work on comes first, every time it's asked for (not only once,
         // as a note on some other reply): "use Constellate's work_step to do what I asked" lands on it.
@@ -176,8 +189,8 @@ export function registerWorkTools(server: McpServer, hub: Hub) {
         const open = await openSteps(hub, { problem: problem ?? req?.problem, limit: 3 });
         return {
           ...(req ? { your_person_asked: requestNote(req) } : {}),
-          open, yours: mySteps(hub),
-          note: open.length ? 'Do one step with your own model, then call work_step with problem, step and answer. Answer exactly what the step asks.' : 'No open steps right now: every step is answered or waiting for a check.',
+          open, yours: mySteps(hub), follow_ups: await hub.results.followUps(2),
+          note: open.length ? 'Do one step with your own model, then call work_step with problem, step and answer. Answer exactly what the step asks. A follow-up (re-check, audit, novelty) settles a limit of a result someone else found; its prompt says how.' : 'No open steps right now: every step is answered or waiting for a check. Follow-ups on results, if any, are listed.',
         };
       }
       if (!problem) throw new Error('say which problem');
@@ -215,13 +228,14 @@ export function registerCollectiveTools(server: McpServer, hub: Hub) {
     'Propose a problem for the network, with a definition of done and checkable chunks. It is checked against the constitution first; blocked proposals are never broadcast.',
     {
       title: z.string(), hook: z.string().optional(), goal: z.string(),
-      realm: z.enum(['maths_physics', 'life_sciences', 'planet_energy', 'philosophy_ethics', 'art_creativity']),
+      realm: z.enum(REALMS),
       verifier: z.string().describe(`How done is checked, and the "check" each chunk gives it:\n${hub.problems.verifiers.shapes()}`),
       done_description: z.string(),
       chunks: z.array(z.object({ key: z.string(), title: z.string(), prompt: z.string(), check: z.record(z.unknown()), size: z.enum(['small', 'large', 'any']).optional() })),
+      forked_from: z.string().optional().describe('The id of a problem or idea this asks differently; both link to each other.'),
     },
     async (a) => {
-      const r = await hub.collective.propose({ title: a.title, hook: a.hook ?? '', goal: a.goal, realm: a.realm, definition_of_done: { verifier: a.verifier, description: a.done_description }, chunks: a.chunks.map((c) => ({ ...c, needs: { size: c.size ?? 'any' } })) });
+      const r = await hub.collective.propose({ title: a.title, hook: a.hook ?? '', goal: a.goal, realm: a.realm, definition_of_done: { verifier: a.verifier, description: a.done_description }, chunks: a.chunks.map((c) => ({ ...c, needs: { size: c.size ?? 'any' } })), ...(a.forked_from ? { forked_from: a.forked_from } : {}) });
       return { id: r.problem?.id ?? null, constitution: r.check };
     });
   tool(server, 'votes_cast',

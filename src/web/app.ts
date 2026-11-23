@@ -1,4 +1,5 @@
 import { readFileSync, existsSync } from 'node:fs';
+import type { IdeaBody } from '../collective/versions.js';
 import { agentTools, setAgentTools, type AgentTools } from '../work/claude-tools.js';
 import { ModelRuns, reachableModels, appVault } from '../work/model-runs.js';
 import { runnerFromSpec } from '../contributor/catalog.js';
@@ -11,11 +12,20 @@ import { agentName, Planner } from '../collective/planner.js';
 import { Profiles, profileProblem, ProfileBody } from '../collab/profiles.js';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { HttpReply, RawReply, StreamReply, WebServer } from './server.js';
+import { HttpReply, PUBLIC, RawReply, StreamReply, WebServer } from './server.js';
+import { llmsFull } from './llms-full.js';
+import { Announcer } from '../announce/announce.js';
+import type { Fetch } from '../announce/sinks.js';
+import { sendingAllowed } from '../economy/topup.js';
+import { onrampUrl } from '../economy/onramp.js';
+import { AutonomiArchive } from '../store/autonomi.js';
+import { runSession, publishReport, TEST_ID, type Report } from '../x0x/home-test.js';
+import { summary as measurementSummary } from '../work/measurement.js';
+import { runControls } from '../work/checker-controls.js';
 import { Guide } from './guide.js';
 import { ProblemSpaces } from '../x0x/spaces.js';
 import { Deliberation } from '../collective/deliberation.js';
-import { verifyRecord, SignedRecord, RecordKind } from '../core/record.js';
+import { verifyRecord, operatorOf, SignedRecord, RecordKind } from '../core/record.js';
 import { scrub, readableBody } from '../privacy/scrub.js';
 import { StoredRecord } from '../store/records.js';
 import { REALMS, ProblemBody } from '../work/problems.js';
@@ -37,6 +47,7 @@ export const REALM_INFO: Record<string, { name: string; colour: string; judged: 
   planet_energy: { name: 'Planet and energy', colour: '#9ad66b', judged: 'Machine-scored' },
   philosophy_ethics: { name: 'Philosophy and ethics', colour: '#d9a6ff', judged: 'Deliberation maps, rated by humans' },
   art_creativity: { name: 'Art and creativity', colour: '#ff9fb2', judged: 'Appreciated, not scored; humans curate' },
+  tech_infrastructure: { name: 'Technology and infrastructure', colour: '#5fd0e0', judged: 'Measured: tests and benchmarks against a baseline' },
 };
 
 const isHuman = (s: StoredRecord) => /^human\b/.test(s.rec.context.environment);
@@ -59,7 +70,7 @@ const VENDOR: Record<string, string> = {
 };
 
 /** The human app API: the living sky, problem pages, deliberations, Me, and signed contributions from the browser. */
-export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunner; scout?: Scout; scoutRefresh?: boolean } = {}) {
+export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunner; scout?: Scout; scoutRefresh?: boolean; /** Tests: stand-in Bluesky and Mastodon. */ announceNet?: { fetch?: Fetch; secret?: (n: 'bluesky' | 'mastodon') => string | undefined } } = {}) {
   const hub = web.hub;
   const guide = new Guide(hub, opts.guideModel);
   const guide_ = guide;
@@ -127,6 +138,12 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
 
   web.route('GET', /^\/api\/snapshot$/, async () => { const { exportSnapshot } = await import('../seed/snapshot.js'); return new RawReply(Buffer.from(exportSnapshot(hub.node.store)), 'application/cbor'); });
 
+  // Results in one shape, with evidence and novelty labels (src/work/results.ts, docs/RESULTS.md).
+  web.route('GET', /^\/api\/results$/, () => hub.results.all());
+  web.route('GET', /^\/api\/results\/(CR-[0-9a-f]{12})$/, async (_r, m) => (await hub.results.get(m[1])) ?? new HttpReply(404, { error: 'no such result' }));
+  // How each checker does on its controls: known answers must pass, planted errors must fail.
+  web.route('GET', /^\/api\/checkers$/, () => Promise.all(hub.problems.verifiers.names().map((n) => runControls(hub.problems.verifiers.get(n)!))));
+  web.route('GET', /^\/llms-full\.txt$/, async () => new RawReply(Buffer.from(await llmsFull(hub, join(PUBLIC, 'llms.txt'))), 'text/plain; charset=utf-8'));
   web.route('GET', /^\/\.well-known\/agent-card\.json$/, async () => {
     const { agentCard } = await import('../economy/a2a.js');
     let base: Record<string, unknown> = {};
@@ -211,7 +228,11 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
     const done = new Set(s.checkpoints.map((c) => c.chunk));
     const reviewing = new Set(hub.node.store.referencing(m[1], 'constitution_check').filter((c) => (c.rec.body as { stage: string; needs_human: boolean }).stage === 'checkpoint' && (c.rec.body as { needs_human: boolean }).needs_human).map((c) => { const r = hub.node.store.get(c.rec.refs[1]); return (r?.rec.body as { chunk?: string } | undefined)?.chunk; }));
     const steps = prob.chunks.map((c) => ({ key: c.key, title: c.title, state: done.has(c.key) ? 'done' : reviewing.has(c.key) && constitution.state === 'awaiting_review' ? 'review' : 'open' }));
-    return { ...s, steps, source: (prob as { source?: unknown }).source ?? null, witness: !!hub.problems.verifiers.get(prob.definition_of_done.verifier)?.witness, realm_info: REALM_INFO[s.realm], recent, people: [...people.values()].sort((a, b) => b.contributions - a.contributions).slice(0, 30), votes, constitution };
+    // Other framings of this problem: ideas and problems that ask it differently, and what it was forked from.
+    const from = prob.forked_from ? hub.node.store.get(prob.forked_from) : undefined;
+    const framings = [...hub.collective.versions.framingsOf(new Set([m[1]])), ...hub.problems.list().filter((x) => (x.rec.body as { forked_from?: string }).forked_from === m[1]).map((x) => ({ id: x.rec.id, title: String((x.rec.body as { title: string }).title), by: x.rec.agent_id, at: x.rec.created, voters: hub.collective.supporters(x.rec.id).length, kind: 'problem' as const }))];
+    const forkedFrom = from ? { id: from.rec.kind === 'proposal' ? hub.collective.versions.root(from.rec.id)?.rec.id ?? from.rec.id : from.rec.id, title: String((from.rec.body as { title?: string }).title ?? ''), kind: from.rec.kind === 'problem' ? 'problem' : 'idea' } : null;
+    return { ...s, steps, framings, forked_from: forkedFrom, results: await hub.results.forProblem(m[1]), source: (prob as { source?: unknown }).source ?? null, witness: !!hub.problems.verifiers.get(prob.definition_of_done.verifier)?.witness, realm_info: REALM_INFO[s.realm], recent, people: [...people.values()].sort((a, b) => b.contributions - a.contributions).slice(0, 30), votes, constitution };
   });
 
   web.route('GET', /^\/api\/proposals$/, () => hub.collective.queue(5));
@@ -226,6 +247,10 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
       helped: [...helped].map((id) => { const b = hub.node.store.get(id)!.rec.body as { title?: string; question?: string }; return { id, title: b.title ?? b.question }; }),
       reputation: hub.reputation.profile(m[1]), credit: receipts.reduce((n, r) => n + r.b.amount, 0),
       pledged_hours: hub.collective.pledged(m[1]),
+      // Credit for the question: ideas they framed that others asked differently, and their changes that were adopted.
+      questions: hub.collective.versions.questionCredit(m[1]),
+      // What their confirmed work earned in thanks (public receipts).
+      thanks_received: hub.thanks.received(m[1]),
       linked_user: (() => { const l = mine.filter((s) => s.rec.kind === 'identity_link' && (s.rec.body as { claim?: OperatorClaim }).claim).sort((a, b) => b.rec.created.localeCompare(a.rec.created))[0]; return l ? (l.rec.body as { claim: OperatorClaim }).claim.user_id : null; })(),
       // This computer's x0x agent vouching for the person's key (desktop app, one click); re-verified on every read.
       linked_x0x: (() => { const l = mine.filter((s) => s.rec.kind === 'identity_link' && (s.rec.body as { method?: string }).method === 'x0x-agent').sort((a, b) => b.rec.created.localeCompare(a.rec.created))[0]; return l ? x0xAgentLink(l.rec) : null; })(),
@@ -261,6 +286,9 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
         if (!b.title || !b.goal || !b.done || !REALMS.includes(b.realm)) return { error: 'a proposal needs a title, a goal, how success is checked, and a realm' };
         // Proposed from the scout's suggestions: which one, so it isn't suggested again (docs/SCOUT.md).
         if (b.scout !== undefined && (typeof b.scout !== 'string' || !SCOUT_ID.test(b.scout))) return { error: 'scout must be the id of a suggested problem' };
+        // A revision, a suggested change or a new framing (src/collective/versions.ts).
+        const why = hub.collective.versions.problemWith(b as IdeaBody, rec.refs, operatorOf(rec));
+        if (why) return { error: why };
         const check = await hub.collective.constitution.checkText(`${b.title}\n${b.goal}\n${b.done}`, b.realm);
         if (!check.ok) return { error: 'the constitution check stopped this proposal', findings: check.findings };
         return null;
@@ -402,6 +430,116 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
     return tryIt(() => ({ ...hub.agentRuns.start(m[1]), via: 'claude_code' }));
   });
   // What Claude Code may use when the app starts it (src/work/claude-tools.ts): web research on, running code off.
+  // Rewards (docs/REWARDS.md): thank what worked, and agents' spending wallet. Only on this computer.
+  const onlyHere = (req: { socket: { remoteAddress?: string } }) => (here(req) ? null : new HttpReply(403, { error: 'only on this computer' }));
+  web.route('GET', /^\/api\/thanks$/, (req) => onlyHere(req) ?? { settings: hub.thanks.settings(), owed: hub.thanks.owed(), can_send: !!hub.market.facilitator });
+  web.route('POST', /^\/api\/thanks$/, async (req, _m, _u, body) => {
+    if (onlyHere(req)) return onlyHere(req);
+    try { hub.thanks.set((await body().catch(() => ({}))) as Record<string, never>); return { settings: hub.thanks.settings(), owed: hub.thanks.owed(), can_send: !!hub.market.facilitator }; } catch (e) { return new HttpReply(400, { error: (e as Error).message }); }
+  });
+  web.route('POST', /^\/api\/thanks\/quote$/, async (req, _m, _u, body) => {
+    if (onlyHere(req)) return onlyHere(req);
+    const b = (await body().catch(() => ({}))) as { operator?: string; payer?: string };
+    try { return hub.thanks.quote(String(b.operator ?? ''), String(b.payer ?? '')); } catch (e) { return new HttpReply(400, { error: (e as Error).message }); }
+  });
+  web.route('POST', /^\/api\/thanks\/pay$/, async (req, _m, _u, body) => {
+    if (onlyHere(req)) return onlyHere(req);
+    const b = (await body().catch(() => ({}))) as { id?: string; signature?: string };
+    try { return await hub.thanks.pay(String(b.id ?? ''), String(b.signature ?? '')); } catch (e) { return new HttpReply(400, { error: (e as Error).message }); }
+  });
+  web.route('GET', /^\/api\/agent-wallet$/, async (req) => {
+    if (onlyHere(req)) return onlyHere(req);
+    const w = hub.agentWallet;
+    const balance = await w.balance().then((b) => b.toString(), () => null);
+    return { address: w.address(), balance_micro: balance, ...w.settings(), spent_today_micro: w.spentToday(), recent: w.spends().slice(-10).reverse() };
+  });
+  web.route('POST', /^\/api\/agent-wallet$/, async (req, _m, _u, body) => {
+    if (onlyHere(req)) return onlyHere(req);
+    try { return hub.agentWallet.set((await body().catch(() => ({}))) as Record<string, never>); } catch (e) { return new HttpReply(400, { error: (e as Error).message }); }
+  });
+  // Announcements (docs/ANNOUNCE.md, #29): the owner's outbox in the app. Same rules as the terminal: approval binds
+  // to the exact words, a blocked item can't be approved, and nothing leaves this computer until "Send" is pressed.
+  const announcer = () => new Announcer(hub);
+  const outboxView = async () => {
+    const a = announcer();
+    await a.collect();
+    const c = a.config();
+    return { config: c, items: a.list().filter((i) => i.status !== 'skipped'), dry_run: await a.send({ fetch: opts.announceNet?.fetch, secret: opts.announceNet?.secret }), sends_to: [c.feed ? 'feed' : '', c.bluesky ? 'bluesky' : '', c.mastodon ? 'mastodon' : ''].filter(Boolean) };
+  };
+  web.route('GET', /^\/api\/announce$/, (req) => (here(req) ? outboxView() : new HttpReply(403, { error: 'only on this computer' })));
+  web.route('POST', /^\/api\/announce\/([0-9a-z-]{1,80})\/(approve|skip)$/, async (req, m) => {
+    if (!here(req)) return new HttpReply(403, { error: 'only on this computer' });
+    try { const a = announcer(); if (m[2] === 'approve') a.approve(m[1]); else a.skip(m[1]); return await outboxView(); } catch (e) { return new HttpReply(400, { error: (e as Error).message }); }
+  });
+  web.route('POST', /^\/api\/announce\/send$/, async (req) => {
+    if (!here(req)) return new HttpReply(403, { error: 'only on this computer' });
+    const sent = await announcer().send({ yes: true, fetch: opts.announceNet?.fetch, secret: opts.announceNet?.secret });
+    return { sent, ...(await outboxView()) };
+  });
+  // Top up storage: quotes for turning the person's USDC on Base into ANT here, signed in their own wallet
+  // (src/economy/topup.ts). Only on this computer; sending needs real payments on.
+  web.route('GET', /^\/api\/storage-wallet$/, async (req) => {
+    if (!here(req)) return new HttpReply(403, { error: 'only on this computer' });
+    const a = hub.archive instanceof AutonomiArchive ? await hub.archive.status().catch(() => null) : null;
+    return { address: a?.wallet ?? null, ant_atto: a?.ant_atto ?? null, eth_wei: a?.eth_wei ?? null, archive: a ? 'autonomi' : 'local', can_send: sendingAllowed() };
+  });
+  web.route('POST', /^\/api\/storage-wallet\/quote$/, async (req, _m, _u, body) => {
+    if (!here(req)) return new HttpReply(403, { error: 'only on this computer' });
+    const b = (await body().catch(() => ({}))) as { from?: string; usd?: number };
+    try { return await hub.topup.quote(String(b.from ?? ''), Number(b.usd)); } catch (e) { return new HttpReply(400, { error: (e as Error).message }); }
+  });
+  // Buy USDC on Base by card through Coinbase Onramp, to the person's own wallet (src/economy/onramp.ts).
+  web.route('POST', /^\/api\/onramp$/, async (req, _m, _u, body) => {
+    if (!here(req)) return new HttpReply(403, { error: 'only on this computer' });
+    const b = (await body().catch(() => ({}))) as { address?: string; usd?: number };
+    try { return { url: await onrampUrl(appVault().get('cdp'), String(b.address ?? ''), Number(b.usd)) }; } catch (e) { return new HttpReply(400, { error: (e as Error).message }); }
+  });
+  web.route('GET', /^\/api\/storage-wallet\/status$/, async (req, _m, u) => {
+    if (!here(req)) return new HttpReply(403, { error: 'only on this computer' });
+    try { return await hub.topup.status(u.searchParams.get('tx') ?? ''); } catch (e) { return new HttpReply(400, { error: (e as Error).message }); }
+  });
+  // Store what you shared permanently, paid by this computer's own Autonomi wallet (src/hub/self-store.ts).
+  const browserKey = (u: URL) => { const a = u.searchParams.get('also') ?? ''; return /^[0-9a-f]{64}$/.test(a) ? a : undefined; };
+  web.route('GET', /^\/api\/self-store$/, (req, _m, u) => (here(req) ? hub.selfStore.quote(browserKey(u)) : new HttpReply(403, { error: 'only on this computer' })));
+  web.route('POST', /^\/api\/self-store$/, async (req, _m, u, body) => {
+    if (!here(req)) return new HttpReply(403, { error: 'only on this computer' });
+    const b = (await body().catch(() => ({}))) as { private?: boolean };
+    try { return (await hub.selfStore.run({ private: b.private === true, also: browserKey(u) })) ?? { stored: 0 }; } catch (e) { return new HttpReply(400, { error: (e as Error).message }); }
+  });
+  // Storing for others: offers are public; buying runs on this computer, signed in the person's wallet.
+  web.route('GET', /^\/api\/storage-offers$/, () => hub.market.offers().map((o) => ({ seller: o.seller, offer: o.id, ...o.b, stores: o.stores, checked_stores: o.checked_stores })));
+  web.route('POST', /^\/api\/self-store\/market\/quote$/, async (req, _m, u, body) => {
+    if (!here(req)) return new HttpReply(403, { error: 'only on this computer' });
+    const b = (await body().catch(() => ({}))) as { seller?: string; payer?: string };
+    try { return await hub.selfStore.marketQuote(String(b.seller ?? ''), String(b.payer ?? ''), browserKey(u)); } catch (e) { return new HttpReply(400, { error: (e as Error).message }); }
+  });
+  web.route('POST', /^\/api\/self-store\/market\/pay$/, async (req, _m, _u, body) => {
+    if (!here(req)) return new HttpReply(403, { error: 'only on this computer' });
+    const b = (await body().catch(() => ({}))) as { id?: string; signature?: string; private?: boolean };
+    try { return await hub.selfStore.marketPay(String(b.id ?? ''), String(b.signature ?? ''), { private: b.private === true }); } catch (e) { return new HttpReply(400, { error: (e as Error).message }); }
+  });
+  web.route('GET', /^\/api\/self-store\/proof\/([0-9a-f]{64})$/, (req, m) => (here(req) ? hub.selfStore.proof(m[1]) ?? new HttpReply(404, { error: 'no such receipt' }) : new HttpReply(403, { error: 'only on this computer' })));
+  // The x0x home test (src/x0x/home-test.ts, docs/X0X_HOME_TEST.md): a session runs here, the person sees the exact
+  // numbers, and only "send" publishes them. Results are public aggregates.
+  const homeTest: { running: boolean; phase: string; done: number; report: Report | null; error: string | null; sent: string | null } = { running: false, phase: '', done: 0, report: null, error: null, sent: null };
+  web.route('GET', /^\/api\/x0x-test$/, (req) => (here(req) ? { ...homeTest, x0x: !!hub.x0x } : new HttpReply(403, { error: 'only on this computer' })));
+  web.route('POST', /^\/api\/x0x-test\/start$/, async (req, _m, _u, body) => {
+    if (!here(req)) return new HttpReply(403, { error: 'only on this computer' });
+    if (!hub.x0x) return new HttpReply(409, { error: 'x0x isn’t running on this computer' });
+    if (homeTest.running) return homeTest;
+    const b = (await body().catch(() => ({}))) as { minutes?: number; arm?: string };
+    Object.assign(homeTest, { running: true, phase: 'idle', done: 0, report: null, error: null, sent: null });
+    void runSession(hub.x0x, { minutes: Number(b.minutes) || 15, arm: b.arm }, (p) => Object.assign(homeTest, p))
+      .then((r) => { homeTest.report = r; }).catch((e) => { homeTest.error = (e as Error).message; }).finally(() => { homeTest.running = false; homeTest.done = 1; });
+    return homeTest;
+  });
+  web.route('POST', /^\/api\/x0x-test\/send$/, async (req) => {
+    if (!here(req)) return new HttpReply(403, { error: 'only on this computer' });
+    if (!homeTest.report) return new HttpReply(409, { error: 'no finished session to send' });
+    homeTest.sent = await publishReport(hub, homeTest.report);
+    return homeTest;
+  });
+  web.route('GET', /^\/api\/x0x-test\/results$/, () => measurementSummary(hub.node.store.all(), TEST_ID));
   web.route('GET', /^\/api\/agent-tools$/, (req) => (here(req) ? agentTools() : new HttpReply(403, { error: 'only on this computer' })));
   web.route('POST', /^\/api\/agent-tools$/, async (req, _m, _u, body) => (here(req) ? setAgentTools((await body().catch(() => ({}))) as Partial<AgentTools>) : new HttpReply(403, { error: 'only on this computer' })));
   web.route('GET', /^\/api\/work-requests\/([0-9a-f]{12})$/, (req, m) => here(req) ? (hub.workRequests.get(m[1]) ?? new HttpReply(404, { error: 'unknown request' })) : new HttpReply(403, { error: 'only on this computer' }));
@@ -571,11 +709,13 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
     return { read: r.read, counts: r.counts, items: r.items.map(view) };
   });
 
-  web.route('GET', /^\/api\/ideas$/, () => hub.node.store.ofKind('proposal').filter((s) => { const b = s.rec.body as { title?: string; done?: string }; return !!(b.title && b.done); }).map((s) => {
-    const b = s.rec.body as { title: string; goal: string; done: string; check: string; realm: string };
-    const voters = hub.collective.supporters(s.rec.id);
-    return { id: s.rec.id, ...b, at: s.rec.created, by: s.rec.agent_id, human: isHuman(s), voters: voters.length, voter_ids: voters };
-  }).sort((a, b) => b.voters - a.voters || b.at.localeCompare(a.at)));
+  // One entry per idea, not per version: its current version, its history, suggested changes, and other framings.
+  web.route('GET', /^\/api\/ideas$/, () => hub.collective.versions.lines().map((l) => {
+    const root = hub.node.store.get(l.id)!;
+    const { revises: _r, forked_from: _f, adopts: _a, ...b } = l.body;
+    return { id: l.id, current: l.current, ...b, at: root.rec.created, updated: l.at, by: root.rec.agent_id, human: isHuman(root), voters: l.voters.length, voter_ids: l.voters,
+      versions: l.versions, suggestions: l.suggestions, improved_by: l.improved_by, forked_from: l.forked_from, framings: l.framings };
+  }));
 
   // Art: appreciated, not scored. Galleries of pieces by people and agents; people curate.
   const galleryView = (id: string) => {

@@ -1,4 +1,5 @@
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { SelfStore } from './self-store.js';
 import { join, dirname } from 'node:path';
 import { homedir } from 'node:os';
 import type { Hub } from './hub.js';
@@ -47,6 +48,8 @@ export class Keeper {
     if (ALWAYS.has(s.rec.kind)) return 'core';
     if (!EARNED.has(s.rec.kind)) return null;
     if (store.referencing(s.rec.id, 'confirmation').some((c) => c.operatorId !== s.operatorId)) return 'confirmed';
+    // A failure whose fix someone else confirmed travels with it: the fix alone would lose its question.
+    if (s.rec.kind === 'failure' && store.referencing(s.rec.id, 'answer').some((a) => store.referencing(a.rec.id, 'confirmation').some((c) => c.operatorId !== a.operatorId))) return 'confirmed';
     if (s.rec.kind === 'answer' && ctx.paid.has(s.rec.id)) return 'bounty';
     if (s.rec.context.domain.some((d) => ctx.sponsored.has(d.toLowerCase()))) return 'sponsored';
     return null;
@@ -58,8 +61,9 @@ export class Keeper {
     const ctx = this.context();
     const keep: { s: StoredRecord; why: Reason }[] = [];
     let skipped = 0;
+    const self = SelfStore.storedByAnyone(this.hub.node.store.all()); // already stored by whoever shared it
     for (const s of this.hub.node.store.all()) {
-      if (done.has(s.rec.id) || s.visibility !== 'public') continue;
+      if (done.has(s.rec.id) || self.has(s.rec.id) || s.visibility !== 'public') continue;
       const why = this.reason(s, ctx);
       if (why) keep.push({ s, why }); else if (EARNED.has(s.rec.kind)) skipped++;
     }

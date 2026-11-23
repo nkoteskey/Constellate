@@ -73,6 +73,11 @@ describe('GATE 2 — knowledge graph plasticity', () => {
     await new Promise((r) => setTimeout(r, 0));
     expect(emitted.map((b) => [b.fromRealm, b.toRealm])).toEqual([['life_sciences', 'maths_physics']]);
     expect(g.bridges()[0].edge).toBe(edge);
+    // Agents see it without asking: a search reply flags the bridge on the record it touches.
+    const nufft = await call('answers_lookup', { question: 'speed up cryo-EM reconstruction gridding', limit: 3 });
+    const hit = nufft.results.find((r: { id: string }) => r.id === bio.id);
+    expect(hit.bridges).toEqual([{ record: maths.id, title: expect.any(String), realms: 'life_sciences → maths_physics', weight: expect.any(Number), note: 'a possible link to another field' }]);
+    expect(res.results[0].bridges).toBeUndefined(); // only where there is one
     // A listener that attaches later is not told about bridges that already existed (regression: CI run 1).
     const late: Bridge[] = [];
     const g2 = new KnowledgeGraph(hub.node.store, hub.trust, { now: () => now });

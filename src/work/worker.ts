@@ -1,4 +1,6 @@
 import { Hub } from '../hub/hub.js';
+import { KERNELS, type SearchSpec } from './range-search.js';
+import { checkerId } from './checker-controls.js';
 import { ModelRunner, Budget } from '../contributor/models.js';
 import { decide, Policy, Power, Status } from '../contributor/device.js';
 import { Board, BoardTask } from './board.js';
@@ -24,7 +26,7 @@ export interface WorkerOptions {
 /** A claim with no result after this long is treated as abandoned: laptops sleep, and a step shouldn't wait on one. */
 export const LEASE_MS = 30 * 60_000;
 
-export type StepOutcome = 'verified' | 'rejected' | 'worked' | 'idle' | 'paused';
+export type StepOutcome = 'verified' | 'rejected' | 'worked' | 'idle' | 'paused' | 'searched' | 'spot_checked';
 
 /**
  * What a model from another family is asked when it checks a result. Agreeing with the answer is not a check:
@@ -74,10 +76,17 @@ export class Worker {
     return true;
   }
 
+  /** Problems this computer declined to work on, and why (shown in its log). */
+  readonly skipped = new Map<string, string>();
+
   async step(problemId: string): Promise<StepOutcome> {
     if (this.stopped || !this.allowed()) return 'paused';
     const cons = this.opts.constitution;
-    if (cons && cons.status(problemId).state !== 'cleared') return 'idle';
+    if (cons) {
+      // Checked again on this computer before lending it any time (#38): another computer's word isn't enough.
+      const here = await cons.clearedHere(problemId);
+      if (!here.ok) { this.skipped.set(problemId, here.reason); return 'idle'; }
+    }
     const st = await this.problems.state(problemId);
     const verifier = this.problems.verifiers.get(st.problem.definition_of_done.verifier)!;
     const me = this.hub.node.operatorId;
@@ -112,7 +121,7 @@ export class Worker {
           }
         }
         if (agrees) {
-          const body: CheckpointBody = { problem: problemId, chunk: c.key, seq: st.done + 1, result: r.rec.id, verifier_model: this.runner.id, verifier_family: this.runner.family, machine_check: machine.detail };
+          const body: CheckpointBody = { problem: problemId, chunk: c.key, seq: st.done + 1, result: r.rec.id, verifier_model: this.runner.id, verifier_family: this.runner.family, machine_check: machine.detail, checker: checkerId(verifier.name) };
           await this.hub.node.submit({ kind: 'checkpoint', context: ctx, body: body as unknown as Record<string, unknown>, refs: [problemId, r.rec.id] }, { publish: true });
           const task = (await this.board.list()).find((t) => t.tags.problem === problemId && t.tags.chunk === c.key);
           if (task) await this.board.complete(task.id, this.hub.node.agentId);
@@ -163,6 +172,32 @@ export class Worker {
       const body: TaskResultBody = { problem: problemId, chunk: c.key, output: output.slice(0, 20_000), model, family };
       await this.hub.node.submit({ kind: 'task_result', context: { task: `${st.problem.title} / ${c.key}`, domain: [st.problem.realm], environment: model }, body: body as unknown as Record<string, unknown>, refs: [problemId] }, { publish: true });
       return 'worked';
+    }
+    // 3. Witness searches by a stated method (#32, src/work/range-search.ts): spot-check another computer's range
+    //    first, so empty ranges get credited; otherwise search the next range nobody has covered.
+    if (verifier.witness) {
+      for (const c of st.chunks) {
+        if (c.checkpoint || c.pending.length || c.waiting_on.length) continue;
+        const chunk = st.problem.chunks.find((x) => x.key === c.key)!;
+        const spec = (chunk.check as { search?: SearchSpec }).search;
+        if (!spec || !KERNELS[spec.kernel]) continue;
+        const model = `machine search (${spec.kernel})`;
+        const theirs = this.hub.ranges.unchecked(problemId).find((r) => (r.rec.body as { chunk?: string }).chunk === c.key);
+        if (theirs) {
+          await this.hub.ranges.spotCheck(theirs.rec.id, spec);
+          this.last = { problem: problemId, title: st.problem.title, step: chunk.title, did: 'checked', model };
+          return 'spot_checked';
+        }
+        const range = this.hub.ranges.nextRange(problemId, c.key, spec);
+        if (range === null) continue;
+        const r = await this.hub.ranges.search(problemId, c.key, spec, range);
+        this.last = { problem: problemId, title: st.problem.title, step: `${chunk.title}, range ${range}`, did: 'worked', model };
+        if (r.found) {
+          const body: TaskResultBody = { problem: problemId, chunk: c.key, output: r.found, model, family: 'search' };
+          await this.hub.node.submit({ kind: 'task_result', context: { task: `${st.problem.title} / ${c.key}`, domain: [st.problem.realm], environment: model }, body: body as unknown as Record<string, unknown>, refs: [problemId] }, { publish: true });
+        }
+        return 'searched';
+      }
     }
     return 'idle';
   }

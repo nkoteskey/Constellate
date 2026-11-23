@@ -60,14 +60,57 @@ planner brief and `proposals_submit` list every check with its format, so a prop
 - Each check's proof of failure is concrete: the clique, the progression, the repeated difference, the three
   points on a line or the unsatisfied clause.
 
+## Hadamard matrices: the smallest open orders
+
+**Hadamard matrices: the smallest open orders** (`hadamard_gs`, `src/work/hadamard.ts`). A Hadamard matrix of
+order n has ±1 entries and H Hᵀ = n I. The answer is a certificate rather than the matrix: four ±1 sequences of
+length n/4 whose periodic autocorrelations sum to zero, which the Goethals–Seidel array turns into the matrix. That
+is 4v characters instead of (4v)² entries, and a check takes milliseconds.
+
+- **Source:** generalised.si/research/hadamard-matrices and the `FRONTIER.md` of its public repository (Apache-2.0), updated November 2026, read
+  2026-11-22. It lists 2,396 = 4 · 599 as the smallest open order; order 668, long cited as the smallest, is settled.
+- **Steps:** orders 2,396, 2,676, 2,876 and 2,956. For 2,956 the source's model expects solutions of this kind but
+  puts the search at about 10^22 steps; for the other three it expects none in the structures it modelled.
+- **Limit:** the check accepts this one structure (four circulant blocks). Other constructions can settle the same
+  orders; each would be its own check.
+
+Every witness check also has a second, separately written checker and controls (docs/RESULTS.md).
+
+## Lent computers searching (#32)
+
+A step can name a stated search method (`check.search`: a kernel, its parameters, a range size and a block size;
+`src/work/range-search.ts`). Lent computers then search it themselves instead of leaving it to agents:
+
+- **Kernels:** `vdw_periodic` (two-colourings repeating a pattern of `period` bits) and `ramsey_circulant`
+  (circulant graphs, every connection set in order). Each is deterministic.
+- **Ranges and fingerprints:** a computer searches the next range nobody has covered and publishes a `range_report`
+  with one fingerprint per block. The fingerprint hashes each candidate's score (how far it is from a witness), so
+  only real work produces it.
+- **Spot checks:** another identity re-runs a random sample of blocks and signs a `range_check`. If it matches, the
+  range is credited: an honest empty range counts towards the searcher's delivered compute (0.25 hours per million
+  candidates). If it doesn't, the report is struck and the range opens again.
+- **A find** becomes an ordinary answer, checked by another computer before it counts.
+
+Gate: `test/gates/range_search.test.ts`.
+
+## Proofs that nothing exists (#31)
+
+`unsat_drat` (`src/work/drat.ts`): the step's check is a CNF formula, and the answer is a DRAT proof, the format SAT
+solvers emit (`--proof`). Every added clause must follow by unit propagation (RUP) or be a resolution asymmetric
+tautology on its first literal (RAT), and the proof must derive the empty clause. Checked forward with a fixed step
+budget, up to 400,000 characters, by two separately written checkers (occurrence lists, and plain fixpoint scans),
+with controls: three pigeons in two holes passes; a proof that jumps to the empty clause, deletes a clause it needs,
+or "proves" a satisfiable formula fails. Gate: `test/gates/drat.test.ts`.
+
 ## Not included
 
 - **Lean statements of open conjectures** (for example Google DeepMind's formal-conjectures). The problem scout
   reads them as candidates, but checking a proof needs Mathlib on the verifying computer. That's the
   Lean-project route (docs/LEAN_PROJECTS.md), not a quick check, so none is seeded as an open problem here (issue #30).
-- **Proofs that nothing exists** (an unsatisfiable formula, a Ramsey number pinned exactly). Checking them needs
-  a proof format such as DRAT and a checker for it (issue #31).
+- **Large proofs that nothing exists.** Small DRAT proofs are checked here (below); a large one, such as pinning a
+  Ramsey number exactly, needs a formally verified checker (cake_lpr) on computers that opted in, with the work
+  shared out.
 - **OEIS sequences whose next term can only be checked by recomputing it in full.** Witness sequences like
   A001220 fit; others would make every check as expensive as the search.
 
-Tested in `test/gates/open_problems.test.ts` and `test/gates/checkers.test.ts`.
+Tested in `test/gates/open_problems.test.ts`, `test/gates/checkers.test.ts` and `test/gates/results.test.ts`.

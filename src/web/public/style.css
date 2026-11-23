@@ -490,3 +490,7 @@ label.inline-check input { margin: 0; width: 16px; height: 16px; accent-color: v
 .prose p { margin: 0 0 14px; }
 .prose b { color: var(--fg); }
 .prose h3, .prose h4 { color: var(--fg); }
+/* A result in one shape (src/work/results.ts): labels on the left on wide screens, stacked on phones. */
+.result-dl { font-size: 13.5px; margin: 8px 0 0; }
+.result-dl dt { font-size: 12px; margin-top: 8px; }
+.result-dl dd { margin: 2px 0 0; overflow-wrap: anywhere; }

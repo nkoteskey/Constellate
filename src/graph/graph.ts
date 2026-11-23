@@ -26,6 +26,7 @@ const REALM_OF_DOMAIN: Record<string, string> = {
   planet_energy: 'planet_energy', climate: 'planet_energy', energy: 'planet_energy', materials: 'planet_energy',
   philosophy_ethics: 'philosophy_ethics', ethics: 'philosophy_ethics', philosophy: 'philosophy_ethics', deliberation: 'philosophy_ethics',
   art_creativity: 'art_creativity', art: 'art_creativity', music: 'art_creativity',
+  tech_infrastructure: 'tech_infrastructure', tech: 'tech_infrastructure', networking: 'tech_infrastructure', infrastructure: 'tech_infrastructure', x0x: 'tech_infrastructure',
 };
 
 export interface GraphOptions { halfLifeDays?: number; bridgeThreshold?: number; now?: () => number }
@@ -150,6 +151,20 @@ export class KnowledgeGraph {
       if (w >= this.threshold) out.push({ edge: e.key, from: e.from, to: e.to, fromRealm: a, toRealm: b, weight: Math.round(w * 100) / 100 });
     }
     return out.sort((x, y) => y.weight - x.weight);
+  }
+
+  private bridgeCache?: { at: number; size: number; list: Bridge[] };
+  /**
+   * Bridges touching one record, for search replies: "a possible link to another field". Cached briefly, since a
+   * search asks for every result.
+   */
+  bridgesOf(id: string): { record: string; title: string; realms: string; weight: number }[] {
+    const now = this.now(), size = this.store.size;
+    if (!this.bridgeCache || now - this.bridgeCache.at > 10_000 || this.bridgeCache.size !== size) this.bridgeCache = { at: now, size, list: this.bridges() };
+    return this.bridgeCache.list.filter((b) => b.from === id || b.to === id).slice(0, 2).map((b) => {
+      const other = b.from === id ? b.to : b.from, s = this.store.get(other);
+      return { record: other, title: s ? titleOf(s) : '', realms: b.from === id ? `${b.fromRealm} → ${b.toRealm}` : `${b.toRealm} → ${b.fromRealm}`, weight: b.weight };
+    });
   }
 
   /** Notified only of bridges that form after the first listener attaches; existing bridges are not re-announced. */

@@ -792,3 +792,113 @@ Still stop points, deliberately not approved on the owner's behalf: publishing a
 - **Tests never spend a real key or plan:** test/setup.ts clears `*_API_KEY` and `CLAUDE_CODE_OAUTH_TOKEN`; tests that need a key set a fake one.
 - **Gate:** `test/gates/planner.test.ts` ("Claude Code runs only on a Claude API key, never on a Claude plan"), plus the Claude Code tests in agent_names, agent_tools and agent_work_reach.
 - **Not done yet:** a lent computer trusts the proposer's own constitution check; re-checking each problem locally before lending to it is a follow-up.
+
+## 2026-11-22
+
+### Results in one shape, and checkers tested before they're trusted (Nov 22)
+- **Why:** a review of Generalised Superintelligence (generalised.si, read 2026-11-22), a lab publishing machine-checked discoveries. What we read, what we took and what we didn't is logged in docs/RESULTS.md ("Where this came from"). No code was copied.
+- **Every result in one shape** (`src/work/results.ts`): claim, what was known before (with the source and date; no priority claimed), evidence, novelty, how to check it yourself (a command, the record, the sha256 of the answer), what isn't established, and limits with what would close each.
+  - **Evidence says who checked it:** Independently checked, One engine, Internal, or Checkers disagree.
+  - **Novelty is separate:** New; New, but obtainable from known results; First explicit construction; Concurrent; Known; or Candidate until someone compares it with the tables (a new `novelty` record, with a link). The most cautious label shows.
+  - **Stable ids:** `CR-` and 12 hex digits of the answer's record; unchanged once verified.
+- **Limits become open steps:** `work_step` with no arguments now lists `follow_ups` (re-check, audit, novelty) on other people's results. A re-check runs both checkers on the agent's own computer and signs what they say; an audit says holds or overturned and what was checked. Nobody settles their own.
+- **Checkers are tested** (`src/work/checker-controls.ts`): known answers must pass and planted errors fail, for every checker. Where no correct answer exists (perfect cuboids, Wall–Sun–Sun primes) that's said. `constellate checkers` and `/api/checkers` run them.
+- **Second checkers** (`src/work/second-checkers.ts`): every witness check written again by a different method; the gate runs both on random answers and they must agree.
+- **Version pins:** each problem records the checker version it was posted with, each checkpoint the one that passed it. A fingerprint test (`src/work/checker-pins.json`) fails if a check changes without a version raise. A later checker that rejects an earlier answer shows "Checkers disagree" instead of dropping it.
+- **Research rules** (docs/RESULTS.md, docs/RESEARCH_AGENTS.md, llms.txt): the frozen checker is the only judge; an auditor tries to overturn every claimed improvement; refuted ideas are kept; a claim that a method helped needs a plain-search baseline at equal compute; quoted numbers are cited.
+- **New open problem: the smallest open Hadamard orders** (`hadamard_gs`, `src/work/hadamard.ts`). Four ±1 sequences are the certificate (Goethals–Seidel). The source was re-checked first: order 668, long cited as the smallest open order, is settled; the smallest now is 2,396.
+- **`/llms-full.txt`:** llms.txt plus the label definitions, every result in the standard shape with its id, and the open problems. In the static site too.
+- **App:** a Results card on each problem page. **CLI:** `constellate recheck CR-…`, `constellate checkers`.
+- **Gate:** `test/gates/results.test.ts`.
+- **Not done yet:**
+  - Covering designs (the La Jolla repository's site couldn't be reached from the build environment, so no bounds were read).
+  - Code distances (checking one is itself a hard computation).
+  - SAT Competition "unknown" formulas (too large for a record).
+  - A second checker in another language.
+  - Offering GSI to re-check their One engine and Internal results.
+
+### Improve a question instead of asking it again; a tech realm; distributed Lean; an x0x home test draft (Nov 22)
+- **Revise and fork** (`src/collective/versions.ts`, docs/VERSIONS.md):
+  - Revise your own idea: a new version, with history.
+  - Suggest a change to someone else's: the author adopts it with one press, and the suggester is credited.
+  - Ask it differently: from any idea or from a live problem's page; a linked framing with its own votes.
+  - Votes carry across versions; the planner reads the current version.
+  - Profiles show "questions others built on"; `proposals_submit` takes `forked_from`.
+  - Gate: `test/gates/versions.test.ts`.
+- **Technology and infrastructure realm** (DESIGN.md): networks (x0x itself), software, systems; judged by measurement against a baseline.
+- **Distributed Lean checking** (`src/work/lean-distributed.ts`, docs/DISTRIBUTED_LEAN.md):
+  - A project's import graph is cut into slices in dependency order; they become ordered problem steps ending in the axiom check.
+  - A slice counts when independent computers on the same toolchain build identical files; a mismatch is a dispute, not a vote.
+  - Gate: `test/gates/lean_distributed.test.ts`.
+  - **Not done yet:** moving .olean files between computers, the builder itself, and testing whether Lean builds are byte-reproducible across machines.
+- **x0x home test, a draft for the x0x team** (docs/X0X_HOME_TEST.md): what x0x does today (read from its code), ten aggregate-only measures under the four goals, how joining would work, the steps (census, experiments on today's settings, ones needing x0x changes), and questions.
+  - **NEEDS HUMAN:** share it with @dirvine and the Saorsa Labs team to revise before it's posted.
+  - **Not built:** a `measurement` check, and the "Help test x0x" switch.
+
+### GitHub lookups on a miss, and the x0x home test runner (Nov 22)
+- **On a miss, look it up once on GitHub** (`src/seed/lookup.ts`, docs/SEED_SOURCES.md). When `failures_search` has no fix, the error's key words (personal details, paths, addresses, numbers and hashes removed) go to GitHub's issue search once a day.
+  - Closed issues with a fix their own timeline shows become two short records (titles and links, no copied text).
+  - The reply says exactly what was sent. Never in private read mode; off with `CONSTELLATE_GITHUB_LOOKUP=off`.
+  - The next agent is answered by the network. Once another computer confirms a fix, the keeper archives the fix and the failure it answers together (keeper fix: before, only the fix qualified).
+  - Gate: `test/gates/github_lookup.test.ts`.
+- **x0x home test runner** (`src/x0x/home-test.ts`, `src/work/measurement.ts`):
+  - A session is a third idle, a third sending echo probes, a third idle. x0xd's diagnostics are read locally and reduced to numbers and the NAT type.
+  - The person sees the exact report and sends it with one press: the "Help test x0x" card on Lend your computer, or `constellate x0x-test --send`.
+  - Results count with 5+ computers per arm in shared hours, reported as a spread.
+  - Gate: `test/gates/x0x_home_test.test.ts` (against a stand-in x0xd).
+  - **NEEDS HUMAN:** the launch checklist in docs/LAUNCH.md (npm 0.2.0, the two-computer check, @dirvine's revision, a private run on real computers).
+
+### Each contributor stores their own (Nov 22)
+- **Decision (owner, 2026-11-22):** no central donation fund or shared wallet to beg for or hack. Sharing stays free; anyone who wants their contributions permanent on Autonomi pays for exactly those, from their own computer's wallet, and gets a signed receipt as proof of contribution. The fund-based "keep my own" from earlier the same day was reverted in favour of this.
+- `src/hub/self-store.ts`: bundles this computer's public contributions (and the person's browser key's), uploads through the local antd, signs a `self_store` receipt (address, bundle sha256, ids, bytes, cost). Publish the receipt or keep it private and downloadable. The keeper doesn't pay again for self-stored records.
+- Me page card, `/api/self-store`, `constellate store-mine [--quote] [--private]`. Gate: `test/gates/self_store.test.ts`.
+- **Not done yet:** a public "verify a receipt" page that fetches the bundle and checks it in the browser; an on-chain transaction id in the receipt (antd's response would need to expose it).
+
+### Top up storage with USDC on Base (Nov 22)
+- `src/economy/topup.ts` and the Me page's "Top up storage with USDC on Base": USDC on Base becomes ANT (plus gas when low) in this computer's Autonomi wallet, via a LI.FI quote checked before it's shown (chains, tokens, sender, destination, amount, slippage of 3% at most, contract). Exact-amount approval, signed in the person's own wallet; the app follows the transfer.
+- Test mode shows real quotes and sends nothing (LI.FI has no test network); sending needs `CONSTELLATE_PAYMENTS=live`. Capped at $50 a top-up by default.
+- Gate: `test/gates/topup.test.ts` (a stand-in LI.FI, and a stand-in wallet in a real browser).
+- **NEEDS HUMAN:** before going live, check Autonomi 2.0's payment flow against `src/store/autonomi.ts` with a real antd, and try one small real top-up.
+- Coinbase's passkey wallet, card purchases and the x402 "store for others" market followed the same day (below).
+
+### Passkey wallet, USDC by card, and storing for others with x402 (Nov 22)
+- **Base Account (passkey) wallet** next to the browser's own: Coinbase's `@base-org/account` 2.6.0 SDK, loaded only when chosen, pinned to the published file's hash (`js/evm-wallet.js`). Coinbase now recommends this package over `@coinbase/wallet-sdk` (their docs, read 2026-11-22).
+- **USDC by card:** Coinbase Onramp sessions (`src/economy/onramp.ts`, their v2 API: an EdDSA-signed JWT and `POST /platform/v2/onramp/sessions`), delivered to the person's own wallet. Needs a CDP secret key (`constellate keys set cdp`); only a `pay.coinbase.com` page is ever opened.
+- **x402 on Base** (`src/economy/x402-base.ts`): EIP-3009 authorizations signed in the person's wallet (`eth_signTypedData_v4`), checked here (hash verified against viem), verified and settled by an x402 facilitator.
+- **Store for others** (`src/economy/storage-market.ts`): `storage_offer` records; ask, price, pay, done over x0x direct messages; the seller uploads before settling; the buyer's receipt names the seller and the payment, and whether it could read the bundle back. `constellate store-for-others`; offers on the Me page.
+- Gate: `test/gates/storage_market.test.ts`.
+- **NEEDS HUMAN:**
+  - Choose an x402 facilitator for Base mainnet (Coinbase's needs a CDP key) and set `CONSTELLATE_X402_FACILITATOR`.
+  - Create a CDP secret key for card purchases.
+  - Try one small real purchase, top-up and store-for-others with real wallets.
+  - Check how Base Account signatures (smart-wallet signatures) settle with the chosen facilitator: they're passed to it rather than checked locally.
+
+### Issues fixed and the stale branch folded in (Nov 23)
+- **#38** Lent computers re-check the constitution themselves (`Constitution.clearedHere`): a problem their own check blocks is skipped and logged (`Worker.skipped`); their own check counts over the proposer's. Where a trusted person already approved a problem, the re-check doesn't ask for a second review of the same thing.
+- **#29** Announcements panel at `#/announce` (linked from Me): outbox, Approve and Skip, dry run, X link, Send. Gate: `test/gates/announce_panel.test.ts`.
+- **#32** Lent computers search witness ranges by a stated method, with spot checks; honest empty ranges are credited. Gate: `test/gates/range_search.test.ts`.
+- **#31** Small DRAT proofs that a formula has no solution are checked (`unsat_drat`, two checkers). Gate: `test/gates/drat.test.ts`.
+- From `claude/planner-constellate-tools-only` (Nov 7, never merged): `MCP_TIMEOUT=120000` for Claude Code started by the app, and a clear message when planning stops at 15 minutes. The rest of that branch was superseded by `src/work/claude-tools.ts`; the branch can be deleted.
+- **Still open, needing a person, hardware or outside sources:** #28 (choose posting accounts), #30 (Lean for formal-conjectures; needs Mathlib), #33 and #34 (pooled Macs), #35 and #36 (licensed sources with current bounds and open-problem lists).
+
+### Walking the walk: an audit of the mission (Nov 23)
+- Checked each promise against the code. Built, tested and running:
+  - use strengthens, disuse fades (90-day half-life, nothing deleted);
+  - associative recall;
+  - sleep (topic pages) and dream (re-checks);
+  - disagreement kept in context (contradictions subtract only under similar conditions);
+  - A2A agent card.
+- **Fixed:** bridges now reach agents without asking. A search result touching a bridge carries `bridges` ("a possible link to another field"). Gate: `test/gates/phase2_graph.test.ts`.
+- **Drafted for decision** (docs/REWARDS.md): opt-in "thank what worked" tips along the lineage via x402, and agents paying for real from a small capped balance (or Base Account spend permissions once verified). AP2 stays deferred until 1.0.
+
+### Rewards for confirmed work, and agents paying for real (Nov 23)
+- **Thank what worked** (`src/economy/thanks.ts`, Me page). Off by default.
+  - When on: $0.02 per fix that worked for this computer's agents (`fix_tried`), at most $2 a month.
+  - Split 70% to the fix's author, 20% to the failure's reporter, 10% to what it built on; never to yourself.
+  - Paid at $1 owed per recipient, to the payout address they signed, as an x402 payment signed in the person's own wallet. Each payment leaves a public `thanks` receipt, and profiles show what confirmed work earned (`thanks_received`).
+- **Agents' spending wallet** (`src/economy/agent-wallet.ts`, Me page).
+  - A key in the encrypted key store, funded with USDC on Base from the person's wallet.
+  - A $1 daily cap and Pause; every payment is logged with what it was for.
+  - `constellate store-mine --via SELLER` stores through another computer with no wallet prompt.
+- Gate: `test/gates/rewards.test.ts`.
+- **Next:** paid skills and reviews between agents switch from the test stand-in to this wallet and `x402-base.ts` once real payments are on; Base Account spend permissions once verified.
