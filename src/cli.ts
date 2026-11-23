@@ -186,6 +186,9 @@ Anyone can re-check it: the file is public, and only this identity can sign as $
     try {
       const q = await hub.selfStore.quote();
       if (argv.includes('--quote') || !q.next) { console.log(JSON.stringify(q, null, 2)); return; }
+      // --via SELLER: through a computer that stores for others, paid from the agent spending wallet.
+      const via = argv.indexOf('--via') > 0 ? argv[argv.indexOf('--via') + 1] : undefined;
+      if (via) { console.log(JSON.stringify(await hub.selfStore.marketViaAgent(via, { private: argv.includes('--private') }), null, 2)); return; }
       const r = await hub.selfStore.run({ private: argv.includes('--private') });
       console.log(JSON.stringify(r, null, 2));
       if (r) console.log(`Stored ${r.stored} records ${r.archive === 'autonomi' ? 'on Autonomi' : 'in the local archive (Autonomi isn’t set up here)'}. Your receipt: ${r.receipt}${r.published ? ' (published)' : ' (kept on this computer)'}.`);

@@ -123,6 +123,13 @@ export class SelfStore {
     return { stored: p.ids.length, address: r.address, archive: 'autonomi', bundle_sha256: body.bundle_sha256, bytes: p.bundle.length, atto_ant: '0', receipt: record.id, published: !opts.private };
   }
 
+  /** Store through a seller, paid from this computer's agent spending wallet: no wallet prompt (docs/REWARDS.md). */
+  async marketViaAgent(seller: string, opts: { private?: boolean; also?: string } = {}) {
+    const w = this.hub.agentWallet;
+    const q = await this.marketQuote(seller, w.address(), opts.also);
+    return this.marketPay(q.id, w.sign(q.typed_data.message, `storing ${q.records} contributions through ${seller.slice(0, 12)}`), { private: opts.private });
+  }
+
   /** This computer's receipts, newest first. */
   list() {
     return this.receipts().sort((a, b) => b.rec.created.localeCompare(a.rec.created)).map((s) => {

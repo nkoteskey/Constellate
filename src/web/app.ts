@@ -249,6 +249,8 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
       pledged_hours: hub.collective.pledged(m[1]),
       // Credit for the question: ideas they framed that others asked differently, and their changes that were adopted.
       questions: hub.collective.versions.questionCredit(m[1]),
+      // What their confirmed work earned in thanks (public receipts).
+      thanks_received: hub.thanks.received(m[1]),
       linked_user: (() => { const l = mine.filter((s) => s.rec.kind === 'identity_link' && (s.rec.body as { claim?: OperatorClaim }).claim).sort((a, b) => b.rec.created.localeCompare(a.rec.created))[0]; return l ? (l.rec.body as { claim: OperatorClaim }).claim.user_id : null; })(),
       // This computer's x0x agent vouching for the person's key (desktop app, one click); re-verified on every read.
       linked_x0x: (() => { const l = mine.filter((s) => s.rec.kind === 'identity_link' && (s.rec.body as { method?: string }).method === 'x0x-agent').sort((a, b) => b.rec.created.localeCompare(a.rec.created))[0]; return l ? x0xAgentLink(l.rec) : null; })(),
@@ -428,6 +430,33 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
     return tryIt(() => ({ ...hub.agentRuns.start(m[1]), via: 'claude_code' }));
   });
   // What Claude Code may use when the app starts it (src/work/claude-tools.ts): web research on, running code off.
+  // Rewards (docs/REWARDS.md): thank what worked, and agents' spending wallet. Only on this computer.
+  const onlyHere = (req: { socket: { remoteAddress?: string } }) => (here(req) ? null : new HttpReply(403, { error: 'only on this computer' }));
+  web.route('GET', /^\/api\/thanks$/, (req) => onlyHere(req) ?? { settings: hub.thanks.settings(), owed: hub.thanks.owed(), can_send: !!hub.market.facilitator });
+  web.route('POST', /^\/api\/thanks$/, async (req, _m, _u, body) => {
+    if (onlyHere(req)) return onlyHere(req);
+    try { hub.thanks.set((await body().catch(() => ({}))) as Record<string, never>); return { settings: hub.thanks.settings(), owed: hub.thanks.owed(), can_send: !!hub.market.facilitator }; } catch (e) { return new HttpReply(400, { error: (e as Error).message }); }
+  });
+  web.route('POST', /^\/api\/thanks\/quote$/, async (req, _m, _u, body) => {
+    if (onlyHere(req)) return onlyHere(req);
+    const b = (await body().catch(() => ({}))) as { operator?: string; payer?: string };
+    try { return hub.thanks.quote(String(b.operator ?? ''), String(b.payer ?? '')); } catch (e) { return new HttpReply(400, { error: (e as Error).message }); }
+  });
+  web.route('POST', /^\/api\/thanks\/pay$/, async (req, _m, _u, body) => {
+    if (onlyHere(req)) return onlyHere(req);
+    const b = (await body().catch(() => ({}))) as { id?: string; signature?: string };
+    try { return await hub.thanks.pay(String(b.id ?? ''), String(b.signature ?? '')); } catch (e) { return new HttpReply(400, { error: (e as Error).message }); }
+  });
+  web.route('GET', /^\/api\/agent-wallet$/, async (req) => {
+    if (onlyHere(req)) return onlyHere(req);
+    const w = hub.agentWallet;
+    const balance = await w.balance().then((b) => b.toString(), () => null);
+    return { address: w.address(), balance_micro: balance, ...w.settings(), spent_today_micro: w.spentToday(), recent: w.spends().slice(-10).reverse() };
+  });
+  web.route('POST', /^\/api\/agent-wallet$/, async (req, _m, _u, body) => {
+    if (onlyHere(req)) return onlyHere(req);
+    try { return hub.agentWallet.set((await body().catch(() => ({}))) as Record<string, never>); } catch (e) { return new HttpReply(400, { error: (e as Error).message }); }
+  });
   // Announcements (docs/ANNOUNCE.md, #29): the owner's outbox in the app. Same rules as the terminal: approval binds
   // to the exact words, a blocked item can't be approved, and nothing leaves this computer until "Send" is pressed.
   const announcer = () => new Announcer(hub);

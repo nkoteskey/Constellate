@@ -1444,6 +1444,7 @@ async function mePage(id) {
     ${mine ? `
     <h2 class="section">Share your light</h2>${/^(localhost|127\.|0\.0\.0\.0)/.test(location.hostname) ? '<p class="muted">Your shareable link appears here once Constellate is hosted.</p><button hidden id="copy-light"></button>' : `<div class="copy-row"><pre class="code">${esc(location.origin)}/#/me/${who}</pre><button class="btn" id="copy-light">${icon.copy}Copy</button></div>`}
     <div id="store-slot"></div>
+    <div id="rewards-slot"></div>
     ${STATIC ? '' : '<p class="faint" style="font-size:12.5px;margin:6px 0 0">Running this computer’s announcements? <a href="#/announce">Open the outbox</a>.</p>'}
     <div id="wallet-slot"></div>
     <h2 class="section">Your weekly digest</h2><pre style="font-family:var(--sans);font-size:14px">${esc(digest.text)}</pre>
@@ -1489,6 +1490,8 @@ async function mePage(id) {
     if (!STATIC) import('./js/wallet.js').then((w) => w.walletSection($('#wallet-slot'), who));
     // Store what you shared permanently, paid by this computer's own wallet, with a receipt (src/hub/self-store.ts).
     if (!STATIC) import('./js/self-store.js').then((m) => m.selfStoreCard($('#store-slot'), who)).catch(() => {});
+    // Thank what worked, and the agents' spending wallet (docs/REWARDS.md).
+    if (!STATIC) import('./js/rewards.js').then((m) => m.rewardsCards($('#rewards-slot'))).catch(() => {});
     $('#notify')?.addEventListener('click', async () => {
       const on = !ls.get('notify', false);
       if (on && (await Notification.requestPermission()) !== 'granted') { toast('Notifications are blocked in this browser.'); return; }

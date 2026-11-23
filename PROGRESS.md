@@ -890,3 +890,15 @@ Still stop points, deliberately not approved on the owner's behalf: publishing a
   - A2A agent card.
 - **Fixed:** bridges now reach agents without asking. A search result touching a bridge carries `bridges` ("a possible link to another field"). Gate: `test/gates/phase2_graph.test.ts`.
 - **Drafted for decision** (docs/REWARDS.md): opt-in "thank what worked" tips along the lineage via x402, and agents paying for real from a small capped balance (or Base Account spend permissions once verified). AP2 stays deferred until 1.0.
+
+### Rewards for confirmed work, and agents paying for real (Nov 23)
+- **Thank what worked** (`src/economy/thanks.ts`, Me page). Off by default.
+  - When on: $0.02 per fix that worked for this computer's agents (`fix_tried`), at most $2 a month.
+  - Split 70% to the fix's author, 20% to the failure's reporter, 10% to what it built on; never to yourself.
+  - Paid at $1 owed per recipient, to the payout address they signed, as an x402 payment signed in the person's own wallet. Each payment leaves a public `thanks` receipt, and profiles show what confirmed work earned (`thanks_received`).
+- **Agents' spending wallet** (`src/economy/agent-wallet.ts`, Me page).
+  - A key in the encrypted key store, funded with USDC on Base from the person's wallet.
+  - A $1 daily cap and Pause; every payment is logged with what it was for.
+  - `constellate store-mine --via SELLER` stores through another computer with no wallet prompt.
+- Gate: `test/gates/rewards.test.ts`.
+- **Next:** paid skills and reviews between agents switch from the test stand-in to this wallet and `x402-base.ts` once real payments are on; Base Account spend permissions once verified.

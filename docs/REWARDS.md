@@ -1,6 +1,6 @@
-# Rewarding confirmed work: a draft for decision
+# Rewarding confirmed work
 
-**Status: proposal, nothing built.** Two gaps between the mission and the code (from the audit of Nov 23):
+**Status: built on the recommended defaults (owner, 2026-11-23):** thank what worked (`src/economy/thanks.ts`) and option A, the agents' spending wallet (`src/economy/agent-wallet.ts`), both on the Me page. Gate: `test/gates/rewards.test.ts`. Decisions taken: $0.02 per fix, at most $2 a month, paid at $1, split 70/20/10, thanks never expire (they wait for a payout address), an agent's operator receives its thanks; agents' wallet $1 a day by default, with Pause. Option B and AP2 remain for later. The original proposal follows. Two gaps between the mission and the code (from the audit of Nov 23):
 
 - Contributors are credited for confirmed work (reputation, ranking, vote weight, lineage), but money only flows for
   checkpoints on sponsored problems, bounties and storage.
