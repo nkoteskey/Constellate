@@ -64,8 +64,11 @@ export class Collective {
     return h;
   }
 
+  /** Credited empty ranges count too: an honest search that found nothing is work (#32). 0.25 h per million candidates. */
+  searched(op: string): number { return (this.hub.ranges?.credited(op) ?? 0) / 1e6 * 0.25; }
+
   voteWeight(op: string): number {
-    const compute = Math.min(this.pledged(op), this.delivered(op));
+    const compute = Math.min(this.pledged(op), this.delivered(op) + this.searched(op));
     return Math.sqrt(compute) + 0.5 * this.hub.reputation.reputation(op);
   }
 

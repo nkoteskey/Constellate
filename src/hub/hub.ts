@@ -24,6 +24,7 @@ import { Problems } from '../work/problems.js';
 import { Results } from '../work/results.js';
 import { GithubLookup } from '../seed/lookup.js';
 import { SelfStore } from './self-store.js';
+import { RangeSearch } from '../work/range-search.js';
 import { TopUp } from '../economy/topup.js';
 import { StorageMarket } from '../economy/storage-market.js';
 import { facilitatorFromEnv } from '../economy/x402-base.js';
@@ -101,6 +102,8 @@ export class Hub {
   lookup: GithubLookup;
   /** Store what you shared permanently on Autonomi, paid by this computer's own wallet (src/hub/self-store.ts). */
   readonly selfStore: SelfStore;
+  /** Lent computers searching witness ranges, with spot checks (src/work/range-search.ts). */
+  readonly ranges: RangeSearch;
   /** Top up storage: the person's USDC on Base into ANT in this computer's Autonomi wallet (src/economy/topup.ts). Replaceable in tests. */
   topup: TopUp;
   /** Storing for others, paid with x402 over x0x (src/economy/storage-market.ts). */
@@ -189,6 +192,7 @@ export class Hub {
     this.results = new Results(this);
     this.lookup = new GithubLookup(this);
     this.selfStore = new SelfStore(this);
+    this.ranges = new RangeSearch(this);
     this.market = new StorageMarket(this);
     this.market.facilitator = facilitatorFromEnv();
     if (this.x0x) { const x = this.x0x; this.market.transport = { send: async (to, msg) => { await x.sendDirect(to, Buffer.from(JSON.stringify(msg)).toString('base64')); } }; }

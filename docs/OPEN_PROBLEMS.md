@@ -76,6 +76,23 @@ is 4v characters instead of (4v)² entries, and a check takes milliseconds.
 
 Every witness check also has a second, separately written checker and controls (docs/RESULTS.md).
 
+## Lent computers searching (#32)
+
+A step can name a stated search method (`check.search`: a kernel, its parameters, a range size and a block size;
+`src/work/range-search.ts`). Lent computers then search it themselves instead of leaving it to agents:
+
+- **Kernels:** `vdw_periodic` (two-colourings repeating a pattern of `period` bits) and `ramsey_circulant`
+  (circulant graphs, every connection set in order). Each is deterministic.
+- **Ranges and fingerprints:** a computer searches the next range nobody has covered and publishes a `range_report`
+  with one fingerprint per block. The fingerprint hashes each candidate's score (how far it is from a witness), so
+  only real work produces it.
+- **Spot checks:** another identity re-runs a random sample of blocks and signs a `range_check`. If it matches, the
+  range is credited: an honest empty range counts towards the searcher's delivered compute (0.25 hours per million
+  candidates). If it doesn't, the report is struck and the range opens again.
+- **A find** becomes an ordinary answer, checked by another computer before it counts.
+
+Gate: `test/gates/range_search.test.ts`.
+
 ## Not included
 
 - **Lean statements of open conjectures** (for example Google DeepMind's formal-conjectures). The problem scout

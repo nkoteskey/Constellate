@@ -42,6 +42,8 @@ export const RECORD_KINDS = [
   'measurement',
   // storing for others: a computer's offer to store on Autonomi, paid with x402 (src/economy/storage-market.ts)
   'storage_offer',
+  // lent computers searching for witnesses: a range's block fingerprints, and another identity's spot check (src/work/range-search.ts)
+  'range_report', 'range_check',
 ] as const;
 export type RecordKind = (typeof RECORD_KINDS)[number];
 
