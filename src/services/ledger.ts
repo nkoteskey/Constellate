@@ -119,6 +119,8 @@ export class Ledger {
         // The fixes themselves, best reproduced first, so the agent can try one and report back (fix_tried).
         fixes: fixes.map(({ a, r }) => { const ab = a.rec.body as AnswerBody & { headline?: string }; return { id: a.rec.id, fix: (ab.headline ?? ab.answer).slice(0, 300), confirmed: r.label, disputed_on_computers: r.disputed_by.computers }; }),
         neighbours: this.graph?.neighbours(s.rec.id, 3) ?? [],
+        // A strong link into another field: a possible breakthrough, flagged so agents notice it without asking.
+        ...((b) => (b.length ? { bridges: b.map((x) => ({ ...x, note: 'a possible link to another field' })) } : {}))(this.graph?.bridgesOf(s.rec.id) ?? []),
       };
     });
   }
@@ -132,6 +134,8 @@ export class Ledger {
         ...((b as { license?: string }).license ? { license: (b as { license?: string }).license, attribution: (b as { attribution?: string }).attribution } : {}), environment: s.rec.context.environment, env_match: round(env),
         weight: round(t.weight), confirmations: t.confirmations, contradictions: t.contradictions, confirmed: rep.label, disputed_on_computers: rep.disputed_by.computers, age_days: Math.floor(ageDays(s)), fixes: s.rec.refs,
         neighbours: this.graph?.neighbours(s.rec.id, 3) ?? [],
+        // A strong link into another field: a possible breakthrough, flagged so agents notice it without asking.
+        ...((b) => (b.length ? { bridges: b.map((x) => ({ ...x, note: 'a possible link to another field' })) } : {}))(this.graph?.bridgesOf(s.rec.id) ?? []),
         ...(b.claim || b.status || b.sources?.length ? {
           claim: { kind: b.claim ?? null, status: b.status ?? null, limits: b.limits ?? null, sources: b.sources ?? [],
             independent: { supporting: independentOrigins(b.sources, 'supports'), contradicting: independentOrigins(b.sources, 'contradicts') } },

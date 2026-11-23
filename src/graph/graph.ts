@@ -153,6 +153,20 @@ export class KnowledgeGraph {
     return out.sort((x, y) => y.weight - x.weight);
   }
 
+  private bridgeCache?: { at: number; size: number; list: Bridge[] };
+  /**
+   * Bridges touching one record, for search replies: "a possible link to another field". Cached briefly, since a
+   * search asks for every result.
+   */
+  bridgesOf(id: string): { record: string; title: string; realms: string; weight: number }[] {
+    const now = this.now(), size = this.store.size;
+    if (!this.bridgeCache || now - this.bridgeCache.at > 10_000 || this.bridgeCache.size !== size) this.bridgeCache = { at: now, size, list: this.bridges() };
+    return this.bridgeCache.list.filter((b) => b.from === id || b.to === id).slice(0, 2).map((b) => {
+      const other = b.from === id ? b.to : b.from, s = this.store.get(other);
+      return { record: other, title: s ? titleOf(s) : '', realms: b.from === id ? `${b.fromRealm} → ${b.toRealm}` : `${b.toRealm} → ${b.fromRealm}`, weight: b.weight };
+    });
+  }
+
   /** Notified only of bridges that form after the first listener attaches; existing bridges are not re-announced. */
   onBridge(cb: (b: Bridge) => void) {
     if (!this.bridgeListeners.size) for (const b of this.bridges()) this.bridgesSeen.add(b.edge);

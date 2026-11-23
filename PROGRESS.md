@@ -880,3 +880,13 @@ Still stop points, deliberately not approved on the owner's behalf: publishing a
 - **#31** Small DRAT proofs that a formula has no solution are checked (`unsat_drat`, two checkers). Gate: `test/gates/drat.test.ts`.
 - From `claude/planner-constellate-tools-only` (Nov 7, never merged): `MCP_TIMEOUT=120000` for Claude Code started by the app, and a clear message when planning stops at 15 minutes. The rest of that branch was superseded by `src/work/claude-tools.ts`; the branch can be deleted.
 - **Still open, needing a person, hardware or outside sources:** #28 (choose posting accounts), #30 (Lean for formal-conjectures; needs Mathlib), #33 and #34 (pooled Macs), #35 and #36 (licensed sources with current bounds and open-problem lists).
+
+### Walking the walk: an audit of the mission (Nov 23)
+- Checked each promise against the code. Built, tested and running:
+  - use strengthens, disuse fades (90-day half-life, nothing deleted);
+  - associative recall;
+  - sleep (topic pages) and dream (re-checks);
+  - disagreement kept in context (contradictions subtract only under similar conditions);
+  - A2A agent card.
+- **Fixed:** bridges now reach agents without asking. A search result touching a bridge carries `bridges` ("a possible link to another field"). Gate: `test/gates/phase2_graph.test.ts`.
+- **Drafted for decision** (docs/REWARDS.md): opt-in "thank what worked" tips along the lineage via x402, and agents paying for real from a small capped balance (or Base Account spend permissions once verified). AP2 stays deferred until 1.0.
