@@ -91,8 +91,8 @@ export class Constitution {
   private rechecked = new Map<string, Promise<{ ok: boolean; reason: string }>>();
   /**
    * Before a lent computer works on a problem another computer proposed, it runs the start check itself and records
-   * it, rather than trusting the proposer's word (#38). Clears only when its own check passes with nothing for a
-   * person to review; a problem it blocks or can't decide is skipped.
+   * it, rather than trusting the proposer's word (#38). A problem its own check blocks is skipped; one it wants a
+   * person to review waits for that review, as any problem does.
    */
   async clearedHere(problemId: string): Promise<{ ok: boolean; reason: string }> {
     const st = this.status(problemId);
@@ -104,13 +104,18 @@ export class Constitution {
     if (!p) {
       p = (async () => {
         const r = await this.checkProposal(this.hub.problems.body(problemId));
-        await this.record(problemId, 'start', problemId, r);
-        return r.ok && !r.needs_human ? { ok: true, reason: 'checked again on this computer' } : { ok: false, reason: `this computer’s own check ${r.ok ? 'needs a person to review' : 'blocks'} it: ${r.findings.map((f) => f.rule).join(', ')}` };
+        // Status was cleared above, so anything that needed a person already had a trusted reviewer's approval: a
+        // second computer re-running the same rules doesn't ask for another review of the same problem.
+        await this.record(problemId, 'start', problemId, r.ok && r.needs_human ? { ...r, needs_human: false } : r);
+        // Its own check is now on record: if it asks for a person, status() waits for that review like any other.
+        return r.ok ? { ok: true, reason: 'checked again on this computer' } : { ok: false, reason: `this computer’s own check blocks it: ${r.findings.map((f) => f.rule).join(', ')}` };
       })();
       this.rechecked.set(problemId, p);
     }
     const r = await p;
-    return r.ok ? { ok: this.status(problemId).state === 'cleared', reason: r.reason } : r;
+    if (!r.ok) return r;
+    const now = this.status(problemId);
+    return now.state === 'cleared' ? r : { ok: false, reason: `this computer’s own check needs a person to review it first (${now.reason})` };
   }
 
   /** Can work on this problem proceed right now? */

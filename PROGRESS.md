@@ -872,3 +872,11 @@ Still stop points, deliberately not approved on the owner's behalf: publishing a
   - Create a CDP secret key for card purchases.
   - Try one small real purchase, top-up and store-for-others with real wallets.
   - Check how Base Account signatures (smart-wallet signatures) settle with the chosen facilitator: they're passed to it rather than checked locally.
+
+### Issues fixed and the stale branch folded in (Nov 23)
+- **#38** Lent computers re-check the constitution themselves (`Constitution.clearedHere`): a problem their own check blocks is skipped and logged (`Worker.skipped`); their own check counts over the proposer's. Where a trusted person already approved a problem, the re-check doesn't ask for a second review of the same thing.
+- **#29** Announcements panel at `#/announce` (linked from Me): outbox, Approve and Skip, dry run, X link, Send. Gate: `test/gates/announce_panel.test.ts`.
+- **#32** Lent computers search witness ranges by a stated method, with spot checks; honest empty ranges are credited. Gate: `test/gates/range_search.test.ts`.
+- **#31** Small DRAT proofs that a formula has no solution are checked (`unsat_drat`, two checkers). Gate: `test/gates/drat.test.ts`.
+- From `claude/planner-constellate-tools-only` (Nov 7, never merged): `MCP_TIMEOUT=120000` for Claude Code started by the app, and a clear message when planning stops at 15 minutes. The rest of that branch was superseded by `src/work/claude-tools.ts`; the branch can be deleted.
+- **Still open, needing a person, hardware or outside sources:** #28 (choose posting accounts), #30 (Lean for formal-conjectures; needs Mathlib), #33 and #34 (pooled Macs), #35 and #36 (licensed sources with current bounds and open-problem lists).
