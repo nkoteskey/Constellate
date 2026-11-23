@@ -75,10 +75,17 @@ export class Worker {
     return true;
   }
 
+  /** Problems this computer declined to work on, and why (shown in its log). */
+  readonly skipped = new Map<string, string>();
+
   async step(problemId: string): Promise<StepOutcome> {
     if (this.stopped || !this.allowed()) return 'paused';
     const cons = this.opts.constitution;
-    if (cons && cons.status(problemId).state !== 'cleared') return 'idle';
+    if (cons) {
+      // Checked again on this computer before lending it any time (#38): another computer's word isn't enough.
+      const here = await cons.clearedHere(problemId);
+      if (!here.ok) { this.skipped.set(problemId, here.reason); return 'idle'; }
+    }
     const st = await this.problems.state(problemId);
     const verifier = this.problems.verifiers.get(st.problem.definition_of_done.verifier)!;
     const me = this.hub.node.operatorId;

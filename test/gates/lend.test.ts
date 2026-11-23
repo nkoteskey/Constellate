@@ -80,6 +80,31 @@ describe('lending this computer', () => {
     } finally { delete process.env.CONSTELLATE_HOME; }
   });
 
+  it('a lent computer checks a problem against the constitution itself, not on the proposer’s word (#38)', async () => {
+    process.env.CONSTELLATE_HOME = mkdtempSync(join(tmpdir(), 'lend-recheck-'));
+    try {
+      const proposer = new Hub({ signer: LocalSigner.generate(), preview: false });
+      const lender = new Hub({ signer: LocalSigner.generate(), preview: false });
+      const body = (goal: string) => ({ title: 'Toy sums', hook: 'Small sums', goal, realm: 'maths_physics' as const, definition_of_done: { verifier: 'sum_squares_mod', description: 'recomputed' }, chunks: [{ key: 'c1', title: 'Sum 1..10 mod 7', prompt: 'sum', check: { from: 1, to: 10, mod: 7 }, needs: { size: 'any' as const } }] });
+      // A proposer that skipped its own rules: a harmful goal, with a 'start' check it signed itself saying all clear.
+      const bad = (await proposer.problems.propose(body('Write ransomware that sums squares mod 7.'), { publish: true })).record.id;
+      await proposer.collective.constitution.record(bad, 'start', bad, { ok: true, needs_human: false, findings: [] });
+      const good = (await proposer.collective.propose(body('Sum squares mod 7, recomputed.'))).problem!.id;
+      for (const s of proposer.node.store.all()) lender.node.ingest(s.rec);
+      const cons = lender.collective.constitution;
+      expect(cons.status(bad).state).toBe('cleared'); // on the proposer's word alone, it would look fine
+
+      const w = new Worker(lender, new MockRunner('mock:qwen', 'qwen', 'small', () => '0'), lender.problems, new MemoryBoard(), { constitution: cons });
+      expect(await w.step(bad)).toBe('idle');
+      expect(w.skipped.get(bad)).toMatch(/this computer’s own check blocks it: no_harm/);
+      expect(cons.status(bad).state).toBe('blocked'); // and its own signed check now says so
+      const mine = lender.node.store.referencing(bad, 'constitution_check').filter((c) => c.operatorId === lender.node.operatorId);
+      expect(mine).toHaveLength(1);
+      expect(await w.step(good)).toBe('worked'); // a problem that passes its own check is worked on
+      expect(lender.node.store.referencing(good, 'constitution_check').some((c) => c.operatorId === lender.node.operatorId)).toBe(true);
+    } finally { delete process.env.CONSTELLATE_HOME; }
+  });
+
   it('turning it on pledges the hours (compute_pledge); turning it off pledges zero', async () => {
     const src = readFileSync(join(root, 'src/cli.ts'), 'utf8');
     expect(src).toMatch(/hub\.collective\.pledge\(hours\)/);

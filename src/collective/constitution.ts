@@ -88,13 +88,40 @@ export class Constitution {
     return this.hub.node.submit({ kind: 'constitution_check', context: { task: 'human constitution review', domain: ['constitution'], environment: 'human' }, body: { target: problemId, stage: 'human', ok: decision === 'approve', needs_human: false, findings: [], note }, refs: [problemId] }, { publish: true });
   }
 
+  private rechecked = new Map<string, Promise<{ ok: boolean; reason: string }>>();
+  /**
+   * Before a lent computer works on a problem another computer proposed, it runs the start check itself and records
+   * it, rather than trusting the proposer's word (#38). Clears only when its own check passes with nothing for a
+   * person to review; a problem it blocks or can't decide is skipped.
+   */
+  async clearedHere(problemId: string): Promise<{ ok: boolean; reason: string }> {
+    const st = this.status(problemId);
+    if (st.state !== 'cleared') return { ok: false, reason: st.reason };
+    const me = this.hub.node.operatorId;
+    const mine = this.hub.node.store.referencing(problemId, 'constitution_check').some((c) => c.operatorId === me && (c.rec.body as { stage: string }).stage === 'start');
+    if (mine || this.hub.problems.get(problemId)?.operatorId === me) return { ok: true, reason: 'checked on this computer' };
+    let p = this.rechecked.get(problemId);
+    if (!p) {
+      p = (async () => {
+        const r = await this.checkProposal(this.hub.problems.body(problemId));
+        await this.record(problemId, 'start', problemId, r);
+        return r.ok && !r.needs_human ? { ok: true, reason: 'checked again on this computer' } : { ok: false, reason: `this computer’s own check ${r.ok ? 'needs a person to review' : 'blocks'} it: ${r.findings.map((f) => f.rule).join(', ')}` };
+      })();
+      this.rechecked.set(problemId, p);
+    }
+    const r = await p;
+    return r.ok ? { ok: this.status(problemId).state === 'cleared', reason: r.reason } : r;
+  }
+
   /** Can work on this problem proceed right now? */
   status(problemId: string): { state: 'unchecked' | 'blocked' | 'awaiting_review' | 'paused' | 'cleared'; reason: string } {
     const checks = this.hub.node.store.referencing(problemId, 'constitution_check').sort(byTime);
     const trusted = new Set([this.hub.node.operatorId, ...this.hub.trusted]);
     const human = checks.filter((c) => (c.rec.body as { stage: string }).stage === 'human' && trusted.has(c.operatorId)).at(-1);
     const auto = checks.filter((c) => (c.rec.body as { stage: string }).stage !== 'human');
-    const start = auto.find((c) => (c.rec.body as { stage: string }).stage === 'start');
+    // This computer's own start check, when it made one, counts over anyone else's (#38).
+    const starts = auto.filter((c) => (c.rec.body as { stage: string }).stage === 'start');
+    const start = starts.find((c) => c.operatorId === this.hub.node.operatorId) ?? starts[0];
     if (!start) return { state: 'unchecked', reason: 'no constitution check yet' };
     type B = { ok: boolean; needs_human: boolean; findings: Finding[] };
     const why = (c: StoredRecord) => (c.rec.body as B).findings.map((x) => x.rule).join(', ');

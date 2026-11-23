@@ -32,11 +32,11 @@ function fakeClaude(home: string, flags = ['--tools', '--restricted', 'dontAsk']
   writeFileSync(fake, `#!/usr/bin/env node
 const a = process.argv.slice(2);
 if (a.includes('--help')) { console.log(${JSON.stringify(flags.map((f) => `  ${f}   something`).join('\n'))}); process.exit(0); }
-require('fs').writeFileSync(${JSON.stringify(argsFile)}, JSON.stringify({ args: a, cwd: process.cwd() }));
+require('fs').writeFileSync(${JSON.stringify(argsFile)}, JSON.stringify({ args: a, cwd: process.cwd(), mcpTimeout: process.env.MCP_TIMEOUT }));
 for (const l of ${JSON.stringify(lines.map((x) => JSON.stringify(x)))}) console.log(l);
 `);
   chmodSync(fake, 0o755);
-  return { fake, read: () => JSON.parse(readFileSync(argsFile, 'utf8')) as { args: string[]; cwd: string } };
+  return { fake, read: () => JSON.parse(readFileSync(argsFile, 'utf8')) as { args: string[]; cwd: string; mcpTimeout?: string } };
 }
 
 async function runOnce(hub: Hub, id: string) {
@@ -66,6 +66,7 @@ describe('what Claude Code may use when it runs on its own', () => {
       expect(args).toContain('--restricted'); // the person's own Claude Code settings don't apply
       expect(arg('--permission-mode')).toBe('dontAsk'); // refused at once, never waiting for an approval
       expect(args[1]).toMatch(/You are running unattended.*web search and web fetch.*You can't run code here/s);
+      expect(claude.read().mcpTimeout).toBe('120000'); // time for Constellate's server to answer on a slow computer
       expect(cwd.startsWith(join(realpathSync(home), 'agent-work'))).toBe(true); // realpath: on macOS tmpdir() is /var, the child's cwd /private/var
       expect(r.log.map((l) => l.text)).toContain('It may use Constellate\'s tools, web search and web fetch.');
       expect(r.log.map((l) => l.text)).toContain('Claude Code wanted Bash, which this run doesn\'t allow. To let it run code, turn on “Run code in a scratch folder”.');
