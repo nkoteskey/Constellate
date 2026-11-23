@@ -93,13 +93,23 @@ A step can name a stated search method (`check.search`: a kernel, its parameters
 
 Gate: `test/gates/range_search.test.ts`.
 
+## Proofs that nothing exists (#31)
+
+`unsat_drat` (`src/work/drat.ts`): the step's check is a CNF formula, and the answer is a DRAT proof, the format SAT
+solvers emit (`--proof`). Every added clause must follow by unit propagation (RUP) or be a resolution asymmetric
+tautology on its first literal (RAT), and the proof must derive the empty clause. Checked forward with a fixed step
+budget, up to 400,000 characters, by two separately written checkers (occurrence lists, and plain fixpoint scans),
+with controls: three pigeons in two holes passes; a proof that jumps to the empty clause, deletes a clause it needs,
+or "proves" a satisfiable formula fails. Gate: `test/gates/drat.test.ts`.
+
 ## Not included
 
 - **Lean statements of open conjectures** (for example Google DeepMind's formal-conjectures). The problem scout
   reads them as candidates, but checking a proof needs Mathlib on the verifying computer. That's the
   Lean-project route (docs/LEAN_PROJECTS.md), not a quick check, so none is seeded as an open problem here (issue #30).
-- **Proofs that nothing exists** (an unsatisfiable formula, a Ramsey number pinned exactly). Checking them needs
-  a proof format such as DRAT and a checker for it (issue #31).
+- **Large proofs that nothing exists.** Small DRAT proofs are checked here (below); a large one, such as pinning a
+  Ramsey number exactly, needs a formally verified checker (cake_lpr) on computers that opted in, with the work
+  shared out.
 - **OEIS sequences whose next term can only be checked by recomputing it in full.** Witness sequences like
   A001220 fit; others would make every check as expensive as the search.
 

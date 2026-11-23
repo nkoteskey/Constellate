@@ -54,5 +54,9 @@
   "hadamard_gs": {
     "version": 1,
     "fingerprint": "75ddd6261c5d9005"
+  },
+  "unsat_drat": {
+    "version": 1,
+    "fingerprint": "783f52be6d8db83a"
   }
 }

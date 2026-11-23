@@ -21,7 +21,7 @@ export interface Controls { good: Control[]; planted: Control[]; /** A tool the 
 export const CHECKER_VERSIONS: Record<string, number> = {
   exact: 1, sum_squares_mod: 1, lean: 1, lean_project: 1,
   three_cubes: 1, perfect_cuboid: 1, wieferich: 1, wall_sun_sun: 1,
-  ramsey_graph: 1, vdw_coloring: 1, golomb_ruler: 1, cap_set: 1, sat_assignment: 1, hadamard_gs: 1,
+  ramsey_graph: 1, vdw_coloring: 1, golomb_ruler: 1, cap_set: 1, sat_assignment: 1, hadamard_gs: 1, unsat_drat: 1,
 };
 export const checkerId = (name: string) => `${name}@${CHECKER_VERSIONS[name] ?? 1}`;
 /** A fingerprint of a check's code, compared with the pinned one in the gate test. */
@@ -127,6 +127,18 @@ export const CONTROLS: Record<string, Controls> = {
     planted: [
       { check: { cnf: tiny }, answer: '-1 2 3', why: 'clause 1 false' },
       { check: { cnf: tiny }, answer: '1 2', why: 'a variable missing' },
+    ],
+  },
+  unsat_drat: {
+    good: [
+      { check: { cnf: 'p cnf 2 4\n1 2 0\n1 -2 0\n-1 2 0\n-1 -2 0\n' }, answer: '1 0\n0', why: 'all four clauses on two variables' },
+      { check: { cnf: 'p cnf 6 9\n1 2 0\n3 4 0\n5 6 0\n-1 -3 0\n-1 -5 0\n-3 -5 0\n-2 -4 0\n-2 -6 0\n-4 -6 0\n' }, answer: '-1 0\n-2 0\n0', why: 'three pigeons, two holes' },
+    ],
+    planted: [
+      { check: { cnf: 'p cnf 6 9\n1 2 0\n3 4 0\n5 6 0\n-1 -3 0\n-1 -5 0\n-3 -5 0\n-2 -4 0\n-2 -6 0\n-4 -6 0\n' }, answer: '0', why: 'the empty clause straight away' },
+      { check: { cnf: 'p cnf 6 9\n1 2 0\n3 4 0\n5 6 0\n-1 -3 0\n-1 -5 0\n-3 -5 0\n-2 -4 0\n-2 -6 0\n-4 -6 0\n' }, answer: 'd 1 2 0\n-1 0\n-2 0\n0', why: 'deletes a clause the proof needs' },
+      { check: { cnf: 'p cnf 6 8\n1 2 0\n3 4 0\n5 6 0\n-1 -3 0\n-1 -5 0\n-3 -5 0\n-2 -4 0\n-2 -6 0\n' }, answer: '-1 0\n-2 0\n0', why: 'a satisfiable formula' },
+      { check: { cnf: 'p cnf 6 9\n1 2 0\n3 4 0\n5 6 0\n-1 -3 0\n-1 -5 0\n-3 -5 0\n-2 -4 0\n-2 -6 0\n-4 -6 0\n' }, answer: '-7 0\n0', why: 'a variable outside the formula' },
     ],
   },
   hadamard_gs: {

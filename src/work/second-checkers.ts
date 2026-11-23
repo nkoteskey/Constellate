@@ -229,4 +229,62 @@ export const SECOND_CHECKERS: Record<string, Check> = {
   },
 };
 
+/** DRAT, written again: clauses in a plain list, propagation by scanning every clause until nothing changes. */
+function dratSecond(cnfText: string, proofText: string): string | null {
+  const lines = cnfText.split('\n').map((l) => l.trim()).filter((l) => l && !/^[c%]/.test(l));
+  const head = /^p\s+cnf\s+(\d+)\s+(\d+)$/.exec(lines[0] ?? '');
+  if (!head) return 'no header';
+  const vars = Number(head[1]);
+  const split = (t: string) => { const out: number[][] = []; let cur: number[] = []; for (const x of t.split(/\s+/).filter(Boolean)) { const n = Number(x); if (n === 0) { out.push(cur); cur = []; } else cur.push(n); } return cur.length ? null : out; };
+  let db = split(lines.slice(1).join(' '));
+  if (!db) return 'bad formula';
+  const rows = proofText.split('\n').map((l) => l.trim()).filter(Boolean);
+  let budget = 20_000_000;
+  const unitConflict = (assume: number[]): boolean | null => {
+    const val = new Map<number, number>();
+    for (const l of assume) { if (val.get(Math.abs(l)) === -Math.sign(l)) return true; val.set(Math.abs(l), Math.sign(l)); }
+    for (let changed = true; changed;) {
+      changed = false;
+      for (const c of db!) {
+        if ((budget -= 1) < 0) return null;
+        const open = c.filter((l) => !val.has(Math.abs(l)));
+        if (c.some((l) => val.get(Math.abs(l)) === Math.sign(l))) continue;
+        if (!open.length) return true;
+        if (open.length === 1) { val.set(Math.abs(open[0]), Math.sign(open[0])); changed = true; }
+      }
+    }
+    return false;
+  };
+  for (const row of rows) {
+    const del = row.startsWith('d');
+    const lits = row.replace(/^d\s*/, '').split(/\s+/).map(Number);
+    if (lits.pop() !== 0 || lits.some((l) => !Number.isInteger(l) || l === 0 || Math.abs(l) > vars)) return 'bad proof line';
+    const sameClause = (c: number[]) => c.length === lits.length && [...c].sort().join() === [...lits].sort().join();
+    if (del) { const i = db.findIndex(sameClause); if (i >= 0) db = [...db.slice(0, i), ...db.slice(i + 1)]; continue; }
+    let ok = unitConflict(lits.map((l) => -l));
+    if (ok === null) return 'out of budget';
+    if (!ok && lits.length) {
+      ok = true;
+      for (const c of db.filter((c) => c.includes(-lits[0]))) {
+        const r = [...new Set([...lits, ...c.filter((l) => l !== -lits[0])])];
+        if (r.some((l) => r.includes(-l))) continue;
+        const sub = unitConflict(r.map((l) => -l));
+        if (sub === null) return 'out of budget';
+        if (!sub) { ok = false; break; }
+      }
+    }
+    if (!ok) return 'a line is neither RUP nor RAT';
+    if (!lits.length) return null;
+    db.push(lits);
+  }
+  return 'no empty clause';
+}
+SECOND_CHECKERS.unsat_drat = async (spec, output) => {
+  if (typeof spec.cnf !== 'string') return nope('no CNF');
+  const text = answerText(output, 400_000);
+  if (text === null) return nope('proof too long');
+  const why = dratSecond(spec.cnf, text);
+  return why ? nope(why) : yes('the empty clause follows');
+};
+
 export const secondChecker = (name: string): Check | undefined => SECOND_CHECKERS[name];
