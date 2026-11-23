@@ -14,6 +14,8 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { HttpReply, PUBLIC, RawReply, StreamReply, WebServer } from './server.js';
 import { llmsFull } from './llms-full.js';
+import { Announcer } from '../announce/announce.js';
+import type { Fetch } from '../announce/sinks.js';
 import { sendingAllowed } from '../economy/topup.js';
 import { onrampUrl } from '../economy/onramp.js';
 import { AutonomiArchive } from '../store/autonomi.js';
@@ -68,7 +70,7 @@ const VENDOR: Record<string, string> = {
 };
 
 /** The human app API: the living sky, problem pages, deliberations, Me, and signed contributions from the browser. */
-export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunner; scout?: Scout; scoutRefresh?: boolean } = {}) {
+export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunner; scout?: Scout; scoutRefresh?: boolean; /** Tests: stand-in Bluesky and Mastodon. */ announceNet?: { fetch?: Fetch; secret?: (n: 'bluesky' | 'mastodon') => string | undefined } } = {}) {
   const hub = web.hub;
   const guide = new Guide(hub, opts.guideModel);
   const guide_ = guide;
@@ -426,6 +428,25 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
     return tryIt(() => ({ ...hub.agentRuns.start(m[1]), via: 'claude_code' }));
   });
   // What Claude Code may use when the app starts it (src/work/claude-tools.ts): web research on, running code off.
+  // Announcements (docs/ANNOUNCE.md, #29): the owner's outbox in the app. Same rules as the terminal: approval binds
+  // to the exact words, a blocked item can't be approved, and nothing leaves this computer until "Send" is pressed.
+  const announcer = () => new Announcer(hub);
+  const outboxView = async () => {
+    const a = announcer();
+    await a.collect();
+    const c = a.config();
+    return { config: c, items: a.list().filter((i) => i.status !== 'skipped'), dry_run: await a.send({ fetch: opts.announceNet?.fetch, secret: opts.announceNet?.secret }), sends_to: [c.feed ? 'feed' : '', c.bluesky ? 'bluesky' : '', c.mastodon ? 'mastodon' : ''].filter(Boolean) };
+  };
+  web.route('GET', /^\/api\/announce$/, (req) => (here(req) ? outboxView() : new HttpReply(403, { error: 'only on this computer' })));
+  web.route('POST', /^\/api\/announce\/([0-9a-z-]{1,80})\/(approve|skip)$/, async (req, m) => {
+    if (!here(req)) return new HttpReply(403, { error: 'only on this computer' });
+    try { const a = announcer(); if (m[2] === 'approve') a.approve(m[1]); else a.skip(m[1]); return await outboxView(); } catch (e) { return new HttpReply(400, { error: (e as Error).message }); }
+  });
+  web.route('POST', /^\/api\/announce\/send$/, async (req) => {
+    if (!here(req)) return new HttpReply(403, { error: 'only on this computer' });
+    const sent = await announcer().send({ yes: true, fetch: opts.announceNet?.fetch, secret: opts.announceNet?.secret });
+    return { sent, ...(await outboxView()) };
+  });
   // Top up storage: quotes for turning the person's USDC on Base into ANT here, signed in their own wallet
   // (src/economy/topup.ts). Only on this computer; sending needs real payments on.
   web.route('GET', /^\/api\/storage-wallet$/, async (req) => {
