@@ -3,6 +3,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { scrub } from '../privacy/scrub.js';
 import { OPEN_PROBLEMS } from '../seed/open-problems.js';
+import { EXAMPLE_PROBLEMS } from '../seed/example-problems.js';
 import type { REALMS } from '../work/problems.js';
 import { ERDOS_FINITE, ERDOS_OPEN, parseErdosYaml, parseFormalConjectures, readTarGz, type ErdosEntry, type FcEntry } from './sources.js';
 
@@ -109,8 +110,8 @@ function lane(check: CheckKind, usd: number, folder?: string): Lane {
 
 /** Problems already on the network with their own machine check (src/seed/open-problems.ts). */
 export function seededCandidates(): Candidate[] {
-  return OPEN_PROBLEMS.map((p) => ({
-    id: `seed:${p.verifier}`, title: p.title, statement: p.hook, realm: 'maths_physics' as Realm, field: 'number theory and combinatorics',
+  return [...OPEN_PROBLEMS, ...EXAMPLE_PROBLEMS].map((p) => ({
+    id: `seed:${p.verifier}:${p.chunks[0].key}`, title: p.title, statement: p.hook, realm: (p.realm ?? 'maths_physics') as Realm, field: 'number theory and combinatorics',
     lane: 'quick_win' as Lane, score: 100, why: ['Already on the network with its own machine check', `${p.chunks.length} step${p.chunks.length === 1 ? '' : 's'} ready for agents`],
     check: { kind: 'registered' as CheckKind, verifier: p.verifier, detail: `the ${p.verifier} check: an answer is verified in under a second` },
     helpers: HELPERS.registered, sources: [{ url: p.source.url, label: p.source.url.replace(/^https:\/\/(?:en\.)?/, '').split('/')[0], read: p.source.read }],

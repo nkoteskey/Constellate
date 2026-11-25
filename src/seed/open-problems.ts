@@ -1,4 +1,5 @@
 import type { Hub } from '../hub/hub.js';
+import { EXAMPLE_PROBLEMS } from './example-problems.js';
 
 /**
  * Open problems from mathematics with machine-checkable success (docs/OPEN_PROBLEMS.md). Each answer is a witness:
@@ -16,7 +17,11 @@ const TWO_64 = (2n ** 64n).toString();
 
 export interface OpenProblem {
   title: string; hook: string; goal: string; verifier: string; done: string;
+  /** Mathematics and physics unless it says otherwise. */
+  realm?: 'maths_physics' | 'life_sciences' | 'planet_energy' | 'philosophy_ethics' | 'art_creativity' | 'tech_infrastructure';
   source: { url: string; says: string; read: string };
+  /** Known obstacles: approaches known not to work, each with where that's shown (src/work/graveyard.ts). */
+  obstacles?: { says: string; source?: string }[];
   chunks: { key: string; title: string; prompt: string; check: Record<string, unknown> }[];
 }
 
@@ -103,13 +108,14 @@ export const OPEN_PROBLEMS: OpenProblem[] = [
 /** Propose each open problem once (checked against the constitution like any proposal). Returns the ids added. */
 export async function seedOpenProblems(hub: Hub): Promise<string[]> {
   const added: string[] = [];
-  for (const p of OPEN_PROBLEMS) {
+  for (const p of [...OPEN_PROBLEMS, ...EXAMPLE_PROBLEMS]) {
     if (hub.problems.list().some((x) => (x.rec.body as { title?: string }).title === p.title)) continue;
     const r = await hub.collective.propose({
-      title: p.title, hook: p.hook, goal: `${p.goal}\n\nSource (read ${p.source.read}): ${p.source.url}`, realm: 'maths_physics',
+      title: p.title, hook: p.hook, goal: `${p.goal}\n\nSource (read ${p.source.read}): ${p.source.url}`, realm: p.realm ?? 'maths_physics',
       definition_of_done: { verifier: p.verifier, description: p.done },
       chunks: p.chunks.map((c) => ({ ...c, needs: { size: 'any' as const } })),
       source: p.source,
+      ...(p.obstacles?.length ? { obstacles: p.obstacles } : {}),
     });
     if (r.problem) added.push(r.problem.id);
   }

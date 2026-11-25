@@ -73,6 +73,9 @@ const NOT_ESTABLISHED: Record<string, string> = {
   golomb_ruler: 'That the ruler is optimal.',
   cap_set: 'That the cap is the largest possible.',
   sat_assignment: 'Anything about other instances.',
+  matmul_scheme: 'That fewer multiplications are impossible; anything about other sizes or other rings.',
+  linear_code: 'That a better code is impossible: this moves the lower bound only.',
+  sorting_network: 'That fewer comparators are impossible: this moves the upper bound only.',
   hadamard_gs: 'Anything about other orders; that this is the only kind of construction; how many inequivalent matrices exist.',
 };
 

@@ -11,6 +11,7 @@ import { X0xError, directSendProblem } from '../x0x/client.js';
 import { agentName, Planner } from '../collective/planner.js';
 import { openSteps, submitStep, mySteps } from '../work/agent-step.js';
 import { graveyard, obstacles } from '../work/graveyard.js';
+import { FRONT_PAGE_TITLE } from '../seed/example-problems.js';
 import { Profiles, profileProblem, ProfileBody } from '../collab/profiles.js';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -111,11 +112,14 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
     // Three highlighted problems, most active first, one per realm so the sky invites rather than overwhelms.
     const featured: string[] = [];
     const realmsUsed = new Set<string>();
+    // The front-page problem first (src/seed/example-problems.ts): the oldest problem with its title and check.
+    const front = hub.problems.list().filter((p) => (p.rec.body as { title?: string; definition_of_done?: { verifier?: string } }).title === FRONT_PAGE_TITLE && (p.rec.body as { definition_of_done: { verifier: string } }).definition_of_done.verifier === 'matmul_scheme').sort((a, b) => a.rec.created.localeCompare(b.rec.created))[0];
+    if (front) { featured.push(front.rec.id); realmsUsed.add((front.rec.body as { realm: string }).realm); }
     const ranked = [...problems].filter((p) => p.hook).sort((a, b) => b.activity.recent - a.activity.recent || b.activity.total - a.activity.total);
     // Two problems plus one debate when there is one: rating an argument is the gentlest first contribution.
     const debate = ranked.find((p) => p.kind === 'deliberation');
     for (const p of ranked.filter((p) => p.kind !== 'deliberation')) {
-      if (featured.length < (debate ? 2 : 3) && !realmsUsed.has(p.realm)) { featured.push(p.id); realmsUsed.add(p.realm); }
+      if (featured.length < (debate ? 2 : 3) && !realmsUsed.has(p.realm) && !featured.includes(p.id)) { featured.push(p.id); realmsUsed.add(p.realm); }
     }
     if (debate) featured.push(debate.id);
     const all = hub.node.store.all().filter((s) => s.visibility === 'public');

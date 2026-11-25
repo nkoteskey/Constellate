@@ -58,5 +58,21 @@
   "unsat_drat": {
     "version": 1,
     "fingerprint": "783f52be6d8db83a"
+  },
+  "matmul_scheme": {
+    "version": 1,
+    "fingerprint": "52abebd0b1acd1b8"
+  },
+  "linear_code": {
+    "version": 1,
+    "fingerprint": "b5c92e755b84c343"
+  },
+  "sorting_network": {
+    "version": 1,
+    "fingerprint": "9703a7245e872f62"
+  },
+  "argmap": {
+    "version": 1,
+    "fingerprint": "6296116e6b758ba4"
   }
 }

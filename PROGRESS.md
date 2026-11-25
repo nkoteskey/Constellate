@@ -921,3 +921,18 @@ Still stop points, deliberately not approved on the owner's behalf: publishing a
   contributors by credit, 20% to the open tools the result relied on, nothing to founders, maintainers or the
   platform, and nobody holds the money.
 - Gates: `stuck_steps`, `join_txt`, `graveyard`.
+
+## 2026-11-25: checkers built in or as packs; example problems and the front page
+
+- **docs/CHECKERS.md**: a checker is built in only if it is pure, deterministic, exact, small and bounded, with
+  controls and (where possible) a second checker; anything heavier is a pack outside the app, pinned, sandboxed,
+  downloaded only by those who opt in. The app stays small; problems with a pack checker wait for it.
+- **Four built-in checkers**: `matmul_scheme` (exact Brent equations), `linear_code` (GF(q) up to 16, every
+  codeword up to scalars), `sorting_network` (0-1 principle, up to 22 inputs), `argmap` (argument-map structure,
+  citations and personal data; never merit). Each has controls; the first three have second checkers by different
+  methods, cross-checked on random answers (`test/gates/structures.test.ts`).
+- **Seven example problems** with sources read today (`src/seed/example-problems.ts`, docs/EXAMPLE_PROBLEMS.md):
+  the front page (4×4 matrices with 47 multiplications, plus records for other small sizes), codes, two sorting
+  network problems, and three argument maps. The other eleven picks wait for their checkers, listed in the doc.
+  The front-page problem leads the home page.
+- Gates: `structures`, `example_problems`.

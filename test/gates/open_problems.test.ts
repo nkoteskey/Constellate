@@ -6,6 +6,7 @@ import { Worker } from '../../src/work/worker.js';
 import { MemoryBoard } from '../../src/work/board.js';
 import { openSteps, submitStep } from '../../src/work/agent-step.js';
 import { OPEN_PROBLEMS, seedOpenProblems } from '../../src/seed/open-problems.js';
+import { EXAMPLE_PROBLEMS } from '../../src/seed/example-problems.js';
 import { threeCubesVerifier, perfectCuboidVerifier, wieferichVerifier, wallSunSunVerifier, isPrime, fibMod, integers } from '../../src/work/witness.js';
 
 /**
@@ -47,9 +48,9 @@ describe('open problems with machine-checkable answers', () => {
   it('each problem says why it is open, quoting a public source, with its definition of done and verifier', async () => {
     const hub = new Hub({ signer: LocalSigner.generate(), preview: false });
     const ids = await seedOpenProblems(hub);
-    expect(ids).toHaveLength(OPEN_PROBLEMS.length);
+    expect(ids).toHaveLength(OPEN_PROBLEMS.length + EXAMPLE_PROBLEMS.length); // with the example problems (src/seed/example-problems.ts)
     expect(await seedOpenProblems(hub)).toEqual([]); // once
-    for (const id of ids) {
+    for (const id of ids.slice(0, OPEN_PROBLEMS.length)) { // the example problems have their own gate (example_problems.test.ts)
       const b = hub.problems.body(id) as ReturnType<Hub['problems']['body']> & { source?: { url: string; says: string; read: string } };
       expect(b.source?.url).toMatch(/^https:\/\/(en\.wikipedia\.org\/wiki\/|www\.generalised\.si\/)/); // an encyclopedia, or the lab that keeps the newest table
       expect(b.source?.says.length).toBeGreaterThan(40);

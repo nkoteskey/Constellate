@@ -1,5 +1,6 @@
 import { answerText, whole } from './combinatorics.js';
 import { integers } from './witness.js';
+import { STRUCTURE_SECOND } from './second-structures.js';
 
 /**
  * Second checkers: for each kind of witness, a check written separately from the first one (src/work/witness.ts,
@@ -286,5 +287,7 @@ SECOND_CHECKERS.unsat_drat = async (spec, output) => {
   const why = dratSecond(spec.cnf, text);
   return why ? nope(why) : yes('the empty clause follows');
 };
+
+Object.assign(SECOND_CHECKERS, STRUCTURE_SECOND);
 
 export const secondChecker = (name: string): Check | undefined => SECOND_CHECKERS[name];

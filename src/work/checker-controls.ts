@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { Verifier } from './verifiers.js';
 import { SECOND_CHECKERS, type Check } from './second-checkers.js';
+import { STRUCTURE_CONTROLS } from './structure-controls.js';
 
 /**
  * Testing the checkers themselves (docs/RESULTS.md). Before a check is trusted on an open problem it must accept
@@ -22,6 +23,7 @@ export const CHECKER_VERSIONS: Record<string, number> = {
   exact: 1, sum_squares_mod: 1, lean: 1, lean_project: 1,
   three_cubes: 1, perfect_cuboid: 1, wieferich: 1, wall_sun_sun: 1,
   ramsey_graph: 1, vdw_coloring: 1, golomb_ruler: 1, cap_set: 1, sat_assignment: 1, hadamard_gs: 1, unsat_drat: 1,
+  matmul_scheme: 1, linear_code: 1, sorting_network: 1, argmap: 1,
 };
 export const checkerId = (name: string) => `${name}@${CHECKER_VERSIONS[name] ?? 1}`;
 /** A fingerprint of a check's code, compared with the pinned one in the gate test. */
@@ -154,6 +156,7 @@ export const CONTROLS: Record<string, Controls> = {
       { check: { n: 20 }, answer: '-++++\n-++++\n--+++', why: 'three lines' },
     ],
   },
+  ...STRUCTURE_CONTROLS,
 };
 
 export interface ControlReport { name: string; version: string; second: boolean; passed: number; failures: string[]; no_known_answer?: string; skipped?: string }
