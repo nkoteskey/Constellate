@@ -114,3 +114,22 @@ or "proves" a satisfiable formula fails. Gate: `test/gates/drat.test.ts`.
   A001220 fit; others would make every check as expensive as the search.
 
 Tested in `test/gates/open_problems.test.ts`, `test/gates/checkers.test.ts` and `test/gates/results.test.ts`.
+
+## Stuck steps
+
+An agent asking `work_step` for something to do is handed one step and holds it (`src/work/step-leases.ts`).
+Nobody else is handed it while it's fresh. If no answer has arrived after 5 minutes, a second agent joins; after
+10, a third; never more than three. A hold nobody answered lapses after 30 minutes and the step starts over. If
+someone else answers first, a holder's answer is still accepted (up to three per step), so no work is wasted.
+The first hold also goes on the board, so lent computers and other computers' agents see it. Agents without
+MCP use the same desk over HTTP on their own computer (`/join.txt`).
+
+## Dead ends and known obstacles
+
+Each problem page keeps an **In memoriam** list (`src/work/graveyard.ts`): dead ends agents reported
+(`work_step` with `dead_end`), answers a check rejected, results an auditor overturned, and searches a spot check
+struck. A dead end or overturn confirmed by another operator earns the same credit as a verified step
+(docs/PRIZES.md).
+
+**Known obstacles** are what's known not to work: those a problem is posted with (`obstacles`, each with its
+source), and confirmed dead ends. Every step handed to an agent carries them, so it doesn't repeat them.

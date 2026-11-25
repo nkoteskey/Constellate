@@ -1,6 +1,7 @@
 import { agentName } from '../collective/planner.js';
 import { openSteps, submitStep, mySteps } from '../work/agent-step.js';
 import { requestNote } from '../work/work-requests.js';
+import { reportDeadEnd } from '../work/graveyard.js';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { Hub } from '../hub/hub.js';
@@ -174,11 +175,17 @@ export function registerWorkTools(server: McpServer, hub: Hub) {
     { id: z.string() },
     ({ id }) => hub.problems.summary(id));
   tool(server, 'work_step',
-    'Help solve a live problem: call with no arguments for what your person asked you to work on, open steps and follow-ups on results, then with problem, step and answer (or follow_up, step and verdict). A model from a different family checks it before it counts.',
+    'Help solve a live problem: call with no arguments for what your person asked you to work on, open steps and follow-ups on results, then with problem, step and answer (or follow_up, step and verdict; or dead_end and answer for an approach that can’t work). A model from a different family checks it before it counts.',
     { problem: z.string().optional(), step: z.string().optional(), answer: z.string().optional(), model: z.string().optional().describe('Your model, e.g. claude-sonnet-4.5, so a different family checks it.'),
-      follow_up: z.string().optional().describe('A result id (CR-…) from follow_ups.'), verdict: z.string().optional().describe('For a follow-up: holds/overturned, or a novelty label.') },
-    async ({ problem, step, answer, model, follow_up, verdict }) => {
+      follow_up: z.string().optional().describe('A result id (CR-…) from follow_ups.'), verdict: z.string().optional().describe('For a follow-up: holds/overturned, or a novelty label.'),
+      dead_end: z.string().optional().describe('An approach you showed can’t work on this problem; say why in answer. Confirmed dead ends earn the same credit as a checked step.') },
+    async ({ problem, step, answer, model, follow_up, verdict, dead_end }) => {
       const client = server.server.getClientVersion()?.name;
+      if (dead_end) {
+        if (!problem) throw new Error('say which problem');
+        const r = await reportDeadEnd(hub, { problem, step, approach: dead_end, why: answer ?? '', model: model ?? client });
+        return { ...r, next: 'On the problem’s in memoriam list. Once someone on another computer confirms it, it counts like a checked step and every agent on the problem is told about it.' };
+      }
       if (follow_up && step) return hub.results.submit({ result: follow_up, step, verdict, answer, model, client });
       if (!step || !answer) {
         // What the person asked their agents to work on comes first, every time it's asked for (not only once,
@@ -186,21 +193,24 @@ export function registerWorkTools(server: McpServer, hub: Hub) {
         const asked = hub.workRequests.open().filter((r) => !problem || r.problem === problem);
         const req = asked.find((r) => r.status === 'waiting') ?? asked[0];
         if (req && client) hub.workRequests.take(req.id, agentName(client)); // the app now shows this agent took it
-        const open = await openSteps(hub, { problem: problem ?? req?.problem, limit: 3 });
+        const open = await openSteps(hub, { problem: problem ?? req?.problem, limit: 3, by: holder(client) });
         return {
           ...(req ? { your_person_asked: requestNote(req) } : {}),
           open, yours: mySteps(hub), follow_ups: await hub.results.followUps(2),
-          note: open.length ? 'Do one step with your own model, then call work_step with problem, step and answer. Answer exactly what the step asks. A follow-up (re-check, audit, novelty) settles a limit of a result someone else found; its prompt says how.' : 'No open steps right now: every step is answered or waiting for a check. Follow-ups on results, if any, are listed.',
+          note: open.length ? 'Do the first step (it is handed to you; others are free too) with your own model, then call work_step with problem, step and answer. If you stop, say so to your person: after 5 minutes without an answer another agent joins the step. Answer exactly what the step asks. A follow-up (re-check, audit, novelty) settles a limit of a result someone else found; its prompt says how.' : 'No open steps right now: every step is answered or waiting for a check. Follow-ups on results, if any, are listed.',
         };
       }
       if (!problem) throw new Error('say which problem');
-      const r = await submitStep(hub, { problem, step, answer, model, client });
+      const r = await submitStep(hub, { problem, step, answer, model, client, by: holder(client) });
       // Answering a step its person asked for: the request shows it.
       const req = hub.workRequests.open().find((x) => x.problem === problem);
       if (req) { const by = agentName(client); hub.workRequests.take(req.id, by); hub.workRequests.answered(req.id, step, model?.trim() || by); }
       return { submitted: r.result, next: `Published. A computer running a model that isn't ${r.family} checks it; call work_step later to see how it went.` };
     });
 }
+
+/** Who holds a step: the agent by its client, on this computer. */
+const holder = (client?: string) => `here:${agentName(client ?? 'agent')}`;
 
 export function registerCollectiveTools(server: McpServer, hub: Hub) {
   tool(server, 'plan_report',

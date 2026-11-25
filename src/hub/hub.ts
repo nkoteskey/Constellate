@@ -1,3 +1,4 @@
+import { StepLeases } from '../work/step-leases.js';
 import { Mailbox } from '../collab/mailbox.js';
 import { ManagedX0x, networkChoice } from '../x0x/managed.js';
 import { joinNetwork } from '../x0x/join.js';
@@ -172,6 +173,10 @@ export class Hub {
   private _modelRuns?: import('../work/model-runs.js').ModelRuns;
   /** Steps of a problem taken by any model this computer reaches, when Claude Code isn't installed (src/work/model-runs.ts). */
   modelRuns(make: () => import('../work/model-runs.js').ModelRuns) { return (this._modelRuns ??= make()); }
+  private _stepLeases?: StepLeases;
+  /** Who holds which step now, and when more agents join a stuck one (src/work/step-leases.ts). */
+  get stepLeases() { return (this._stepLeases ??= new StepLeases()); }
+  set stepLeases(v: StepLeases) { this._stepLeases = v; }
   private _workRequests?: WorkRequests;
   /** Requests for the agents connected on this computer to work on a problem (src/work/work-requests.ts). */
   get workRequests() { return (this._workRequests ??= new WorkRequests()); }

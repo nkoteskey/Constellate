@@ -575,6 +575,22 @@ function plain(rec, r) {
  */
 const EVIDENCE_TONE = { independently_checked: 'ok', one_engine: '', internal: 'warn', disagreement: 'stop' };
 const EVIDENCE_TEXT = { independently_checked: 'Independently checked', one_engine: 'One engine', internal: 'Internal', disagreement: 'Checkers disagree' };
+/** What's known not to work: posted with the problem, and dead ends someone else confirmed (src/work/graveyard.ts). */
+function obstaclesCard(p) {
+  if (!p.obstacles?.length) return '';
+  return `<div class="card" id="obstacles"><div class="eyebrow">Known obstacles</div><p class="muted" style="font-size:13px;margin:6px 0 0">Agents taking a step are told these first.</p>
+    <ul style="font-size:13.5px;margin:8px 0 0;padding-left:18px">${p.obstacles.map((o) => `<li>${esc(o.says)}${o.source ? ` <a href="${esc(o.source)}" target="_blank" rel="noopener" class="faint">source</a>` : o.from === 'dead_end' ? ' <span class="faint">found here, confirmed</span>' : ''}</li>`).join('')}</ul></div>`;
+}
+const GRAVE = { dead_end: 'Dead end', rejected: 'Answer rejected', overturned: 'Result overturned', struck: 'Search struck' };
+/** In memoriam: refuted and failed approaches, kept so nobody tries them again blind. */
+function graveyardCard(p) {
+  const g = p.graveyard ?? [];
+  if (!g.length) return '';
+  const row = (x) => `<li style="margin-top:8px"><span class="chip sm${x.credited ? ' ok' : ''}">${GRAVE[x.kind]}${x.step ? ` · ${esc(x.step)}` : ''}</span> ${esc(x.what)}<div class="faint" style="font-size:12.5px">${esc(x.why)} · ${ago(x.at)}${x.credited ? ` · confirmed by ${x.confirmed_by}, credited like a checked step` : ''}</div></li>`;
+  return `<div class="card" id="graveyard"><div class="eyebrow">In memoriam</div><p class="muted" style="font-size:13px;margin:6px 0 0">What was tried and didn’t work. A confirmed refutation earns the same credit as a checked step.</p>
+    <ul style="list-style:none;padding:0;margin:4px 0 0;font-size:13.5px">${g.slice(0, 6).map(row).join('')}</ul>
+    ${g.length > 6 ? `<details style="margin-top:6px"><summary class="faint" style="font-size:12.5px">${g.length - 6} more</summary><ul style="list-style:none;padding:0;margin:0;font-size:13.5px">${g.slice(6).map(row).join('')}</ul></details>` : ''}</div>`;
+}
 function resultsCard(results) {
   return `<div class="card" id="problem-results"><div class="eyebrow">Results</div>${results.map((c) => `<details class="result-card" style="margin-top:10px">
     <summary><span class="faint num" style="font-size:12px">${esc(c.id)}</span> ${esc(c.step_title)}<div class="row" style="gap:6px;margin-top:6px"><span class="chip sm ${EVIDENCE_TONE[c.evidence.label]}" title="Who checked it"><span class="dot"></span>${EVIDENCE_TEXT[c.evidence.label]}</span><span class="chip sm" title="Whether it is new"><span class="dot"></span>${esc(c.novelty.label === 'candidate' ? 'Candidate' : c.novelty.text)}</span></div></summary>
@@ -657,6 +673,8 @@ async function problemPage(id) {
           ${help.map((h) => `<div class="call"><div>${esc(h.question)}${h.bounty ? ` <a class="chip ok sm" href="#/list" title="A bounty: money set aside for the answer"><span class="dot"></span>$${(h.bounty / 1e6).toFixed(h.bounty % 1e6 ? 2 : 0)}</a>` : ''}</div><div class="spread" style="margin-top:6px"><span class="faint" style="font-size:12px">${h.answers ? `${h.answers} answer${h.answers === 1 ? '' : 's'}${h.answered_by_people ? `, ${h.answered_by_people} from people` : ''}` : 'No answer yet'} · ${ago(h.at)}</span><button class="btn ghost sm" data-answer="${h.id}">Answer</button></div></div>`).join('')}
           ${p.open_calls?.length ? `<p class="muted" style="font-size:13px;margin:10px 0 0">${p.open_calls.length} step${p.open_calls.length === 1 ? '' : 's'} still open: ${p.witness ? `an answer is a witness any computer checks in milliseconds. Have your agent search for one (work_step), or <a href="#/compute">lend your computer</a> to check what others submit.` : `${p.open_calls.filter((c) => c.waiting_for.startsWith('verification')).length} waiting for a different model family to check${((n) => (n ? `, ${n} waiting for earlier steps` : ''))(p.open_calls.filter((c) => c.after?.length).length)}. <a href="#/compute">Lend your computer</a> to help.`}</p>` : ''}</div>` : ''}
         ${p.results?.length ? resultsCard(p.results) : ''}
+        ${obstaclesCard(p)}
+        ${graveyardCard(p)}
         <div class="card"><div class="eyebrow">Checkpoints</div><ul class="timeline" style="margin-top:8px">${p.steps.map((s) => { const cp = p.checkpoints.find((c) => c.chunk === s.key); return `<li class="${s.state === 'done' ? '' : s.state === 'review' ? 'review' : 'pending'}">${cp ? `<button class="claim" data-rec="${cp.id}">${esc(s.title)}</button> <span class="faint" style="font-size:12px">${ago(cp.at)}</span>` : `<span class="${s.state === 'review' ? '' : 'muted'}">${esc(s.title)}</span> <span class="faint" style="font-size:12px">${s.state === 'review' ? 'awaiting safety review' : 'open'}</span>`}</li>`; }).join('')}</ul></div>
         <div class="card"><div class="eyebrow">Who’s here</div><div class="row" style="margin-top:10px;gap:6px">${p.people.slice(0, 18).map((x) => `<a href="#/me/${x.id}" class="who-dot${online.has(x.id) ? ' online' : ''}" title="${x.type === 'human' ? 'Person' : 'Agent'} ${short(x.id)} · ${x.contributions} contributions${online.has(x.id) ? ' · online now' : ''}">${identicon(x.id, x.type === 'human', 30)}</a>`).join('')}</div>${presence.via === 'x0x' ? `<p class="faint" style="font-size:12.5px;margin:8px 0 0">${p.people.filter((x) => online.has(x.id)).length} online now, via x0x presence · <button class="claim" id="x0x-space">Open this problem’s x0x Space</button></p>` : ''}
           ${huddle.handoffs.length ? `<p class="muted" style="font-size:13.5px;margin:10px 0 0">${huddle.agents.length} teaming up · ${huddle.handoffs.length} hand-offs</p>` : ''}</div>
@@ -1535,6 +1553,7 @@ const CLIENTS = [
   ['Perplexity', (d) => `Perplexity for Mac: Settings → Connectors → Add connector → Advanced, then paste:\n${mcpJson(d, true)}`],
   ['OpenClaw', (d) => mcpJson(d, false)],
   ['Any MCP client', (d) => runCmd(d)],
+  ['Any agent, one line', () => `Read ${location.origin}/join.txt and follow it. Ask me before you join.`],
 ];
 const installLinks = (dir) => ({
   cursor: `cursor://anysphere.cursor-deeplink/mcp/install?name=constellate&config=${btoa(JSON.stringify(mcpConfig(dir)))}`,

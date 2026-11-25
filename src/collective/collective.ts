@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { Hub } from '../hub/hub.js';
 import { Constitution } from './constitution.js';
+import { isDeadEnd } from '../work/graveyard.js';
 import { IdeaVersions } from './versions.js';
 import { CheckpointBody, ProblemBody, TaskResultBody } from '../work/problems.js';
 
@@ -67,8 +68,19 @@ export class Collective {
   /** Credited empty ranges count too: an honest search that found nothing is work (#32). 0.25 h per million candidates. */
   searched(op: string): number { return (this.hub.ranges?.credited(op) ?? 0) / 1e6 * 0.25; }
 
+  /**
+   * A refutation is worth as much as a checked step (src/work/graveyard.ts): a dead end, or an audit that overturned
+   * a result, once another operator confirmed it, earns what a verified result does.
+   */
+  refuted(op: string): number {
+    const store = this.hub.node.store;
+    const mine = [...store.ofKind('failure').filter((r) => r.operatorId === op && isDeadEnd(r)),
+      ...store.ofKind('contradiction').filter((r) => r.operatorId === op && (r.rec.body as { follow_up?: string }).follow_up === 'audit')];
+    return mine.filter((r) => store.referencing(r.rec.id, 'confirmation').some((c) => c.operatorId !== op)).length * HOURS_PER_RESULT;
+  }
+
   voteWeight(op: string): number {
-    const compute = Math.min(this.pledged(op), this.delivered(op) + this.searched(op));
+    const compute = Math.min(this.pledged(op), this.delivered(op) + this.searched(op) + this.refuted(op));
     return Math.sqrt(compute) + 0.5 * this.hub.reputation.reputation(op);
   }
 

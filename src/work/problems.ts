@@ -56,6 +56,8 @@ export const ProblemBody = z.object({
   source: z.object({ url: z.string().url().max(500), says: z.string().max(600), read: z.string().max(20) }).optional(),
   /** Another problem or idea this one asks differently (src/collective/versions.ts): both pages link to each other. */
   forked_from: z.string().regex(/^[0-9a-f]{64}$/).optional(),
+  /** Known obstacles: approaches already known not to work, each with where that's shown (src/work/graveyard.ts). */
+  obstacles: z.array(z.object({ says: z.string().max(400), source: z.string().url().max(500).optional() })).max(12).optional(),
 });
 export type ProblemBody = z.infer<typeof ProblemBody>;
 

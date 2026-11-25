@@ -9,6 +9,8 @@ import { networkSavings, operatorSavings } from '../hub/savings.js';
 import { ActivityLog, Presence } from '../hub/activity.js';
 import { X0xError, directSendProblem } from '../x0x/client.js';
 import { agentName, Planner } from '../collective/planner.js';
+import { openSteps, submitStep, mySteps } from '../work/agent-step.js';
+import { graveyard, obstacles } from '../work/graveyard.js';
 import { Profiles, profileProblem, ProfileBody } from '../collab/profiles.js';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -232,7 +234,7 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
     const from = prob.forked_from ? hub.node.store.get(prob.forked_from) : undefined;
     const framings = [...hub.collective.versions.framingsOf(new Set([m[1]])), ...hub.problems.list().filter((x) => (x.rec.body as { forked_from?: string }).forked_from === m[1]).map((x) => ({ id: x.rec.id, title: String((x.rec.body as { title: string }).title), by: x.rec.agent_id, at: x.rec.created, voters: hub.collective.supporters(x.rec.id).length, kind: 'problem' as const }))];
     const forkedFrom = from ? { id: from.rec.kind === 'proposal' ? hub.collective.versions.root(from.rec.id)?.rec.id ?? from.rec.id : from.rec.id, title: String((from.rec.body as { title?: string }).title ?? ''), kind: from.rec.kind === 'problem' ? 'problem' : 'idea' } : null;
-    return { ...s, steps, framings, forked_from: forkedFrom, results: await hub.results.forProblem(m[1]), source: (prob as { source?: unknown }).source ?? null, witness: !!hub.problems.verifiers.get(prob.definition_of_done.verifier)?.witness, realm_info: REALM_INFO[s.realm], recent, people: [...people.values()].sort((a, b) => b.contributions - a.contributions).slice(0, 30), votes, constitution };
+    return { ...s, steps, framings, forked_from: forkedFrom, results: await hub.results.forProblem(m[1]), source: (prob as { source?: unknown }).source ?? null, witness: !!hub.problems.verifiers.get(prob.definition_of_done.verifier)?.witness, realm_info: REALM_INFO[s.realm], obstacles: obstacles(hub, m[1]), graveyard: graveyard(hub, m[1]).slice(0, 40), recent, people: [...people.values()].sort((a, b) => b.contributions - a.contributions).slice(0, 30), votes, constitution };
   });
 
   web.route('GET', /^\/api\/proposals$/, () => hub.collective.queue(5));
@@ -428,6 +430,20 @@ export function registerAppRoutes(web: WebServer, opts: { guideModel?: ModelRunn
       return modelRuns().start(m[1], spec);
     });
     return tryIt(() => ({ ...hub.agentRuns.start(m[1]), via: 'claude_code' }));
+  });
+  // The work_step desk over plain HTTP, for agents without MCP (src/web/public/join.txt). Only on this computer:
+  // an answer is published under this computer's key.
+  const deskAgent = (v: unknown) => String(v ?? 'agent').replace(/[^\w .:-]/g, '').slice(0, 40) || 'agent';
+  web.route('GET', /^\/api\/steps\/open$/, async (req, _m, url) => {
+    if (!here(req)) return new HttpReply(403, { error: 'only on this computer' });
+    const agent = deskAgent(url.searchParams.get('agent'));
+    return { open: await openSteps(hub, { problem: url.searchParams.get('problem') ?? undefined, limit: 3, by: `here:${agentName(agent)}` }), yours: mySteps(hub) };
+  });
+  web.route('POST', /^\/api\/steps\/answer$/, async (req, _m, _u, body) => {
+    if (!here(req)) return new HttpReply(403, { error: 'only on this computer' });
+    const j = (await body().catch(() => ({}))) as { problem?: string; step?: string; answer?: string; model?: string; agent?: string };
+    const agent = deskAgent(j.agent);
+    return tryIt(() => submitStep(hub, { problem: String(j.problem ?? ''), step: String(j.step ?? ''), answer: String(j.answer ?? ''), model: j.model, client: agent, by: `here:${agentName(agent)}` }));
   });
   // What Claude Code may use when the app starts it (src/work/claude-tools.ts): web research on, running code off.
   // Rewards (docs/REWARDS.md): thank what worked, and agents' spending wallet. Only on this computer.
