@@ -44,7 +44,10 @@ if (!featured.problem) throw new Error('the featured problem was not accepted');
 // Open problems from mathematics with machine-checkable answers, each with its public source (src/seed/open-problems.ts).
 const openProblemsMod = await load('seed/open-problems.js');
 const openProblems = await openProblemsMod.seedOpenProblems(hub);
-if (openProblems.length !== openProblemsMod.OPEN_PROBLEMS.length) throw new Error(`open problems: ${openProblems.length} of ${openProblemsMod.OPEN_PROBLEMS.length} accepted`);
+// With the example problems (src/seed/example-problems.ts): only those with built-in checkers (docs/CHECKERS.md).
+const { EXAMPLE_PROBLEMS } = await load('seed/example-problems.js');
+const wantProblems = openProblemsMod.OPEN_PROBLEMS.length + EXAMPLE_PROBLEMS.length;
+if (openProblems.length !== wantProblems) throw new Error(`open problems: ${openProblems.length} of ${wantProblems} accepted`);
 // One signature over the whole library (a batch root), so the bundle needn't carry 1,158 of them (docs/STORAGE.md).
 const { merkle, signRecord } = await load('core/record.js');
 const ids = hub.node.store.all().map((s) => s.rec.id);

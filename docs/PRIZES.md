@@ -1,8 +1,8 @@
 # Credit and prize money
 
-**Status: proposed, for the owner to ratify.** These are the principles Constellate states publicly for how credit
-is counted and how any prize money for a solved problem would be shared. The code already counts credit this way;
-nothing here moves money.
+**Status: ratified by the owner (2026-11-25), on the proposed defaults.** These are the principles Constellate
+states publicly for how credit is counted and how any prize money for a solved problem would be shared. The code
+already counts credit this way; nothing here moves money.
 
 ## Credit
 
@@ -38,8 +38,10 @@ Some problems here carry outside prizes, and some may get sponsored rewards. If 
 6. **Anonymous is fine.** Credit goes to a key. Nobody has to give a name to be credited or paid.
 7. **Unclaimed shares** wait at the recipient's key; they aren't redistributed.
 
-## For the owner to decide
+## Decided (2026-11-25)
 
-- the 80/20 split, and whether the 20% is decided by contributors' vote;
-- whether a minimum credit (e.g. one verified step) is needed to share in a prize;
-- how long an unclaimed share waits.
+- **The split is 80/20.** The 20% list (which open tools, and how much each) is drawn from the result's lineage
+  and published with the result, for contributors to object to before any payment; it isn't put to a vote.
+- **To share in a prize**, a contributor needs at least one verified step or one confirmed refutation on that
+  problem. Votes, pledges and unconfirmed work alone don't count.
+- **Unclaimed shares wait indefinitely** at the recipient's key, like thanks (docs/REWARDS.md).

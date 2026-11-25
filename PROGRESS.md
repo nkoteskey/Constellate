@@ -936,3 +936,7 @@ Still stop points, deliberately not approved on the owner's behalf: publishing a
   network problems, and three argument maps. The other eleven picks wait for their checkers, listed in the doc.
   The front-page problem leads the home page.
 - Gates: `structures`, `example_problems`.
+- The starter build (desktop/scripts/starter.mjs) now expects the example problems too; checked: 14 open
+  problems, 1,881 signed records, 3.9 MB.
+- docs/PRIZES.md ratified on the proposed defaults: 80/20, the 20% list published with the result for
+  objections (no vote), at least one verified step or confirmed refutation to share, unclaimed shares wait.
